@@ -34,6 +34,39 @@
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* === LIGHT MODE === */
+[data-theme="light"] {
+  --bg-base: #F2F2F7;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #F8F8FC;
+  --bg-overlay: rgba(0,0,0,0.03);
+
+  --border-subtle: rgba(0,0,0,0.06);
+  --border-default: rgba(0,0,0,0.10);
+  --border-strong: rgba(0,0,0,0.16);
+
+  --text-primary: #1D1D1F;
+  --text-secondary: #6E6E73;
+  --text-tertiary: #AEAEB2;
+
+  --chrome: #636366;
+  --chrome-bright: #3A3A3C;
+
+  --accent: #7C3AED;
+  --accent-glow: rgba(124, 58, 237, 0.12);
+  --accent-subtle: rgba(124, 58, 237, 0.06);
+
+  --success: #248A3D;
+  --warning: #C93400;
+  --danger: #D70015;
+  --info: #0071E3;
+}
+
+/* ─── Theme Transition ─────────────────────────────────────── */
+*, *::before, *::after {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease, box-shadow 0.3s ease;
+}
+
 /* ─── Base Styles ──────────────────────────────────────────── */
 body {
   background: var(--bg-base);
