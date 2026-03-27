@@ -1,0 +1,304 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Organization ───────────────────────────────────────────
+model Organization {
+  id           String        @id @default(cuid())
+  name         String
+  slug         String        @unique
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  departments  Department[]
+  brands       Brand[]
+  members      Member[]
+  projects     Project[]
+  documents    Document[]
+  integrations Integration[]
+}
+
+// ─── Member ─────────────────────────────────────────────────
+model Member {
+  id           String     @id @default(cuid())
+  clerkUserId  String     @unique
+  email        String     @unique
+  name         String
+  avatar       String?
+  role         String     @default("MEMBER") // ADMIN, OPS_MANAGER, DEPT_LEAD, PROJECT_LEAD, MEMBER
+  status       String     @default("AVAILABLE") // AVAILABLE, FOCUSED, IN_MEETING, OOO
+  orgId        String
+  org          Organization @relation(fields: [orgId], references: [id])
+  departmentId String?
+  department   Department?  @relation(fields: [departmentId], references: [id])
+  activities   Activity[]
+  tasksOwned   Task[]       @relation("TaskOwner")
+  notes        Note[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([orgId])
+  @@index([clerkUserId])
+}
+
+// ─── Department ─────────────────────────────────────────────
+model Department {
+  id          String             @id @default(cuid())
+  name        String
+  description String?
+  icon        String             @default("circle")
+  color       String             @default("#0A84FF")
+  type        String             @default("CUSTOM") // BUILTIN_RD, BUILTIN_OPS, CUSTOM
+  orgId       String
+  org         Organization       @relation(fields: [orgId], references: [id])
+  members     Member[]
+  modules     DepartmentModule[]
+  tasks       Task[]
+  archived    Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([orgId])
+}
+
+// ─── Department Module ──────────────────────────────────────
+model DepartmentModule {
+  id           String       @id @default(cuid())
+  name         String
+  type         String       // BRIEFS, CM_PRODUCTIVITY, TECH_TRANSFERS, FORMULATIONS, SKU_PIPELINE, INVENTORY_HEALTH, PRODUCTION_TRACKING, CUSTOM_TABLE, CUSTOM_KANBAN, CUSTOM_LIST
+  departmentId String
+  department   Department   @relation(fields: [departmentId], references: [id])
+  config       Json         @default("{}")
+  items        ModuleItem[]
+  sortOrder    Int          @default(0)
+  createdAt    DateTime     @default(now())
+
+  @@index([departmentId])
+}
+
+// ─── Module Item ────────────────────────────────────────────
+model ModuleItem {
+  id        String           @id @default(cuid())
+  moduleId  String
+  module    DepartmentModule @relation(fields: [moduleId], references: [id])
+  data      Json
+  status    String?
+  sortOrder Int              @default(0)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@index([moduleId])
+}
+
+// ─── Brand ──────────────────────────────────────────────────
+model Brand {
+  id    String       @id @default(cuid())
+  name  String
+  color String
+  icon  String
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId])
+}
+
+// ─── Project ────────────────────────────────────────────────
+model Project {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  status      String       @default("ACTIVE") // DRAFT, ACTIVE, BLOCKED, REVIEW, COMPLETE, ARCHIVED
+  priority    String       @default("P2") // P0, P1, P2, P3
+  health      Int          @default(100)
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id])
+  leadId      String?
+  tasks       Task[]
+  coworkSpace CoworkSpace?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([orgId])
+}
+
+// ─── Cowork Space ───────────────────────────────────────────
+model CoworkSpace {
+  id          String     @id @default(cuid())
+  name        String
+  description String?
+  type        String     @default("PROJECT") // PROJECT, EMERGENCY, INITIATIVE, DEPARTMENT
+  status      String     @default("ACTIVE") // ACTIVE, ARCHIVED
+  projectId   String?    @unique
+  project     Project?   @relation(fields: [projectId], references: [id])
+  deptNames   String[]
+  memberIds   String[]
+  activities  Activity[]
+  tasks       Task[]     @relation("CoworkTasks")
+  documents   Document[] @relation("CoworkDocs")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+// ─── Task ───────────────────────────────────────────────────
+model Task {
+  id           String       @id @default(cuid())
+  title        String
+  description  String?
+  status       String       @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, IN_REVIEW, BLOCKED, COMPLETE
+  priority     String       @default("MEDIUM") // CRITICAL, HIGH, MEDIUM, LOW
+  effort       String?      // XS, S, M, L, XL
+  dueDate      DateTime?
+  completedAt  DateTime?
+  brandNames   String[]
+  projectId    String?
+  project      Project?     @relation(fields: [projectId], references: [id])
+  departmentId String?
+  department   Department?  @relation(fields: [departmentId], references: [id])
+  ownerId      String?
+  owner        Member?      @relation("TaskOwner", fields: [ownerId], references: [id])
+  coworkSpaces CoworkSpace[] @relation("CoworkTasks")
+  documents    Document[]   @relation("TaskDocs")
+  emails       EmailLink[]
+  notes        Note[]
+  parentId     String?
+  parent       Task?        @relation("SubTasks", fields: [parentId], references: [id])
+  subtasks     Task[]       @relation("SubTasks")
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([projectId])
+  @@index([departmentId])
+  @@index([ownerId])
+  @@index([status])
+}
+
+// ─── Activity ───────────────────────────────────────────────
+model Activity {
+  id            String      @id @default(cuid())
+  type          String      // UPDATE, SUBMISSION, NOTE, STATUS_CHANGE, FILE_UPLOAD, EMAIL_LINKED, TASK_CREATED, TASK_COMPLETED, AI_ACTION
+  content       String
+  coworkSpaceId String?
+  coworkSpace   CoworkSpace? @relation(fields: [coworkSpaceId], references: [id])
+  authorId      String
+  author        Member      @relation(fields: [authorId], references: [id])
+  metadata      Json?
+  createdAt     DateTime    @default(now())
+
+  @@index([coworkSpaceId])
+  @@index([authorId])
+}
+
+// ─── Document ───────────────────────────────────────────────
+model Document {
+  id           String       @id @default(cuid())
+  name         String
+  mimeType     String
+  size         Int
+  storageKey   String
+  storageUrl   String?
+  type         String       @default("OTHER") // BRIEF, COA, SPEC_SHEET, QUOTE, PRICING, CONTRACT, REPORT, ARTWORK, INVOICE, OTHER
+  orgId        String
+  org          Organization @relation(fields: [orgId], references: [id])
+  uploadedById String
+  coworkSpaces CoworkSpace[] @relation("CoworkDocs")
+  tasks        Task[]       @relation("TaskDocs")
+  version      Int          @default(1)
+  parentDocId  String?
+  createdAt    DateTime     @default(now())
+
+  @@index([orgId])
+  @@index([type])
+}
+
+// ─── Email Link ─────────────────────────────────────────────
+model EmailLink {
+  id        String   @id @default(cuid())
+  messageId String
+  subject   String
+  fromAddr  String
+  toAddrs   String[]
+  date      DateTime
+  snippet   String?
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id])
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+// ─── Note ───────────────────────────────────────────────────
+model Note {
+  id        String   @id @default(cuid())
+  content   String
+  authorId  String
+  author    Member   @relation(fields: [authorId], references: [id])
+  taskId    String?
+  task      Task?    @relation(fields: [taskId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([taskId])
+}
+
+// ─── Integration ────────────────────────────────────────────
+model Integration {
+  id         String    @id @default(cuid())
+  type       String    // ERP_KAREVE_SYNC, MICROSOFT_OUTLOOK, MICROSOFT_TEAMS, MICROSOFT_ONEDRIVE, AMAZON_VENDOR_CENTRAL, SHOPIFY, GS1_SYNC, SLACK, ZAPIER
+  name       String
+  status     String    @default("DISCONNECTED") // CONNECTED, DISCONNECTED, ERROR, SYNCING
+  config     Json      @default("{}")
+  lastSyncAt DateTime?
+  syncCount  Int       @default(0)
+  orgId      String
+  org        Organization @relation(fields: [orgId], references: [id])
+  syncLogs   SyncLog[]
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([orgId])
+}
+
+// ─── Sync Log ───────────────────────────────────────────────
+model SyncLog {
+  id               String      @id @default(cuid())
+  integrationId    String
+  integration      Integration @relation(fields: [integrationId], references: [id])
+  status           String
+  recordsProcessed Int         @default(0)
+  errors           Json?
+  startedAt        DateTime    @default(now())
+  completedAt      DateTime?
+
+  @@index([integrationId])
+}
+
+// ─── Pulse ──────────────────────────────────────────────────
+model Pulse {
+  id        String   @id @default(cuid())
+  type      String   // ALERT, SIGNAL, HEARTBEAT, BROADCAST
+  message   String
+  deptName  String?
+  targetId  String?
+  read      Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([targetId])
+  @@index([read])
+}
+
+// ─── Escalation Rule ────────────────────────────────────────
+model EscalationRule {
+  id           String   @id @default(cuid())
+  trigger      String
+  action       String
+  targetRole   String?
+  delayMinutes Int      @default(0)
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+}

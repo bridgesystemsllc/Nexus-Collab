@@ -1,0 +1,20 @@
+{
+  "name": "nexus-collab",
+  "private": true,
+  "scripts": {
+    "dev:api": "pnpm --filter @nexus/api dev",
+    "dev:web": "pnpm --filter @nexus/web dev",
+    "dev:worker": "pnpm --filter @nexus/api dev:worker",
+    "build": "pnpm -r build",
+    "db:generate": "pnpm --filter @nexus/prisma generate",
+    "db:migrate": "pnpm --filter @nexus/prisma migrate",
+    "db:seed": "pnpm --filter @nexus/prisma seed",
+    "db:studio": "pnpm --filter @nexus/prisma studio",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}
