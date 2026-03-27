@@ -1,0 +1,31 @@
+run = "npm run start"
+entrypoint = "apps/api/src/index.ts"
+
+[nix]
+channel = "stable-24_05"
+
+[env]
+NODE_ENV = "development"
+PORT = "3000"
+DATABASE_URL = "postgresql://runner:password@localhost:5432/nexus"
+REDIS_URL = "redis://localhost:6379"
+
+[packager]
+language = "nodejs"
+
+[packager.features]
+packageSearch = true
+guessImports = true
+
+[deployment]
+run = ["sh", "-c", "npm run build && npm run start:prod"]
+deploymentTarget = "cloudrun"
+ignorePorts = false
+
+[[ports]]
+localPort = 3000
+externalPort = 80
+
+[[ports]]
+localPort = 5173
+externalPort = 3001
