@@ -29,27 +29,27 @@ async function main() {
   console.log('✅ Departments: 5')
 
   // ─── Modules
-  const briefsMod = await prisma.module.create({ data: { name: 'Active Briefs', type: 'BRIEFS', deptId: rd.id, sortOrder: 0 } })
-  const cmMod = await prisma.module.create({ data: { name: 'CM Productivity', type: 'CM_PRODUCTIVITY', deptId: rd.id, sortOrder: 1 } })
-  const ttMod = await prisma.module.create({ data: { name: 'Tech Transfers', type: 'TECH_TRANSFERS', deptId: rd.id, sortOrder: 2 } })
-  const frmMod = await prisma.module.create({ data: { name: 'Formulations', type: 'FORMULATIONS', deptId: rd.id, sortOrder: 3 } })
-  const skuMod = await prisma.module.create({ data: { name: 'SKU Pipeline', type: 'SKU_PIPELINE', deptId: ops.id, sortOrder: 0 } })
-  const invMod = await prisma.module.create({ data: { name: 'Inventory Health', type: 'INVENTORY_HEALTH', deptId: ops.id, sortOrder: 1 } })
-  const prodMod = await prisma.module.create({ data: { name: 'Production Tracking', type: 'PRODUCTION_TRACKING', deptId: ops.id, sortOrder: 2 } })
+  const briefsMod = await prisma.departmentModule.create({ data: { name: 'Active Briefs', type: 'BRIEFS', departmentId: rd.id, sortOrder: 0 } })
+  const cmMod = await prisma.departmentModule.create({ data: { name: 'CM Productivity', type: 'CM_PRODUCTIVITY', departmentId: rd.id, sortOrder: 1 } })
+  const ttMod = await prisma.departmentModule.create({ data: { name: 'Tech Transfers', type: 'TECH_TRANSFERS', departmentId: rd.id, sortOrder: 2 } })
+  const frmMod = await prisma.departmentModule.create({ data: { name: 'Formulations', type: 'FORMULATIONS', departmentId: rd.id, sortOrder: 3 } })
+  const skuMod = await prisma.departmentModule.create({ data: { name: 'SKU Pipeline', type: 'SKU_PIPELINE', departmentId: ops.id, sortOrder: 0 } })
+  const invMod = await prisma.departmentModule.create({ data: { name: 'Inventory Health', type: 'INVENTORY_HEALTH', departmentId: ops.id, sortOrder: 1 } })
+  const prodMod = await prisma.departmentModule.create({ data: { name: 'Production Tracking', type: 'PRODUCTION_TRACKING', departmentId: ops.id, sortOrder: 2 } })
   console.log('✅ Modules: 7')
 
   // ─── Members
   const m = await Promise.all([
-    prisma.member.create({ data: { clerkUserId: 'user_ahmad', email: 'ahmad@kareve.com', name: 'Ahmad G.', avatar: 'AG', role: 'OPS_MANAGER', deptId: ops.id, orgId: org.id } }),
-    prisma.member.create({ data: { clerkUserId: 'user_ronald', email: 'ronald@kareve.com', name: 'Ronald M.', avatar: 'RM', role: 'DEPT_LEAD', deptId: wh.id, orgId: org.id } }),
-    prisma.member.create({ data: { clerkUserId: 'user_tom', email: 'tom@kareve.com', name: 'Tom L.', avatar: 'TL', role: 'MEMBER', deptId: wh.id, orgId: org.id } }),
-    prisma.member.create({ data: { clerkUserId: 'user_valencia', email: 'valencia@kareve.com', name: 'Valencia R.', avatar: 'VR', role: 'MEMBER', status: 'IN_MEETING', deptId: ops.id, orgId: org.id } }),
-    prisma.member.create({ data: { clerkUserId: 'user_fei', email: 'fei@kareve.com', name: 'Fei W.', avatar: 'FW', role: 'MEMBER', deptId: wh.id, orgId: org.id } }),
-    prisma.member.create({ data: { clerkUserId: 'user_jerome', email: 'jerome@kareve.com', name: 'Jerome S.', avatar: 'JS', role: 'MEMBER', deptId: ops.id, orgId: org.id } }),
-    prisma.member.create({ data: { clerkUserId: 'user_sarah', email: 'sarah@kareve.com', name: 'Sarah K.', avatar: 'SK', role: 'DEPT_LEAD', status: 'FOCUSED', deptId: ops.id, orgId: org.id } }),
-    prisma.member.create({ data: { clerkUserId: 'user_david', email: 'david@kareve.com', name: 'David P.', avatar: 'DP', role: 'DEPT_LEAD', deptId: fin.id, orgId: org.id } }),
-    prisma.member.create({ data: { clerkUserId: 'user_lisa', email: 'lisa@kareve.com', name: 'Lisa C.', avatar: 'LC', role: 'MEMBER', status: 'OOO', deptId: vm.id, orgId: org.id } }),
-    prisma.member.create({ data: { clerkUserId: 'user_mike', email: 'mike@kareve.com', name: 'Mike T.', avatar: 'MT', role: 'DEPT_LEAD', deptId: rd.id, orgId: org.id } }),
+    prisma.member.create({ data: { clerkUserId: 'user_ahmad', email: 'ahmad@kareve.com', name: 'Ahmad G.', avatar: 'AG', role: 'OPS_MANAGER', departmentId: ops.id, orgId: org.id } }),
+    prisma.member.create({ data: { clerkUserId: 'user_ronald', email: 'ronald@kareve.com', name: 'Ronald M.', avatar: 'RM', role: 'DEPT_LEAD', departmentId: wh.id, orgId: org.id } }),
+    prisma.member.create({ data: { clerkUserId: 'user_tom', email: 'tom@kareve.com', name: 'Tom L.', avatar: 'TL', role: 'MEMBER', departmentId: wh.id, orgId: org.id } }),
+    prisma.member.create({ data: { clerkUserId: 'user_valencia', email: 'valencia@kareve.com', name: 'Valencia R.', avatar: 'VR', role: 'MEMBER', status: 'IN_MEETING', departmentId: ops.id, orgId: org.id } }),
+    prisma.member.create({ data: { clerkUserId: 'user_fei', email: 'fei@kareve.com', name: 'Fei W.', avatar: 'FW', role: 'MEMBER', departmentId: wh.id, orgId: org.id } }),
+    prisma.member.create({ data: { clerkUserId: 'user_jerome', email: 'jerome@kareve.com', name: 'Jerome S.', avatar: 'JS', role: 'MEMBER', departmentId: ops.id, orgId: org.id } }),
+    prisma.member.create({ data: { clerkUserId: 'user_sarah', email: 'sarah@kareve.com', name: 'Sarah K.', avatar: 'SK', role: 'DEPT_LEAD', status: 'FOCUSED', departmentId: ops.id, orgId: org.id } }),
+    prisma.member.create({ data: { clerkUserId: 'user_david', email: 'david@kareve.com', name: 'David P.', avatar: 'DP', role: 'DEPT_LEAD', departmentId: fin.id, orgId: org.id } }),
+    prisma.member.create({ data: { clerkUserId: 'user_lisa', email: 'lisa@kareve.com', name: 'Lisa C.', avatar: 'LC', role: 'MEMBER', status: 'OOO', departmentId: vm.id, orgId: org.id } }),
+    prisma.member.create({ data: { clerkUserId: 'user_mike', email: 'mike@kareve.com', name: 'Mike T.', avatar: 'MT', role: 'DEPT_LEAD', departmentId: rd.id, orgId: org.id } }),
   ])
   console.log('✅ Members: 10')
 
@@ -133,25 +133,25 @@ async function main() {
 
   // ─── Activity Feed
   await prisma.activity.createMany({ data: [
-    { type: 'UPDATE', content: 'SKU creation for Detox Shampoo and Edge Balm complete in Kareve Sync.', spaceId: cw1.id, authorId: m[0].id },
-    { type: 'SUBMISSION', content: 'Formula v3.2 for Detox Shampoo approved. 24-month shelf life confirmed.', spaceId: cw1.id, authorId: m[9].id },
-    { type: 'NOTE', content: '@Mike T. — Confirm Cleansing Oil formula timeline? Need specs for Jansy tubes by EOW.', spaceId: cw1.id, authorId: m[0].id, metadata: { email: { from: 'ahmad@kareve.com', subject: 'RE: Cleansing Oil Timeline', date: 'Mar 25' } } },
-    { type: 'UPDATE', content: 'Escalated PO-2026-041 to ACT Labs. Requested 10K partial shipment by April 15.', spaceId: cw2.id, authorId: m[0].id },
-    { type: 'UPDATE', content: 'Receiving dock capacity confirmed. Can process 500 cases/day.', spaceId: cw2.id, authorId: m[1].id },
+    { type: 'UPDATE', content: 'SKU creation for Detox Shampoo and Edge Balm complete in Kareve Sync.', coworkSpaceId: cw1.id, authorId: m[0].id },
+    { type: 'SUBMISSION', content: 'Formula v3.2 for Detox Shampoo approved. 24-month shelf life confirmed.', coworkSpaceId: cw1.id, authorId: m[9].id },
+    { type: 'NOTE', content: '@Mike T. — Confirm Cleansing Oil formula timeline? Need specs for Jansy tubes by EOW.', coworkSpaceId: cw1.id, authorId: m[0].id, metadata: { email: { from: 'ahmad@kareve.com', subject: 'RE: Cleansing Oil Timeline', date: 'Mar 25' } } },
+    { type: 'UPDATE', content: 'Escalated PO-2026-041 to ACT Labs. Requested 10K partial shipment by April 15.', coworkSpaceId: cw2.id, authorId: m[0].id },
+    { type: 'UPDATE', content: 'Receiving dock capacity confirmed. Can process 500 cases/day.', coworkSpaceId: cw2.id, authorId: m[1].id },
   ] })
   console.log('✅ Activity Feed: 5')
 
   // ─── Cowork Tasks
   await prisma.task.createMany({ data: [
-    { title: 'Finalize ACT Labs PO 50K run', status: 'IN_PROGRESS', priority: 'CRITICAL', dueDate: new Date('2026-03-28'), ownerId: m[0].id, deptId: ops.id, projectId: projects[0].id, brandNames: ['cd'] },
-    { title: 'Upload approved formula specs', status: 'COMPLETE', priority: 'HIGH', dueDate: new Date('2026-03-24'), completedAt: new Date('2026-03-24'), ownerId: m[9].id, deptId: rd.id, projectId: projects[0].id, brandNames: ['cd'] },
-    { title: 'Confirm TricorBraun bottle PO', status: 'BLOCKED', priority: 'CRITICAL', dueDate: new Date('2026-03-27'), ownerId: m[8].id, deptId: vm.id, projectId: projects[0].id, brandNames: ['cd'] },
-    { title: 'Create packaging artwork for 4 SKUs', status: 'IN_PROGRESS', priority: 'HIGH', dueDate: new Date('2026-04-02'), ownerId: m[6].id, deptId: ops.id, projectId: projects[0].id, brandNames: ['cd'] },
-    { title: 'Expedite ACT Labs PO-2026-041', status: 'IN_PROGRESS', priority: 'CRITICAL', dueDate: new Date('2026-03-26'), ownerId: m[0].id, deptId: ops.id, projectId: projects[1].id, brandNames: ['cd'] },
-    { title: 'Reallocate inventory to priority orders', status: 'IN_PROGRESS', priority: 'CRITICAL', dueDate: new Date('2026-03-27'), ownerId: m[2].id, deptId: wh.id, projectId: projects[1].id, brandNames: ['cd'] },
-    { title: 'Amazon fill rate recovery plan', status: 'NOT_STARTED', priority: 'CRITICAL', dueDate: new Date('2026-03-27'), ownerId: m[0].id, deptId: ops.id, brandNames: ['cd'] },
-    { title: 'Emerson daily report automation', status: 'IN_PROGRESS', priority: 'HIGH', dueDate: new Date('2026-04-01'), ownerId: m[0].id, deptId: ops.id, projectId: projects[3].id, brandNames: ['cd', 'ambi', 'af'] },
-    { title: 'Paklab 2026 pricing analysis', status: 'IN_REVIEW', priority: 'MEDIUM', dueDate: new Date('2026-03-30'), ownerId: m[7].id, deptId: fin.id, projectId: projects[2].id, brandNames: ['ambi'] },
+    { title: 'Finalize ACT Labs PO 50K run', status: 'IN_PROGRESS', priority: 'CRITICAL', dueDate: new Date('2026-03-28'), ownerId: m[0].id, departmentId: ops.id, projectId: projects[0].id, brandNames: ['cd'] },
+    { title: 'Upload approved formula specs', status: 'COMPLETE', priority: 'HIGH', dueDate: new Date('2026-03-24'), completedAt: new Date('2026-03-24'), ownerId: m[9].id, departmentId: rd.id, projectId: projects[0].id, brandNames: ['cd'] },
+    { title: 'Confirm TricorBraun bottle PO', status: 'BLOCKED', priority: 'CRITICAL', dueDate: new Date('2026-03-27'), ownerId: m[8].id, departmentId: vm.id, projectId: projects[0].id, brandNames: ['cd'] },
+    { title: 'Create packaging artwork for 4 SKUs', status: 'IN_PROGRESS', priority: 'HIGH', dueDate: new Date('2026-04-02'), ownerId: m[6].id, departmentId: ops.id, projectId: projects[0].id, brandNames: ['cd'] },
+    { title: 'Expedite ACT Labs PO-2026-041', status: 'IN_PROGRESS', priority: 'CRITICAL', dueDate: new Date('2026-03-26'), ownerId: m[0].id, departmentId: ops.id, projectId: projects[1].id, brandNames: ['cd'] },
+    { title: 'Reallocate inventory to priority orders', status: 'IN_PROGRESS', priority: 'CRITICAL', dueDate: new Date('2026-03-27'), ownerId: m[2].id, departmentId: wh.id, projectId: projects[1].id, brandNames: ['cd'] },
+    { title: 'Amazon fill rate recovery plan', status: 'NOT_STARTED', priority: 'CRITICAL', dueDate: new Date('2026-03-27'), ownerId: m[0].id, departmentId: ops.id, brandNames: ['cd'] },
+    { title: 'Emerson daily report automation', status: 'IN_PROGRESS', priority: 'HIGH', dueDate: new Date('2026-04-01'), ownerId: m[0].id, departmentId: ops.id, projectId: projects[3].id, brandNames: ['cd', 'ambi', 'af'] },
+    { title: 'Paklab 2026 pricing analysis', status: 'IN_REVIEW', priority: 'MEDIUM', dueDate: new Date('2026-03-30'), ownerId: m[7].id, departmentId: fin.id, projectId: projects[2].id, brandNames: ['ambi'] },
   ] })
   console.log('✅ Tasks: 9')
 
