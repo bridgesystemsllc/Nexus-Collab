@@ -282,3 +282,27 @@ body {
   font-weight: 700;
   letter-spacing: -0.04em;
 }
+
+/* ─── Dialog Animations ───────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out;
+}
+.animate-dialog-in {
+  animation: dialog-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ─── Clickable Rows ──────────────────────────────────────── */
+.nexus-table tr.clickable-row {
+  cursor: pointer;
+}
+.nexus-table tr.clickable-row:hover td {
+  background: var(--bg-elevated);
+}

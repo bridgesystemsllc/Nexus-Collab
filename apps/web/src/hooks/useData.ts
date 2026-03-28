@@ -44,6 +44,18 @@ export function useUpdateTask() {
   })
 }
 
+export function useAddTaskNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) =>
+      api.post(`/tasks/${id}/notes`, { content }).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['task', vars.id] })
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+}
+
 // ─── Cowork ─────────────────────────────────────────────────
 export function useCoworkSpaces() {
   return useQuery({ queryKey: ['cowork'], queryFn: () => api.get('/cowork').then(r => r.data) })

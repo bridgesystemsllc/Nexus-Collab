@@ -12,6 +12,7 @@ import {
   Users,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
+import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 
 // ─── Types ─────────────────────────────────────────────────
 type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations'
@@ -104,7 +105,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ─── Active Briefs Tab ─────────────────────────────────────
-function BriefsTab({ items }: { items: any[] }) {
+function BriefsTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
@@ -129,7 +130,7 @@ function BriefsTab({ items }: { items: any[] }) {
           {items.map((item: any) => {
             const d = item.data
             return (
-              <tr key={item.id}>
+              <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
                 <td className="font-medium text-[var(--text-primary)]">
                   {d.name}
                 </td>
@@ -151,7 +152,7 @@ function BriefsTab({ items }: { items: any[] }) {
 }
 
 // ─── CM Productivity Tab ───────────────────────────────────
-function CMTab({ items }: { items: any[] }) {
+function CMTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
@@ -171,7 +172,7 @@ function CMTab({ items }: { items: any[] }) {
       {items.map((item: any) => {
         const d = item.data
         return (
-          <div key={item.id} className="data-cell space-y-3">
+          <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
             <div className="flex items-center justify-between">
               <h3 className="font-medium text-[var(--text-primary)]">
                 {d.name}
@@ -218,7 +219,7 @@ function CMTab({ items }: { items: any[] }) {
 }
 
 // ─── Tech Transfers Tab ────────────────────────────────────
-function TransfersTab({ items }: { items: any[] }) {
+function TransfersTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
@@ -232,7 +233,7 @@ function TransfersTab({ items }: { items: any[] }) {
       {items.map((item: any) => {
         const d = item.data
         return (
-          <div key={item.id} className="data-cell space-y-3">
+          <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
             <div className="flex items-center justify-between">
               <h3 className="font-medium text-sm text-[var(--text-primary)]">
                 {d.product}
@@ -281,7 +282,7 @@ function TransfersTab({ items }: { items: any[] }) {
 }
 
 // ─── Formulations Tab ──────────────────────────────────────
-function FormulationsTab({ items }: { items: any[] }) {
+function FormulationsTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
@@ -306,7 +307,7 @@ function FormulationsTab({ items }: { items: any[] }) {
           {items.map((item: any) => {
             const d = item.data
             return (
-              <tr key={item.id}>
+              <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
                 <td className="font-medium text-[var(--text-primary)]">
                   {d.product}
                 </td>
@@ -336,6 +337,7 @@ function FormulationsTab({ items }: { items: any[] }) {
 // ─── Main Page ─────────────────────────────────────────────
 export function RDPage() {
   const [activeTab, setActiveTab] = useState<RDTab>('briefs')
+  const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
 
   // Find R&D department from departments list
   const { data: departments, isLoading: deptsLoading } = useDepartments()
@@ -427,16 +429,22 @@ export function RDPage() {
               <CardsSkeleton />
             )
           ) : activeTab === 'briefs' ? (
-            <BriefsTab items={tabContent.briefs} />
+            <BriefsTab items={tabContent.briefs} onSelect={(item) => setSelectedItem({ item, type: 'BRIEFS' })} />
           ) : activeTab === 'cm' ? (
-            <CMTab items={tabContent.cm} />
+            <CMTab items={tabContent.cm} onSelect={(item) => setSelectedItem({ item, type: 'CM_PRODUCTIVITY' })} />
           ) : activeTab === 'transfers' ? (
-            <TransfersTab items={tabContent.transfers} />
+            <TransfersTab items={tabContent.transfers} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
           ) : (
-            <FormulationsTab items={tabContent.formulations} />
+            <FormulationsTab items={tabContent.formulations} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
           )}
         </div>
       </div>
+
+      <ItemDetailDialog
+        item={selectedItem?.item ?? null}
+        moduleType={selectedItem?.type ?? null}
+        onClose={() => setSelectedItem(null)}
+      />
     </div>
   )
 }

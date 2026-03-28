@@ -13,6 +13,7 @@ import {
   Truck,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
+import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 
 // ─── Types ─────────────────────────────────────────────────
 type OpsTab = 'sku' | 'inventory' | 'production'
@@ -93,7 +94,7 @@ function StepProgression({ step, total }: { step: number; total: number }) {
 }
 
 // ─── SKU Pipeline Tab ──────────────────────────────────────
-function SKUPipelineTab({ items }: { items: any[] }) {
+function SKUPipelineTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
@@ -107,7 +108,7 @@ function SKUPipelineTab({ items }: { items: any[] }) {
       {items.map((item: any) => {
         const d = item.data
         return (
-          <div key={item.id} className="data-cell space-y-3">
+          <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
             <div>
               <h3 className="font-medium text-sm text-[var(--text-primary)]">
                 {d.name}
@@ -146,7 +147,7 @@ function SKUPipelineTab({ items }: { items: any[] }) {
 }
 
 // ─── Inventory Health Tab ──────────────────────────────────
-function InventoryHealthTab({ items }: { items: any[] }) {
+function InventoryHealthTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
@@ -196,7 +197,7 @@ function InventoryHealthTab({ items }: { items: any[] }) {
               rowClass: '',
             }
             return (
-              <tr key={item.id} className={cfg.rowClass}>
+              <tr key={item.id} className={`clickable-row ${cfg.rowClass}`} onClick={() => onSelect(item)}>
                 <td className="font-mono text-xs text-[var(--text-secondary)]">
                   {d.sku}
                 </td>
@@ -241,7 +242,7 @@ function InventoryHealthTab({ items }: { items: any[] }) {
 }
 
 // ─── Production Tracking Tab ───────────────────────────────
-function ProductionTab({ items }: { items: any[] }) {
+function ProductionTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
@@ -271,7 +272,7 @@ function ProductionTab({ items }: { items: any[] }) {
         const d = item.data
         const color = statusColor(d.status)
         return (
-          <div key={item.id} className="data-cell space-y-3">
+          <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs font-semibold text-[var(--accent)]">
                 {d.poNumber}
@@ -337,6 +338,7 @@ function ProductionTab({ items }: { items: any[] }) {
 // ─── Main Page ─────────────────────────────────────────────
 export function OpsPage() {
   const [activeTab, setActiveTab] = useState<OpsTab>('sku')
+  const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
 
   // Find Operations department from departments list
   const { data: departments, isLoading: deptsLoading } = useDepartments()
@@ -444,14 +446,20 @@ export function OpsPage() {
               <CardsSkeleton />
             )
           ) : activeTab === 'sku' ? (
-            <SKUPipelineTab items={moduleData.sku} />
+            <SKUPipelineTab items={moduleData.sku} onSelect={(item) => setSelectedItem({ item, type: 'SKU_PIPELINE' })} />
           ) : activeTab === 'inventory' ? (
-            <InventoryHealthTab items={moduleData.inventory} />
+            <InventoryHealthTab items={moduleData.inventory} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
           ) : (
-            <ProductionTab items={moduleData.production} />
+            <ProductionTab items={moduleData.production} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} />
           )}
         </div>
       </div>
+
+      <ItemDetailDialog
+        item={selectedItem?.item ?? null}
+        moduleType={selectedItem?.type ?? null}
+        onClose={() => setSelectedItem(null)}
+      />
     </div>
   )
 }

@@ -3,6 +3,7 @@ import { ArrowLeft, MessageSquare, CheckSquare, FileText, Clock, User } from 'lu
 import { formatDistanceToNow } from 'date-fns'
 import { useCoworkSpace } from '@/hooks/useData'
 import { useAppStore } from '@/stores/appStore'
+import { TaskDetailDialog } from '@/components/TaskDetailDialog'
 
 type Tab = 'activity' | 'tasks' | 'files'
 
@@ -52,6 +53,7 @@ export function CoworkDetailPage() {
   const setSelectedCowork = useAppStore((s) => s.setSelectedCowork)
   const { data: space, isLoading } = useCoworkSpace(selectedCoworkId ?? '')
   const [activeTab, setActiveTab] = useState<Tab>('activity')
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
 
   if (isLoading) {
     return (
@@ -146,8 +148,10 @@ export function CoworkDetailPage() {
 
       {/* Tab Content */}
       {activeTab === 'activity' && <ActivityTab activities={space.activities ?? []} />}
-      {activeTab === 'tasks' && <TasksTab tasks={space.tasks ?? space.project?.tasks ?? []} />}
+      {activeTab === 'tasks' && <TasksTab tasks={space.tasks ?? space.project?.tasks ?? []} onSelectTask={setSelectedTaskId} />}
       {activeTab === 'files' && <FilesTab documents={space.documents ?? []} />}
+
+      <TaskDetailDialog taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
     </div>
   )
 }
@@ -215,7 +219,7 @@ function ActivityTab({ activities }: { activities: any[] }) {
 }
 
 /* ─── Tasks Tab ────────────────────────────────────────────── */
-function TasksTab({ tasks }: { tasks: any[] }) {
+function TasksTab({ tasks, onSelectTask }: { tasks: any[]; onSelectTask?: (id: string) => void }) {
   if (tasks.length === 0) {
     return (
       <div className="flex flex-col items-center py-16" style={{ color: 'var(--text-tertiary)' }}>
@@ -239,8 +243,9 @@ function TasksTab({ tasks }: { tasks: any[] }) {
         return (
           <div
             key={task.id}
-            className="data-cell"
+            className="data-cell cursor-pointer hover:border-[var(--accent)] transition-colors"
             style={{ borderLeftWidth: '3px', borderLeftColor: priorityColor }}
+            onClick={() => onSelectTask?.(task.id)}
           >
             <div className="relative z-10">
               <div className="flex items-start justify-between mb-2">

@@ -15,6 +15,8 @@ import {
   Users,
 } from 'lucide-react'
 import { useEverything } from '@/hooks/useData'
+import { TaskDetailDialog } from '@/components/TaskDetailDialog'
+import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 
 // ─── Filter Config ─────────────────────────────────────────
 const TYPE_FILTERS: {
@@ -113,6 +115,8 @@ export function EverythingPage() {
   const [typeFilter, setTypeFilter] = useState('ALL')
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
 
   // Build filters for the API
   const filters = useMemo(() => {
@@ -303,7 +307,17 @@ export function EverythingPage() {
               </thead>
               <tbody>
                 {records.map((record: any) => (
-                  <tr key={record.id}>
+                  <tr
+                    key={record.id}
+                    className="clickable-row"
+                    onClick={() => {
+                      if (record.type === 'TASK') {
+                        setSelectedTaskId(record.sourceId ?? record.id)
+                      } else {
+                        setSelectedItem({ item: { id: record.id, data: record.raw ?? record }, type: record.type })
+                      }
+                    }}
+                  >
                     <td>
                       <TypeBadge type={record.type} />
                     </td>
@@ -355,6 +369,19 @@ export function EverythingPage() {
           Showing {records.length} of {kpis.total} records
         </p>
       )}
+
+      {/* Task Detail Dialog */}
+      <TaskDetailDialog
+        taskId={selectedTaskId}
+        onClose={() => setSelectedTaskId(null)}
+      />
+
+      {/* Item Detail Dialog */}
+      <ItemDetailDialog
+        item={selectedItem?.item ?? null}
+        moduleType={selectedItem?.type ?? null}
+        onClose={() => setSelectedItem(null)}
+      />
     </div>
   )
 }
