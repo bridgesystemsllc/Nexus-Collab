@@ -45,8 +45,8 @@ export function PulsePage() {
   const markRead = useMarkPulseRead()
   const markAllRead = useMarkAllPulseRead()
 
-  const items = (pulses ?? []) as any[]
-  const unreadCount = items.filter((p) => !p.readAt).length
+  const items = (Array.isArray(pulses) ? pulses : (pulses as any)?.pulses ?? []) as any[]
+  const unreadCount = items.filter((p: any) => !p.readAt).length
 
   return (
     <div className="space-y-6">

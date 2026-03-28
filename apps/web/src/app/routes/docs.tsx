@@ -37,7 +37,8 @@ export function DocsPage() {
 
   const filtered = useMemo(() => {
     if (!documents) return []
-    return (documents as any[]).filter((doc) => {
+    const docList = Array.isArray(documents) ? documents : (documents as any)?.documents ?? []
+    return (docList as any[]).filter((doc: any) => {
       const matchesSearch =
         !search || doc.name?.toLowerCase().includes(search.toLowerCase())
       const matchesType =

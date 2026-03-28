@@ -41,6 +41,15 @@ NEXUS is a cross-departmental operations platform for Kareve Beauty Group. It pr
 - `/ai` — AI chat, briefings, quick actions (WOSR, escalation, ERP sync)
 - `/pulse` — Notification feed + mark read
 
+## API Response Shapes (important for frontend integration)
+- `/tasks` returns `{ tasks, total, page, limit }` (not a plain array)
+- `/pulse` returns `{ pulses, total, unread }` (not a plain array)
+- `/documents` returns `{ documents, total }` (not a plain array)
+- `/departments` returns a plain array
+- `/integrations` returns a plain array
+- `/cowork` returns a plain array
+- `/everything` returns `{ records, kpis }`
+
 ## Features
 - Dark/light theme toggle (persisted to localStorage)
 - Real-time WebSocket support for activity feeds and task updates

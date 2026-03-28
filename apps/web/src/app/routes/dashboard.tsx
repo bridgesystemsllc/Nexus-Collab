@@ -188,7 +188,7 @@ export function DashboardPage() {
 
   // ─── Compute KPIs
   const kpis = useMemo(() => {
-    const taskList = Array.isArray(tasks) ? tasks : []
+    const taskList = Array.isArray(tasks) ? tasks : (tasks as any)?.tasks ?? []
     const integrationList = Array.isArray(integrations) ? integrations : []
 
     const activeTasks = taskList.filter(

@@ -15,8 +15,9 @@ export function IntegrationsPage() {
   const { data: integrations, isLoading } = useIntegrations()
   const syncMutation = useSyncIntegration()
 
-  const connected = (integrations ?? []).filter((i: any) => i.status === 'CONNECTED')
-  const available = (integrations ?? []).filter((i: any) => i.status !== 'CONNECTED')
+  const integrationList = Array.isArray(integrations) ? integrations : []
+  const connected = integrationList.filter((i: any) => i.status === 'CONNECTED')
+  const available = integrationList.filter((i: any) => i.status !== 'CONNECTED')
 
   return (
     <div className="space-y-8">

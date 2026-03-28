@@ -8,7 +8,8 @@ export function CoworkPage() {
   const setSelectedCowork = useAppStore((s) => s.setSelectedCowork)
   const [search, setSearch] = useState('')
 
-  const filtered = (spaces ?? []).filter((s: any) =>
+  const spaceList = Array.isArray(spaces) ? spaces : []
+  const filtered = spaceList.filter((s: any) =>
     s.name.toLowerCase().includes(search.toLowerCase())
   )
 
