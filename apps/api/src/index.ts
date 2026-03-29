@@ -33,7 +33,7 @@ export const io = new SocketServer(httpServer, {
 })
 
 // ─── Middleware ──────────────────────────────────────────────
-app.use(helmet({ contentSecurityPolicy: false }))
+app.use(helmet({ contentSecurityPolicy: false, frameguard: false }))
 app.use(cors({ origin: isReplit ? '*' : frontendUrl, credentials: !isReplit }))
 app.use(compression())
 app.use(morgan('dev'))
@@ -60,8 +60,10 @@ app.use('/api/v1', api)
 // ─── Serve Frontend (Replit / Production) ───────────────────
 if (isReplit || process.env.NODE_ENV === 'production') {
   const webDist = path.resolve(__dirname, '../../web/dist')
-  app.use(express.static(webDist))
+  app.use(express.static(webDist, { etag: false, maxAge: '1d', index: false }))
   app.get('*', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate')
+    res.setHeader('Pragma', 'no-cache')
     res.sendFile(path.join(webDist, 'index.html'))
   })
 }
