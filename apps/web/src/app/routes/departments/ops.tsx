@@ -9,11 +9,13 @@ import {
   Factory,
   Loader2,
   Package,
+  Plus,
   TrendingUp,
   Truck,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
+import { CreateModuleItemDialog } from '@/components/CreateModuleItemDialog'
 
 // ─── Types ─────────────────────────────────────────────────
 type OpsTab = 'sku' | 'inventory' | 'production'
@@ -335,10 +337,18 @@ function ProductionTab({ items, onSelect }: { items: any[]; onSelect: (item: any
   )
 }
 
+// ─── Tab → module type mapping ──────────────────────────────
+const TAB_MODULE_TYPE: Record<OpsTab, string> = {
+  sku: 'SKU_PIPELINE',
+  inventory: 'INVENTORY_HEALTH',
+  production: 'PRODUCTION_TRACKING',
+}
+
 // ─── Main Page ─────────────────────────────────────────────
 export function OpsPage() {
   const [activeTab, setActiveTab] = useState<OpsTab>('sku')
   const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
 
   // Find Operations department from departments list
   const { data: departments, isLoading: deptsLoading } = useDepartments()
@@ -354,19 +364,27 @@ export function OpsPage() {
 
   const isLoading = deptsLoading || detailLoading
 
-  // Organize module items by type
+  // Organize module items AND ids by type
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { sku: [], inventory: [], production: [] }
+      return {
+        sku: [], inventory: [], production: [],
+        moduleIds: { SKU_PIPELINE: '', INVENTORY_HEALTH: '', PRODUCTION_TRACKING: '' },
+      }
     }
     const modules = deptDetail.modules as any[]
-    const find = (type: string) =>
-      modules.find((m: any) => m.type === type)?.items || []
+    const find = (type: string) => modules.find((m: any) => m.type === type)?.items || []
+    const findId = (type: string) => modules.find((m: any) => m.type === type)?.id || ''
 
     return {
       sku: find('SKU_PIPELINE'),
       inventory: find('INVENTORY_HEALTH'),
       production: find('PRODUCTION_TRACKING'),
+      moduleIds: {
+        SKU_PIPELINE: findId('SKU_PIPELINE'),
+        INVENTORY_HEALTH: findId('INVENTORY_HEALTH'),
+        PRODUCTION_TRACKING: findId('PRODUCTION_TRACKING'),
+      },
     }
   }, [deptDetail])
 
@@ -378,6 +396,9 @@ export function OpsPage() {
       ).length,
     [moduleData.inventory]
   )
+
+  const activeModuleType = TAB_MODULE_TYPE[activeTab]
+  const activeModuleId = moduleData.moduleIds[activeModuleType as keyof typeof moduleData.moduleIds] ?? ''
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -411,29 +432,40 @@ export function OpsPage() {
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit">
-        {TABS.map((tab) => {
-          const Icon = tab.icon
-          const isActive = activeTab === tab.key
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                isActive
-                  ? 'bg-[var(--accent)] text-white shadow-md'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
-              }`}
-            >
-              <Icon size={15} />
-              {tab.label}
-              {tab.key === 'inventory' && emergencyCount > 0 && !isActive && (
-                <span className="w-2 h-2 rounded-full bg-[var(--danger)]" />
-              )}
-            </button>
-          )
-        })}
+      {/* Tab Navigation + New button */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit">
+          {TABS.map((tab) => {
+            const Icon = tab.icon
+            const isActive = activeTab === tab.key
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  isActive
+                    ? 'bg-[var(--accent)] text-white shadow-md'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
+                }`}
+              >
+                <Icon size={15} />
+                {tab.label}
+                {tab.key === 'inventory' && emergencyCount > 0 && !isActive && (
+                  <span className="w-2 h-2 rounded-full bg-[var(--danger)]" />
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        <button
+          onClick={() => setCreateOpen(true)}
+          disabled={isLoading || !activeModuleId}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+        >
+          <Plus size={15} />
+          New {TABS.find(t => t.key === activeTab)?.label?.split(' ')[0]}
+        </button>
       </div>
 
       {/* Tab Content */}
@@ -459,6 +491,14 @@ export function OpsPage() {
         item={selectedItem?.item ?? null}
         moduleType={selectedItem?.type ?? null}
         onClose={() => setSelectedItem(null)}
+      />
+
+      <CreateModuleItemDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        moduleType={activeModuleType}
+        moduleId={activeModuleId}
+        deptId={opsDept?.id ?? ''}
       />
     </div>
   )

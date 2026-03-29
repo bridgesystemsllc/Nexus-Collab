@@ -1,12 +1,68 @@
 import { useState } from 'react'
-import { Users, MessageSquare, CheckSquare, Search } from 'lucide-react'
-import { useCoworkSpaces } from '@/hooks/useData'
+import { Users, MessageSquare, CheckSquare, Search, Plus, Loader2 } from 'lucide-react'
+import { useCoworkSpaces, useCreateCoworkSpace } from '@/hooks/useData'
 import { useAppStore } from '@/stores/appStore'
+import { Dialog } from '@/components/Dialog'
+
+const inputCls =
+  'w-full px-3 py-2 bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors'
+const labelCls = 'block text-xs font-medium text-[var(--text-tertiary)] mb-1 uppercase tracking-wider'
+const selectCls =
+  'w-full px-3 py-2 bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] transition-colors appearance-none'
+
+const SPACE_TYPES = ['PROJECT', 'INITIATIVE', 'DEPARTMENT', 'EMERGENCY'] as const
+
+function CreateSpaceDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const createSpace = useCreateCoworkSpace()
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [type, setType] = useState<string>('PROJECT')
+
+  function reset() { setName(''); setDescription(''); setType('PROJECT') }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    createSpace.mutate(
+      { name: name.trim(), description: description.trim() || undefined, type },
+      { onSuccess: () => { reset(); onClose() } }
+    )
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} title="New Cowork Space">
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div>
+          <label className={labelCls}>Space Name *</label>
+          <input className={inputCls} placeholder="e.g. Q4 Launch Initiative" value={name} onChange={e => setName(e.target.value)} autoFocus />
+        </div>
+        <div>
+          <label className={labelCls}>Description</label>
+          <textarea className={inputCls} rows={2} placeholder="Brief description of the space..." value={description} onChange={e => setDescription(e.target.value)} />
+        </div>
+        <div>
+          <label className={labelCls}>Type</label>
+          <select className={selectCls} value={type} onChange={e => setType(e.target.value)}>
+            {SPACE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--border-subtle)]">
+          <button type="button" onClick={() => { reset(); onClose() }} className="px-4 py-2 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors">Cancel</button>
+          <button type="submit" disabled={!name.trim() || createSpace.isPending} className="px-5 py-2 rounded-xl bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center gap-2">
+            {createSpace.isPending && <Loader2 size={14} className="animate-spin" />}
+            Create Space
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
 
 export function CoworkPage() {
   const { data: spaces, isLoading } = useCoworkSpaces()
   const setSelectedCowork = useAppStore((s) => s.setSelectedCowork)
   const [search, setSearch] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
 
   const spaceList = Array.isArray(spaces) ? spaces : []
   const filtered = spaceList.filter((s: any) =>
@@ -25,22 +81,32 @@ export function CoworkPage() {
             Cross-department collaboration hubs
           </p>
         </div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
-          <input
-            type="text"
-            placeholder="Search spaces..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 pr-4 py-2 rounded-lg text-sm outline-none"
-            style={{
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-primary)',
-            }}
-          />
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+            <input
+              type="text"
+              placeholder="Search spaces..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 pr-4 py-2 rounded-lg text-sm outline-none"
+              style={{
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--border-subtle)',
+                color: 'var(--text-primary)',
+              }}
+            />
+          </div>
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity"
+          >
+            <Plus size={15} />
+            New Space
+          </button>
         </div>
       </div>
+      <CreateSpaceDialog open={createOpen} onClose={() => setCreateOpen(false)} />
 
       {/* Loading */}
       {isLoading && (

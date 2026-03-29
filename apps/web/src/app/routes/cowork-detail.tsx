@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { ArrowLeft, MessageSquare, CheckSquare, FileText, Clock, User } from 'lucide-react'
+import { ArrowLeft, MessageSquare, CheckSquare, FileText, Clock, Plus } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useCoworkSpace } from '@/hooks/useData'
 import { useAppStore } from '@/stores/appStore'
 import { TaskDetailDialog } from '@/components/TaskDetailDialog'
+import { CreateTaskDialog } from '@/components/CreateTaskDialog'
 
 type Tab = 'activity' | 'tasks' | 'files'
 
@@ -54,6 +55,7 @@ export function CoworkDetailPage() {
   const { data: space, isLoading } = useCoworkSpace(selectedCoworkId ?? '')
   const [activeTab, setActiveTab] = useState<Tab>('activity')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [createTaskOpen, setCreateTaskOpen] = useState(false)
 
   if (isLoading) {
     return (
@@ -148,10 +150,21 @@ export function CoworkDetailPage() {
 
       {/* Tab Content */}
       {activeTab === 'activity' && <ActivityTab activities={space.activities ?? []} />}
-      {activeTab === 'tasks' && <TasksTab tasks={space.tasks ?? space.project?.tasks ?? []} onSelectTask={setSelectedTaskId} />}
+      {activeTab === 'tasks' && (
+        <TasksTab
+          tasks={space.tasks ?? space.project?.tasks ?? []}
+          onSelectTask={setSelectedTaskId}
+          onCreateTask={() => setCreateTaskOpen(true)}
+        />
+      )}
       {activeTab === 'files' && <FilesTab documents={space.documents ?? []} />}
 
       <TaskDetailDialog taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
+      <CreateTaskDialog
+        open={createTaskOpen}
+        onClose={() => setCreateTaskOpen(false)}
+        defaultCoworkSpaceId={selectedCoworkId ?? undefined}
+      />
     </div>
   )
 }
@@ -219,7 +232,7 @@ function ActivityTab({ activities }: { activities: any[] }) {
 }
 
 /* ─── Tasks Tab ────────────────────────────────────────────── */
-function TasksTab({ tasks, onSelectTask }: { tasks: any[]; onSelectTask?: (id: string) => void }) {
+function TasksTab({ tasks, onSelectTask, onCreateTask }: { tasks: any[]; onSelectTask?: (id: string) => void; onCreateTask?: () => void }) {
   if (tasks.length === 0) {
     return (
       <div className="flex flex-col items-center py-16" style={{ color: 'var(--text-tertiary)' }}>
@@ -231,6 +244,15 @@ function TasksTab({ tasks, onSelectTask }: { tasks: any[]; onSelectTask?: (id: s
 
   return (
     <div className="space-y-3 stagger">
+      <div className="flex items-center justify-end">
+        <button
+          onClick={onCreateTask}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity"
+        >
+          <Plus size={15} />
+          New Task
+        </button>
+      </div>
       {tasks.map((task: any) => {
         const priorityColor = PRIORITY_COLORS[task.priority] ?? PRIORITY_COLORS.LOW
         const statusClass = STATUS_BADGE[task.status] ?? 'badge-info'

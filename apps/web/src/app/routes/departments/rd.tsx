@@ -7,12 +7,14 @@ import {
   FileText,
   FlaskConical,
   Loader2,
+  Plus,
   Repeat2,
   Sparkles,
   Users,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
+import { CreateModuleItemDialog } from '@/components/CreateModuleItemDialog'
 
 // ─── Types ─────────────────────────────────────────────────
 type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations'
@@ -334,10 +336,19 @@ function FormulationsTab({ items, onSelect }: { items: any[]; onSelect: (item: a
   )
 }
 
+// ─── Tab → module type mapping ──────────────────────────────
+const TAB_MODULE_TYPE: Record<RDTab, string> = {
+  briefs: 'BRIEFS',
+  cm: 'CM_PRODUCTIVITY',
+  transfers: 'TECH_TRANSFERS',
+  formulations: 'FORMULATIONS',
+}
+
 // ─── Main Page ─────────────────────────────────────────────
 export function RDPage() {
   const [activeTab, setActiveTab] = useState<RDTab>('briefs')
   const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
 
   // Find R&D department from departments list
   const { data: departments, isLoading: deptsLoading } = useDepartments()
@@ -353,20 +364,29 @@ export function RDPage() {
 
   const isLoading = deptsLoading || detailLoading
 
-  // Organize module items by type
+  // Organize module items AND ids by type
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { briefs: [], cm: [], transfers: [], formulations: [] }
+      return {
+        briefs: [], cm: [], transfers: [], formulations: [],
+        moduleIds: { BRIEFS: '', CM_PRODUCTIVITY: '', TECH_TRANSFERS: '', FORMULATIONS: '' },
+      }
     }
     const modules = deptDetail.modules as any[]
-    const find = (type: string) =>
-      modules.find((m: any) => m.type === type)?.items || []
+    const find = (type: string) => modules.find((m: any) => m.type === type)?.items || []
+    const findId = (type: string) => modules.find((m: any) => m.type === type)?.id || ''
 
     return {
       briefs: find('BRIEFS'),
       cm: find('CM_PRODUCTIVITY'),
       transfers: find('TECH_TRANSFERS'),
       formulations: find('FORMULATIONS'),
+      moduleIds: {
+        BRIEFS: findId('BRIEFS'),
+        CM_PRODUCTIVITY: findId('CM_PRODUCTIVITY'),
+        TECH_TRANSFERS: findId('TECH_TRANSFERS'),
+        FORMULATIONS: findId('FORMULATIONS'),
+      },
     }
   }, [deptDetail])
 
@@ -376,6 +396,9 @@ export function RDPage() {
     transfers: moduleData.transfers,
     formulations: moduleData.formulations,
   }
+
+  const activeModuleType = TAB_MODULE_TYPE[activeTab]
+  const activeModuleId = moduleData.moduleIds[activeModuleType as keyof typeof moduleData.moduleIds] ?? ''
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -387,7 +410,7 @@ export function RDPage() {
         >
           {rdDept?.icon || <Beaker size={20} />}
         </span>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
             R&D Department
           </h1>
@@ -397,26 +420,37 @@ export function RDPage() {
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit">
-        {TABS.map((tab) => {
-          const Icon = tab.icon
-          const isActive = activeTab === tab.key
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                isActive
-                  ? 'bg-[var(--accent)] text-white shadow-md'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
-              }`}
-            >
-              <Icon size={15} />
-              {tab.label}
-            </button>
-          )
-        })}
+      {/* Tab Navigation + New button */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit">
+          {TABS.map((tab) => {
+            const Icon = tab.icon
+            const isActive = activeTab === tab.key
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  isActive
+                    ? 'bg-[var(--accent)] text-white shadow-md'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
+                }`}
+              >
+                <Icon size={15} />
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+
+        <button
+          onClick={() => setCreateOpen(true)}
+          disabled={isLoading || !activeModuleId}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+        >
+          <Plus size={15} />
+          New {TABS.find(t => t.key === activeTab)?.label?.replace('Active ', '').replace('CM ', 'CM Entry').split(' ')[0]}
+        </button>
       </div>
 
       {/* Tab Content */}
@@ -444,6 +478,14 @@ export function RDPage() {
         item={selectedItem?.item ?? null}
         moduleType={selectedItem?.type ?? null}
         onClose={() => setSelectedItem(null)}
+      />
+
+      <CreateModuleItemDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        moduleType={activeModuleType}
+        moduleId={activeModuleId}
+        deptId={rdDept?.id ?? ''}
       />
     </div>
   )
