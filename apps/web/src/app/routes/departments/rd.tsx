@@ -398,7 +398,7 @@ export function RDPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit">
+      <div className="flex items-center gap-0.5 p-1 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-default)] w-fit">
         {TABS.map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.key
@@ -406,11 +406,13 @@ export function RDPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                isActive
-                  ? 'bg-[var(--accent)] text-white shadow-md'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
-              }`}
+              className="flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-all"
+              style={{
+                background: isActive ? 'var(--bg-elevated)' : 'transparent',
+                color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                boxShadow: isActive ? 'var(--shadow-xs)' : 'none',
+                fontWeight: isActive ? 550 : 500,
+              }}
             >
               <Icon size={15} />
               {tab.label}

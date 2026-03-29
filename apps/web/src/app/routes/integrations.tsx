@@ -20,7 +20,7 @@ export function IntegrationsPage() {
   const available = integrationList.filter((i: any) => i.status !== 'CONNECTED')
 
   return (
-    <div className="space-y-8">
+    <div className="p-6 max-w-[1400px] mx-auto space-y-8">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>

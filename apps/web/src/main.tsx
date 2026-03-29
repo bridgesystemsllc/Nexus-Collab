@@ -5,9 +5,8 @@ import { BrowserRouter } from 'react-router-dom'
 import { App } from './app/layout'
 import './styles/design-system.css'
 
-// Apply saved theme before render to prevent flash
-const savedTheme = localStorage.getItem('nexus-theme') || 'dark'
-document.documentElement.setAttribute('data-theme', savedTheme)
+// Apply light theme (warm Notion-inspired design)
+document.documentElement.setAttribute('data-theme', 'light')
 
 const queryClient = new QueryClient({
   defaultOptions: {
