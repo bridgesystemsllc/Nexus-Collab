@@ -4,8 +4,8 @@ import { useDepartments, useCreateDepartment } from '@/hooks/useData'
 
 const EMOJI_OPTIONS = ['⚗', '⚙', '📦', '🤝', '📊', '🧪', '🎨', '📋', '🔧', '💡']
 const COLOR_OPTIONS = [
-  '#BF5AF2', '#FF9F0A', '#32D74B', '#64D2FF',
-  '#7C3AED', '#E8948A', '#00C7FF', '#FF453A',
+  '#9B59B6', '#D97706', '#0F7B6C', '#2F80ED',
+  '#7C3AED', '#E74C8B', '#6C757D', '#EB5757',
 ]
 
 export function DeptManagerPage() {
@@ -39,7 +39,7 @@ export function DeptManagerPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="p-6 max-w-[1400px] mx-auto space-y-8">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
@@ -232,7 +232,7 @@ export function DeptManagerPage() {
                   style={{
                     background: c,
                     border: `2px solid ${color === c ? '#fff' : 'transparent'}`,
-                    boxShadow: color === c ? `0 0 12px ${c}60` : 'none',
+                    boxShadow: color === c ? `0 0 0 2px var(--bg-base), 0 0 0 4px ${c}` : 'none',
                   }}
                 >
                   {color === c && <Check className="w-4 h-4 text-white" />}

@@ -16,10 +16,10 @@ import { Dialog } from './Dialog'
 import { useTask, useUpdateTask, useAddTaskNote } from '@/hooks/useData'
 
 const PRIORITY_COLORS: Record<string, string> = {
-  CRITICAL: '#FF453A',
-  HIGH: '#FF9F0A',
-  MEDIUM: '#64D2FF',
-  LOW: '#6E6E73',
+  CRITICAL: '#EB5757',
+  HIGH: '#D97706',
+  MEDIUM: '#2F80ED',
+  LOW: '#B4B0A8',
 }
 
 const STATUS_OPTIONS = [
@@ -178,7 +178,7 @@ export function TaskDetailDialog({ taskId, onClose }: TaskDetailDialogProps) {
           )}
 
           {/* Section Tabs */}
-          <div className="flex gap-1 p-1 rounded-lg bg-[var(--bg-base)]">
+          <div className="flex gap-0.5 p-1 rounded-lg bg-[var(--bg-surface)]">
             {[
               { key: 'details' as const, label: 'Details', icon: FileText, count: (task.documents?.length ?? 0) + (task.emails?.length ?? 0) },
               { key: 'notes' as const, label: 'Notes', icon: MessageSquare, count: task.notes?.length ?? 0 },
@@ -189,8 +189,9 @@ export function TaskDetailDialog({ taskId, onClose }: TaskDetailDialogProps) {
                 onClick={() => setActiveSection(tab.key)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
                 style={{
-                  background: activeSection === tab.key ? 'var(--accent)' : 'transparent',
-                  color: activeSection === tab.key ? '#fff' : 'var(--text-secondary)',
+                  background: activeSection === tab.key ? 'var(--bg-elevated)' : 'transparent',
+                  color: activeSection === tab.key ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  boxShadow: activeSection === tab.key ? 'var(--shadow-xs)' : 'none',
                 }}
               >
                 <tab.icon size={13} />

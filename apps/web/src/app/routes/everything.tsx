@@ -26,14 +26,14 @@ const TYPE_FILTERS: {
   color: string
 }[] = [
   { key: 'ALL', label: 'All', icon: Database, color: 'var(--accent)' },
-  { key: 'BRIEFS', label: 'Briefs', icon: FileText, color: '#BF5AF2' },
-  { key: 'TASK', label: 'Tasks', icon: ListChecks, color: '#0A84FF' },
-  { key: 'INVENTORY_HEALTH', label: 'Inventory', icon: Box, color: '#FF9F0A' },
-  { key: 'PRODUCTION_TRACKING', label: 'Production', icon: Factory, color: '#32D74B' },
-  { key: 'DOCUMENT', label: 'Documents', icon: FileText, color: '#64D2FF' },
-  { key: 'CM_PRODUCTIVITY', label: 'CM', icon: Users, color: '#E8948A' },
-  { key: 'TECH_TRANSFERS', label: 'Transfers', icon: Repeat2, color: '#FF453A' },
-  { key: 'FORMULATIONS', label: 'Formulations', icon: FlaskConical, color: '#00C7FF' },
+  { key: 'BRIEFS', label: 'Briefs', icon: FileText, color: '#9B59B6' },
+  { key: 'TASK', label: 'Tasks', icon: ListChecks, color: '#2F80ED' },
+  { key: 'INVENTORY_HEALTH', label: 'Inventory', icon: Box, color: '#D97706' },
+  { key: 'PRODUCTION_TRACKING', label: 'Production', icon: Factory, color: '#0F7B6C' },
+  { key: 'DOCUMENT', label: 'Documents', icon: FileText, color: '#2F80ED' },
+  { key: 'CM_PRODUCTIVITY', label: 'CM', icon: Users, color: '#E74C8B' },
+  { key: 'TECH_TRANSFERS', label: 'Transfers', icon: Repeat2, color: '#EB5757' },
+  { key: 'FORMULATIONS', label: 'Formulations', icon: FlaskConical, color: '#0F7B6C' },
   { key: 'SKU_PIPELINE', label: 'SKU Pipeline', icon: Package, color: '#7C3AED' },
 ]
 
@@ -194,7 +194,7 @@ export function EverythingPage() {
             })}
 
           {kpis.emergency > 0 && (
-            <div className="data-cell flex items-center gap-3 py-3 border-[rgba(255,69,58,0.2)]">
+            <div className="data-cell flex items-center gap-3 py-3" style={{ borderColor: 'var(--danger)' }}>
               <AlertTriangle
                 size={16}
                 className="text-[var(--danger)]"
