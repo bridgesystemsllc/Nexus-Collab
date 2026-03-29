@@ -9,10 +9,10 @@ import { CreateTaskDialog } from '@/components/CreateTaskDialog'
 type Tab = 'activity' | 'tasks' | 'files'
 
 const PRIORITY_COLORS: Record<string, string> = {
-  CRITICAL: '#FF453A',
-  HIGH: '#FF9F0A',
-  MEDIUM: '#64D2FF',
-  LOW: '#6E6E73',
+  CRITICAL: '#EB5757',
+  HIGH: '#D97706',
+  MEDIUM: '#2F80ED',
+  LOW: '#B4B0A8',
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -24,8 +24,8 @@ const STATUS_BADGE: Record<string, string> = {
 }
 
 const AVATAR_COLORS = [
-  '#BF5AF2', '#FF9F0A', '#32D74B', '#64D2FF', '#FF453A',
-  '#7C3AED', '#E8948A', '#00C7FF', '#FF6482', '#30D158',
+  '#9B59B6', '#D97706', '#0F7B6C', '#2F80ED', '#EB5757',
+  '#7C3AED', '#E74C8B', '#0F7B6C', '#D97706', '#2F80ED',
 ]
 
 function getAvatarColor(name: string): string {
@@ -86,7 +86,7 @@ export function CoworkDetailPage() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
       {/* Back button */}
       <button
         onClick={() => setSelectedCowork(null)}
@@ -103,7 +103,7 @@ export function CoworkDetailPage() {
           ...(isEmergency
             ? {
                 borderColor: 'var(--danger)',
-                boxShadow: '0 0 20px rgba(255, 69, 58, 0.15)',
+                boxShadow: 'var(--shadow-md)',
               }
             : {}),
         }}
@@ -131,15 +131,17 @@ export function CoworkDetailPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'var(--bg-surface)' }}>
+      <div className="flex gap-0.5 p-1 rounded-lg" style={{ background: 'var(--bg-surface)' }}>
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all"
             style={{
-              background: activeTab === tab.key ? 'var(--accent)' : 'transparent',
-              color: activeTab === tab.key ? '#fff' : 'var(--text-secondary)',
+              background: activeTab === tab.key ? 'var(--bg-elevated)' : 'transparent',
+              color: activeTab === tab.key ? 'var(--text-primary)' : 'var(--text-secondary)',
+              boxShadow: activeTab === tab.key ? 'var(--shadow-xs)' : 'none',
+              fontWeight: activeTab === tab.key ? 550 : 500,
             }}
           >
             <tab.icon className="w-4 h-4" />

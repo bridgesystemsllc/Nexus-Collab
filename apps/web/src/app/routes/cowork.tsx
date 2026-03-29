@@ -70,7 +70,7 @@ export function CoworkPage() {
   )
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -131,7 +131,7 @@ export function CoworkPage() {
                   ...(isEmergency
                     ? {
                         borderColor: 'var(--danger)',
-                        boxShadow: '0 0 20px rgba(255, 69, 58, 0.15), 0 0 0 1px rgba(255, 69, 58, 0.3)',
+                        boxShadow: 'var(--shadow-md)',
                       }
                     : {}),
                 }}

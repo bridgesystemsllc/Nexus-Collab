@@ -131,7 +131,7 @@ function SKUPipelineTab({ items, onSelect }: { items: any[]; onSelect: (item: an
             <StepProgression step={d.step} total={d.totalSteps} />
 
             {d.blocker && (
-              <div className="flex items-start gap-2 p-2 rounded-lg bg-[rgba(255,69,58,0.06)] border border-[rgba(255,69,58,0.15)]">
+              <div className="flex items-start gap-2 p-2 rounded-lg bg-[var(--danger-light)] border border-[var(--danger)]">
                 <AlertTriangle
                   size={13}
                   className="text-[var(--danger)] mt-0.5 flex-shrink-0"
@@ -432,6 +432,7 @@ export function OpsPage() {
         </div>
       </div>
 
+<<<<<<< HEAD
       {/* Tab Navigation + New button */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit">
@@ -466,6 +467,7 @@ export function OpsPage() {
           <Plus size={15} />
           New {TABS.find(t => t.key === activeTab)?.label?.split(' ')[0]}
         </button>
+  
       </div>
 
       {/* Tab Content */}

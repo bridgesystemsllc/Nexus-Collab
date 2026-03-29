@@ -420,6 +420,7 @@ export function RDPage() {
         </div>
       </div>
 
+<<<<<<< HEAD
       {/* Tab Navigation + New button */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit">
@@ -451,6 +452,7 @@ export function RDPage() {
           <Plus size={15} />
           New {TABS.find(t => t.key === activeTab)?.label?.replace('Active ', '').replace('CM ', 'CM Entry').split(' ')[0]}
         </button>
+
       </div>
 
       {/* Tab Content */}

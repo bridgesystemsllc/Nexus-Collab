@@ -24,10 +24,10 @@ const TYPE_CONFIG: Record<
   string,
   { icon: typeof AlertTriangle; color: string }
 > = {
-  ALERT: { icon: AlertTriangle, color: '#FF453A' },
-  SIGNAL: { icon: Radio, color: '#FF9F0A' },
-  HEARTBEAT: { icon: Heart, color: '#32D74B' },
-  BROADCAST: { icon: Megaphone, color: '#64D2FF' },
+  ALERT: { icon: AlertTriangle, color: '#EB5757' },
+  SIGNAL: { icon: Radio, color: '#D97706' },
+  HEARTBEAT: { icon: Heart, color: '#0F7B6C' },
+  BROADCAST: { icon: Megaphone, color: '#7C3AED' },
 }
 
 export function PulsePage() {
@@ -49,7 +49,7 @@ export function PulsePage() {
   const unreadCount = items.filter((p: any) => !p.readAt).length
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -78,15 +78,17 @@ export function PulsePage() {
       </div>
 
       {/* Type Filter Tabs */}
-      <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'var(--bg-surface)' }}>
+      <div className="flex gap-0.5 p-1 rounded-lg" style={{ background: 'var(--bg-surface)' }}>
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className="px-4 py-2 rounded-md text-sm font-medium transition-all"
             style={{
-              background: activeTab === tab.key ? 'var(--accent)' : 'transparent',
-              color: activeTab === tab.key ? '#fff' : 'var(--text-secondary)',
+              background: activeTab === tab.key ? 'var(--bg-elevated)' : 'transparent',
+              color: activeTab === tab.key ? 'var(--text-primary)' : 'var(--text-secondary)',
+              boxShadow: activeTab === tab.key ? 'var(--shadow-xs)' : 'none',
+              fontWeight: activeTab === tab.key ? 550 : 500,
             }}
           >
             {tab.label}

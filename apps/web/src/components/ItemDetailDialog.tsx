@@ -40,7 +40,7 @@ function CMDetail({ d }: { d: any }) {
   return (
     <div className="space-y-4">
       {d.status === 'attention' && (
-        <div className="flex items-center gap-2 p-3 rounded-xl bg-[rgba(255,69,58,0.06)] border border-[rgba(255,69,58,0.15)]">
+        <div className="flex items-center gap-2 p-3 rounded-xl bg-[var(--danger-light)] border border-[var(--danger)]">
           <AlertTriangle size={14} className="text-[var(--danger)]" />
           <span className="text-sm text-[var(--danger)] font-medium">Needs Attention</span>
         </div>
@@ -123,7 +123,7 @@ function SKUDetail({ d }: { d: any }) {
       </div>
       <StepVisualization step={d.step} total={d.totalSteps} />
       {d.blocker && (
-        <div className="flex items-start gap-2 p-3 rounded-xl bg-[rgba(255,69,58,0.06)] border border-[rgba(255,69,58,0.15)]">
+        <div className="flex items-start gap-2 p-3 rounded-xl bg-[var(--danger-light)] border border-[var(--danger)]">
           <AlertTriangle size={14} className="text-[var(--danger)] mt-0.5" />
           <div>
             <p className="text-xs font-medium text-[var(--danger)]">Blocker</p>
