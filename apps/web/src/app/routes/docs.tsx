@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { FileText, Search, File, Plus, Loader2, Download, X } from 'lucide-react'
+import { FileText, Search, File, Plus, Loader2, Download } from 'lucide-react'
 import { useDocuments, useCreateDocument } from '@/hooks/useData'
 import { Dialog } from '@/components/Dialog'
 
@@ -117,8 +117,9 @@ function CreateDocDialog({ open, onClose }: { open: boolean; onClose: () => void
   const [name, setName] = useState('')
   const [type, setType] = useState('Brief')
   const [mimeType, setMimeType] = useState('application/pdf')
+  const [url, setUrl] = useState('')
 
-  function reset() { setName(''); setType('Brief'); setMimeType('application/pdf') }
+  function reset() { setName(''); setType('Brief'); setMimeType('application/pdf'); setUrl('') }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -130,7 +131,7 @@ function CreateDocDialog({ open, onClose }: { open: boolean; onClose: () => void
         mimeType,
         size: 0,
         storageKey: `manual/${Date.now()}-${name.trim().replace(/\s+/g, '-')}`,
-        storageUrl: '',
+        storageUrl: url.trim() || undefined,
       },
       { onSuccess: () => { reset(); onClose() } }
     )
@@ -162,6 +163,10 @@ function CreateDocDialog({ open, onClose }: { open: boolean; onClose: () => void
               <option value="text/plain">Text</option>
             </select>
           </div>
+        </div>
+        <div>
+          <label className={labelCls}>Document URL (optional)</label>
+          <input className={inputCls} type="url" placeholder="https://drive.google.com/..." value={url} onChange={e => setUrl(e.target.value)} />
         </div>
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--border-subtle)]">
           <button type="button" onClick={() => { reset(); onClose() }} className="px-4 py-2 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors">Cancel</button>

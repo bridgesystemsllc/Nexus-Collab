@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Dialog } from './Dialog'
-import { useCreateTask } from '@/hooks/useData'
+import { useCreateTask, useCreateCoworkTask } from '@/hooks/useData'
 
 interface CreateTaskDialogProps {
   open: boolean
   onClose: () => void
-  defaultCoworkSpaceId?: string
+  coworkSpaceId?: string
 }
 
 const inputCls =
@@ -31,8 +31,11 @@ const STATUS_OPTIONS = [
 ]
 const EFFORT_OPTIONS = ['XS', 'S', 'M', 'L', 'XL']
 
-export function CreateTaskDialog({ open, onClose, defaultCoworkSpaceId }: CreateTaskDialogProps) {
-  const createTask = useCreateTask()
+export function CreateTaskDialog({ open, onClose, coworkSpaceId }: CreateTaskDialogProps) {
+  const createGlobalTask = useCreateTask()
+  const createCoworkTask = useCreateCoworkTask(coworkSpaceId ?? '')
+  const createTask = coworkSpaceId ? createCoworkTask : createGlobalTask
+
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('MEDIUM')
@@ -59,7 +62,6 @@ export function CreateTaskDialog({ open, onClose, defaultCoworkSpaceId }: Create
       status,
       effort: effort || undefined,
       dueDate: dueDate || undefined,
-      coworkSpaceId: defaultCoworkSpaceId || undefined,
     }
     createTask.mutate(payload, {
       onSuccess: () => {

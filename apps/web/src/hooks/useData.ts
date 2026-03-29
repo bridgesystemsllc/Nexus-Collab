@@ -105,6 +105,18 @@ export function useCreateDocument() {
   })
 }
 
+// ─── Cowork task (scoped to a space) ────────────────────────
+export function useCreateCoworkTask(spaceId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: any) => api.post(`/cowork/${spaceId}/tasks`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cowork', spaceId] })
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+}
+
 // ─── Everything ─────────────────────────────────────────────
 export function useEverything(filters?: Record<string, string>) {
   const params = new URLSearchParams(filters || {}).toString()

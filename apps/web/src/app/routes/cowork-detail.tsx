@@ -163,7 +163,7 @@ export function CoworkDetailPage() {
       <CreateTaskDialog
         open={createTaskOpen}
         onClose={() => setCreateTaskOpen(false)}
-        defaultCoworkSpaceId={selectedCoworkId ?? undefined}
+        coworkSpaceId={selectedCoworkId ?? undefined}
       />
     </div>
   )
@@ -233,15 +233,6 @@ function ActivityTab({ activities }: { activities: any[] }) {
 
 /* ─── Tasks Tab ────────────────────────────────────────────── */
 function TasksTab({ tasks, onSelectTask, onCreateTask }: { tasks: any[]; onSelectTask?: (id: string) => void; onCreateTask?: () => void }) {
-  if (tasks.length === 0) {
-    return (
-      <div className="flex flex-col items-center py-16" style={{ color: 'var(--text-tertiary)' }}>
-        <CheckSquare className="w-10 h-10 mb-3 opacity-40" />
-        <p>No tasks assigned</p>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-3 stagger">
       <div className="flex items-center justify-end">
@@ -253,6 +244,14 @@ function TasksTab({ tasks, onSelectTask, onCreateTask }: { tasks: any[]; onSelec
           New Task
         </button>
       </div>
+
+      {tasks.length === 0 && (
+        <div className="flex flex-col items-center py-16" style={{ color: 'var(--text-tertiary)' }}>
+          <CheckSquare className="w-10 h-10 mb-3 opacity-40" />
+          <p>No tasks yet — create the first one</p>
+        </div>
+      )}
+
       {tasks.map((task: any) => {
         const priorityColor = PRIORITY_COLORS[task.priority] ?? PRIORITY_COLORS.LOW
         const statusClass = STATUS_BADGE[task.status] ?? 'badge-info'
