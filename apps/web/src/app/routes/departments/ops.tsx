@@ -432,7 +432,6 @@ export function OpsPage() {
         </div>
       </div>
 
-<<<<<<< HEAD
       {/* Tab Navigation + New button */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit">
