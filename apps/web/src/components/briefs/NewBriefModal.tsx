@@ -144,17 +144,17 @@ interface NewBriefModalProps {
 function validateStep(step: number, form: BriefFormData): Record<string, string> {
   const errors: Record<string, string> = {}
   if (step === 0) {
-    if (!form.projectName.trim()) errors.projectName = 'Project name is required'
+    if (!(form.projectName ?? '').trim()) errors.projectName = 'Project name is required'
     if (!form.brand) errors.brand = 'Brand is required'
   }
   if (step === 1) {
     if (form.projectContacts.length === 0) errors.contacts = 'At least one contact required'
     form.projectContacts.forEach((c, i) => {
-      if (!c.name.trim()) errors[`contact_${i}_name`] = 'Name required'
+      if (!(c.name ?? '').trim()) errors[`contact_${i}_name`] = 'Name required'
     })
   }
   if (step === 2) {
-    if (!form.projectObjective.trim()) errors.projectObjective = 'Objective is required'
+    if (!(form.projectObjective ?? '').trim()) errors.projectObjective = 'Objective is required'
   }
   return errors
 }
@@ -819,13 +819,13 @@ interface StepProps {
 // ─── Main Modal ────────────────────────────────────────────
 export function NewBriefModal({ open, onClose, onSubmit, initialData, isSubmitting }: NewBriefModalProps) {
   const [step, setStep] = useState(0)
-  const [form, setForm] = useState<BriefFormData>(initialData || EMPTY_FORM)
+  const [form, setForm] = useState<BriefFormData>({ ...EMPTY_FORM, ...(initialData || {}) })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [oneDriveConnected] = useState(false) // Will be checked via integration API
 
   useEffect(() => {
     if (open) {
-      setForm(initialData || EMPTY_FORM)
+      setForm({ ...EMPTY_FORM, ...(initialData || {}) })
       setStep(0)
       setErrors({})
     }
