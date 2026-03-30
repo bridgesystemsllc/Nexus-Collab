@@ -1,14 +1,17 @@
 import { useState, useMemo } from 'react'
 import {
   AlertTriangle,
-  Radio,
-  Heart,
-  Megaphone,
   Bell,
   CheckCheck,
+  Heart,
+  Megaphone,
+  Plus,
+  Radio,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { usePulse, useMarkPulseRead, useMarkAllPulseRead } from '@/hooks/useData'
+import { useUserStore } from '@/stores/userStore'
+import { ModuleHeader } from '@/components/ModuleHeader'
 
 type PulseType = 'ALL' | 'ALERT' | 'SIGNAL' | 'HEARTBEAT' | 'BROADCAST'
 
@@ -32,12 +35,16 @@ const TYPE_CONFIG: Record<
 
 export function PulsePage() {
   const [activeTab, setActiveTab] = useState<PulseType>('ALL')
+  const currentUser = useUserStore((s) => s.currentUser)
+  const firstName = currentUser?.firstName || 'User'
 
   const filters = useMemo(() => {
     const f: Record<string, string> = {}
     if (activeTab !== 'ALL') f.type = activeTab
+    // Pass userId for server-side filtering (Edit 8)
+    if (currentUser?.id) f.userId = currentUser.id
     return f
-  }, [activeTab])
+  }, [activeTab, currentUser?.id])
 
   const { data: pulses, isLoading } = usePulse(
     Object.keys(filters).length > 0 ? filters : undefined
@@ -49,16 +56,16 @@ export function PulsePage() {
   const unreadCount = items.filter((p: any) => !p.readAt).length
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
+      {/* Header — user-scoped */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
-            Pulse
+          <h1 className="text-[28px] font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
+            {firstName}'s Pulses
           </h1>
           {unreadCount > 0 && (
             <span
-              className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-bold text-white"
+              className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-[11px] font-bold text-white"
               style={{ background: 'var(--accent)' }}
             >
               {unreadCount}
@@ -69,25 +76,25 @@ export function PulsePage() {
           <button
             onClick={() => markAllRead.mutate()}
             disabled={markAllRead.isPending}
-            className="btn-ghost flex items-center gap-2 text-sm"
+            className="btn-ghost flex items-center gap-2 text-[13px]"
           >
-            <CheckCheck className="w-4 h-4" />
+            <CheckCheck size={14} />
             Mark All Read
           </button>
         )}
       </div>
 
       {/* Type Filter Tabs */}
-      <div className="flex gap-1 p-1 rounded-lg" style={{ background: 'var(--bg-surface)' }}>
+      <div className="flex gap-1 p-1 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
         {TABS.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className="px-4 py-2 rounded-md text-sm font-medium transition-all"
-            style={{
-              background: activeTab === tab.key ? 'var(--accent)' : 'transparent',
-              color: activeTab === tab.key ? '#fff' : 'var(--text-secondary)',
-            }}
+            className={`px-4 py-2 rounded-[8px] text-[13px] font-medium transition-all ${
+              activeTab === tab.key
+                ? 'bg-[var(--accent)] text-white shadow-md'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
+            }`}
           >
             {tab.label}
           </button>
@@ -131,39 +138,27 @@ export function PulsePage() {
                 }}
               >
                 <div className="relative z-10 flex gap-4 w-full">
-                  {/* Type Icon */}
                   <div
                     className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
                     style={{ background: `${config.color}20` }}
                   >
-                    <Icon className="w-4 h-4" style={{ color: config.color }} />
+                    <Icon size={14} style={{ color: config.color }} />
                   </div>
 
-                  {/* Content */}
                   <div className="flex-1 min-w-0">
-                    <p
-                      className="text-sm leading-relaxed"
-                      style={{
-                        color: isUnread ? 'var(--text-primary)' : 'var(--text-secondary)',
-                        fontWeight: isUnread ? 500 : 400,
-                      }}
-                    >
+                    <p className={`text-[14px] leading-relaxed ${isUnread ? 'text-[var(--text-primary)] font-medium' : 'text-[var(--text-secondary)]'}`}>
                       {pulse.message}
                     </p>
-
                     <div className="flex items-center gap-3 mt-1.5">
                       {pulse.deptName && (
                         <span className="badge badge-info text-[10px]">{pulse.deptName}</span>
                       )}
                       {timestamp && (
-                        <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                          {timestamp}
-                        </span>
+                        <span className="text-[11px] text-[var(--text-tertiary)]">{timestamp}</span>
                       )}
                     </div>
                   </div>
 
-                  {/* Unread dot */}
                   {isUnread && (
                     <div className="flex-shrink-0 mt-1">
                       <div className="pulse-dot" style={{ background: config.color }} />
@@ -176,12 +171,22 @@ export function PulsePage() {
         </div>
       )}
 
-      {/* Empty State */}
+      {/* Empty State — elegant (Edit 8) */}
       {!isLoading && items.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20" style={{ color: 'var(--text-tertiary)' }}>
-          <Bell className="w-12 h-12 mb-4 opacity-40" />
-          <p className="text-lg font-medium">No notifications</p>
-          <p className="text-sm mt-1">You are all caught up</p>
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="w-16 h-16 rounded-full bg-[var(--accent-subtle)] flex items-center justify-center mb-4">
+            <Bell size={24} className="text-[var(--accent)]" />
+          </div>
+          <p className="text-[17px] font-semibold text-[var(--text-primary)] tracking-[-0.02em]">
+            No active pulses
+          </p>
+          <p className="text-[14px] text-[var(--text-secondary)] mt-1 mb-4">
+            You're all caught up. Create a new pulse to notify your team.
+          </p>
+          <button className="btn-primary flex items-center gap-2 text-[14px]">
+            <Plus size={14} />
+            Create Pulse
+          </button>
         </div>
       )}
     </div>
