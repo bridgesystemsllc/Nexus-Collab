@@ -16,6 +16,7 @@ import {
   Sparkles,
   Trash2,
   Users,
+  X,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
@@ -575,46 +576,337 @@ function CMTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => voi
   )
 }
 
-// ─── Tech Transfers Tab (Edit 4 — with list view toggle + files) ──
-function TransfersTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+// ─── New/Edit Transfer Modal ──────────────────────────────
+function NewTransferModal({
+  open,
+  onClose,
+  onSubmit,
+  initialData,
+  isSubmitting,
+  briefs,
+}: {
+  open: boolean
+  onClose: () => void
+  onSubmit: (data: any) => void
+  initialData?: any
+  isSubmitting: boolean
+  briefs: any[]
+}) {
+  const [form, setForm] = useState({
+    product: '',
+    from: '',
+    to: '',
+    status: 'Planning',
+    progress: 0,
+    target: '',
+    docs: 0,
+    linkedBriefId: '',
+    notes: '',
+  })
 
-  if (items.length === 0) {
-    return (
-      <p className="text-[14px] text-[var(--text-tertiary)] py-8 text-center">
-        No tech transfers found.
-      </p>
-    )
+  // Reset form when modal opens
+  useState(() => {
+    if (open && initialData) {
+      setForm({ ...form, ...initialData })
+    } else if (open) {
+      setForm({ product: '', from: '', to: '', status: 'Planning', progress: 0, target: '', docs: 0, linkedBriefId: '', notes: '' })
+    }
+  })
+
+  // Sync when initialData changes
+  useMemo(() => {
+    if (open && initialData) {
+      setForm({ product: initialData.product || '', from: initialData.from || '', to: initialData.to || '', status: initialData.status || 'Planning', progress: initialData.progress || 0, target: initialData.target || '', docs: initialData.docs || 0, linkedBriefId: initialData.linkedBriefId || '', notes: initialData.notes || '' })
+    } else if (open) {
+      setForm({ product: '', from: '', to: '', status: 'Planning', progress: 0, target: '', docs: 0, linkedBriefId: '', notes: '' })
+    }
+  }, [open, initialData])
+
+  if (!open) return null
+
+  // When a brief is selected, auto-fill product name and CM
+  const handleBriefSelect = (briefId: string) => {
+    setForm(prev => ({ ...prev, linkedBriefId: briefId }))
+    if (briefId) {
+      const brief = briefs.find((b: any) => b.id === briefId)
+      if (brief) {
+        const d = brief.data || brief
+        const updates: any = { linkedBriefId: briefId }
+        if (!form.product && d.projectName) updates.product = d.projectName
+        if (!form.to && d.contractManufacturer) updates.to = d.contractManufacturer
+        setForm(prev => ({ ...prev, ...updates }))
+      }
+    }
   }
 
-  if (viewMode === 'list') {
-    return (
-      <div>
-        <div className="flex justify-end mb-4">
-          <div className="flex rounded-[8px] border border-[var(--border-subtle)] overflow-hidden">
-            <button onClick={() => setViewMode('grid')} className="px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]">Grid</button>
-            <button onClick={() => setViewMode('list')} className="px-3 py-1.5 text-[12px] font-medium bg-[var(--accent)] text-white">List</button>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b border-[var(--border-subtle)]">
+          <h2 className="text-[16px] font-semibold text-[var(--text-primary)]">
+            {initialData ? 'Edit Tech Transfer' : 'New Tech Transfer'}
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Linked Brief — the key feature */}
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              Linked Active Brief
+            </label>
+            <select
+              value={form.linkedBriefId}
+              onChange={(e) => handleBriefSelect(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+            >
+              <option value="">— Select an Active Brief (optional) —</option>
+              {briefs.map((item: any) => {
+                const d = item.data || item
+                const name = d.projectName || d.name || 'Unnamed Brief'
+                const brand = d.brand || ''
+                return (
+                  <option key={item.id} value={item.id}>
+                    {name}{brand ? ` — ${brand}` : ''}{d.contractManufacturer ? ` (${d.contractManufacturer})` : ''}
+                  </option>
+                )
+              })}
+            </select>
+            {form.linkedBriefId && (
+              <p className="text-[11px] text-[var(--success)] mt-1 flex items-center gap-1">
+                <FileText size={10} /> Brief linked — product and CM auto-filled
+              </p>
+            )}
+          </div>
+
+          {/* Product Name */}
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              Product Name <span className="text-[var(--danger)]">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.product}
+              onChange={(e) => setForm({ ...form, product: e.target.value })}
+              placeholder="e.g. Goddess Strength Shampoo 11oz"
+              required
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+            />
+          </div>
+
+          {/* From / To */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                From <span className="text-[var(--danger)]">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.from}
+                onChange={(e) => setForm({ ...form, from: e.target.value })}
+                placeholder="Source CM / facility"
+                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                To <span className="text-[var(--danger)]">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.to}
+                onChange={(e) => setForm({ ...form, to: e.target.value })}
+                placeholder="Destination CM / facility"
+                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Status / Target Date */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">Status</label>
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+              >
+                <option value="Planning">Planning</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Complete">Complete</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">Target Date</label>
+              <input
+                type="date"
+                value={form.target}
+                onChange={(e) => setForm({ ...form, target: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">Notes</label>
+            <textarea
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              rows={3}
+              placeholder="Additional details about this transfer..."
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors resize-y"
+            />
           </div>
         </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 p-5 border-t border-[var(--border-subtle)]">
+          <button onClick={onClose} className="btn-ghost px-4 py-2 text-[14px]">Cancel</button>
+          <button
+            onClick={() => onSubmit(form)}
+            disabled={isSubmitting || !form.product.trim() || !form.from.trim() || !form.to.trim()}
+            className="btn-primary px-5 py-2 text-[14px] disabled:opacity-40"
+          >
+            {isSubmitting ? 'Saving...' : initialData ? 'Save Changes' : 'Create Transfer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Tech Transfers Tab (with create, link briefs, list/grid) ──
+function TransfersTab({
+  items,
+  moduleId,
+  briefs,
+  onRefresh,
+  onSelect,
+}: {
+  items: any[]
+  moduleId: string | null
+  briefs: any[]
+  onRefresh: () => void
+  onSelect: (item: any) => void
+}) {
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [showNewTransfer, setShowNewTransfer] = useState(false)
+  const [editingTransfer, setEditingTransfer] = useState<any>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Build a brief lookup map for display
+  const briefMap = useMemo(() => {
+    const map: Record<string, any> = {}
+    briefs.forEach((item: any) => {
+      map[item.id] = item.data || item
+    })
+    return map
+  }, [briefs])
+
+  const handleSubmit = async (data: any) => {
+    if (!moduleId) return
+    setIsSubmitting(true)
+    try {
+      if (editingTransfer) {
+        const item = items.find((i: any) => i.id === editingTransfer.id)
+        if (item) {
+          await api.patch(`/departments/_/modules/${item.moduleId}/items/${editingTransfer.id}`, {
+            data: { ...data },
+            status: data.status,
+          })
+        }
+      } else {
+        await api.post(`/departments/_/modules/${moduleId}/items`, {
+          data: { ...data, docs: 0 },
+          status: data.status,
+        })
+      }
+      setShowNewTransfer(false)
+      setEditingTransfer(null)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to save transfer:', err)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleEdit = (item: any) => {
+    setEditingTransfer({ id: item.id, ...item.data })
+    setShowNewTransfer(true)
+  }
+
+  const getLinkedBriefName = (d: any) => {
+    if (!d.linkedBriefId) return null
+    const brief = briefMap[d.linkedBriefId]
+    return brief ? (brief.projectName || brief.name) : null
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div />
+        <div className="flex items-center gap-3">
+          <div className="flex rounded-[8px] border border-[var(--border-subtle)] overflow-hidden">
+            <button onClick={() => setViewMode('grid')} className={`px-3 py-1.5 text-[12px] font-medium ${viewMode === 'grid' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'}`}>Grid</button>
+            <button onClick={() => setViewMode('list')} className={`px-3 py-1.5 text-[12px] font-medium ${viewMode === 'list' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'}`}>List</button>
+          </div>
+          <button
+            onClick={() => { setEditingTransfer(null); setShowNewTransfer(true) }}
+            className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]"
+          >
+            <Plus size={15} /> New Transfer
+          </button>
+        </div>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="text-center py-12">
+          <Repeat2 size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
+          <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No tech transfers yet</p>
+          <button
+            onClick={() => { setEditingTransfer(null); setShowNewTransfer(true) }}
+            className="btn-primary px-5 py-2.5 rounded-lg text-[14px]"
+          >
+            Create Your First Transfer
+          </button>
+        </div>
+      ) : viewMode === 'list' ? (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
           <table className="nexus-table">
             <thead>
               <tr>
                 <th>Product</th>
                 <th>From → To</th>
+                <th>Linked Brief</th>
                 <th>Status</th>
                 <th>Progress</th>
                 <th>Target</th>
-                <th>Files</th>
+                <th className="w-12">Actions</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item: any) => {
                 const d = item.data
+                const briefName = getLinkedBriefName(d)
                 return (
                   <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
                     <td className="font-medium text-[14px] text-[var(--text-primary)]">{d.product}</td>
                     <td className="text-[14px] text-[var(--text-secondary)]">{d.from} → {d.to}</td>
+                    <td>
+                      {briefName ? (
+                        <span className="inline-flex items-center gap-1 text-[12px] text-[var(--accent)]">
+                          <FileText size={11} /> {briefName}
+                        </span>
+                      ) : (
+                        <span className="text-[12px] text-[var(--text-tertiary)]">—</span>
+                      )}
+                    </td>
                     <td><StatusBadge status={d.status} /></td>
                     <td>
                       <div className="flex items-center gap-2 min-w-[100px]">
@@ -625,74 +917,77 @@ function TransfersTab({ items, onSelect }: { items: any[]; onSelect: (item: any)
                       </div>
                     </td>
                     <td className="text-[14px] text-[var(--text-secondary)]">{d.target}</td>
-                    <td className="text-[14px] text-[var(--accent)] tabular-nums">{d.docs} files</td>
+                    <td>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleEdit(item) }}
+                        className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                    </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
         </div>
-      </div>
-    )
-  }
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {items.map((item: any) => {
+            const d = item.data
+            const briefName = getLinkedBriefName(d)
+            return (
+              <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium text-sm text-[var(--text-primary)]">{d.product}</h3>
+                  <StatusBadge status={d.status} />
+                </div>
 
-  return (
-    <div>
-      <div className="flex justify-end mb-4">
-        <div className="flex rounded-[8px] border border-[var(--border-subtle)] overflow-hidden">
-          <button onClick={() => setViewMode('grid')} className="px-3 py-1.5 text-[12px] font-medium bg-[var(--accent)] text-white">Grid</button>
-          <button onClick={() => setViewMode('list')} className="px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]">List</button>
+                <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                  <span className="truncate">{d.from}</span>
+                  <ArrowRight size={12} className="text-[var(--accent)] flex-shrink-0" />
+                  <span className="truncate">{d.to}</span>
+                </div>
+
+                {/* Linked Brief chip */}
+                {briefName && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)]">
+                      <FileText size={10} /> {briefName}
+                    </span>
+                  </div>
+                )}
+
+                {/* Progress */}
+                <div>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-[var(--text-tertiary)]">Progress</span>
+                    <span className="tabular-nums text-[var(--text-secondary)]">{d.progress}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+                    <div className="h-full rounded-full transition-all" style={{ width: `${d.progress}%`, background: d.progress === 100 ? 'var(--success)' : 'var(--accent)' }} />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
+                  <span className="flex items-center gap-1"><Clock size={11} /> Target: {d.target}</span>
+                  <button onClick={(e) => { e.stopPropagation(); handleEdit(item) }} className="text-[var(--accent)] hover:underline text-[11px]">Edit</button>
+                </div>
+              </div>
+            )
+          })}
         </div>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {items.map((item: any) => {
-        const d = item.data
-        return (
-          <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium text-sm text-[var(--text-primary)]">
-                {d.product}
-              </h3>
-              <StatusBadge status={d.status} />
-            </div>
+      )}
 
-            <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-              <span className="truncate">{d.from}</span>
-              <ArrowRight size={12} className="text-[var(--accent)] flex-shrink-0" />
-              <span className="truncate">{d.to}</span>
-            </div>
-
-            {/* Progress bar */}
-            <div>
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-[var(--text-tertiary)]">Progress</span>
-                <span className="tabular-nums text-[var(--text-secondary)]">
-                  {d.progress}%
-                </span>
-              </div>
-              <div className="h-2 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{
-                    width: `${d.progress}%`,
-                    background:
-                      d.progress === 100 ? 'var(--success)' : 'var(--accent)',
-                  }}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
-              <span className="flex items-center gap-1">
-                <Clock size={11} />
-                Target: {d.target}
-              </span>
-              <span>{d.docs} docs</span>
-            </div>
-          </div>
-        )
-      })}
-      </div>
+      {/* New/Edit Transfer Modal */}
+      <NewTransferModal
+        open={showNewTransfer}
+        onClose={() => { setShowNewTransfer(false); setEditingTransfer(null) }}
+        onSubmit={handleSubmit}
+        initialData={editingTransfer}
+        isSubmitting={isSubmitting}
+        briefs={briefs}
+      />
     </div>
   )
 }
@@ -772,12 +1067,13 @@ export function RDPage() {
   // Organize module items by type
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { briefs: [], cm: [], transfers: [], formulations: [], briefsModuleId: null }
+      return { briefs: [], cm: [], transfers: [], formulations: [], briefsModuleId: null, transfersModuleId: null }
     }
     const modules = deptDetail.modules as any[]
     const find = (type: string) =>
       modules.find((m: any) => m.type === type)?.items || []
     const briefsModule = modules.find((m: any) => m.type === 'BRIEFS')
+    const transfersModule = modules.find((m: any) => m.type === 'TECH_TRANSFERS')
 
     return {
       briefs: find('BRIEFS'),
@@ -785,6 +1081,7 @@ export function RDPage() {
       transfers: find('TECH_TRANSFERS'),
       formulations: find('FORMULATIONS'),
       briefsModuleId: briefsModule?.id || null,
+      transfersModuleId: transfersModule?.id || null,
     }
   }, [deptDetail])
 
@@ -857,7 +1154,13 @@ export function RDPage() {
           ) : activeTab === 'cm' ? (
             <CMTab items={tabContent.cm} onSelect={(item) => setSelectedItem({ item, type: 'CM_PRODUCTIVITY' })} />
           ) : activeTab === 'transfers' ? (
-            <TransfersTab items={tabContent.transfers} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
+            <TransfersTab
+              items={tabContent.transfers}
+              moduleId={moduleData.transfersModuleId}
+              briefs={moduleData.briefs}
+              onRefresh={() => refetchDept()}
+              onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })}
+            />
           ) : (
             <FormulationsTab items={tabContent.formulations} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
           )}
