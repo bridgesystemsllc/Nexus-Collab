@@ -40,6 +40,7 @@ const navSections = [
     label: 'SYSTEM',
     items: [
       { id: 'integrations' as const, label: 'Integrations', icon: Plug },
+      { id: 'agent-settings' as const, label: 'Email Agent', icon: Bot },
       { id: 'dept-manager' as const, label: 'Dept Manager', icon: Boxes },
       { id: 'pulse' as const, label: 'Pulse', icon: Bell },
     ],

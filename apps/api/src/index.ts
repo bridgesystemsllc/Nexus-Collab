@@ -18,6 +18,7 @@ import { aiRoutes } from './routes/ai'
 import { pulseRoutes } from './routes/pulse'
 import { onboardingRoutes } from './routes/onboarding'
 import { briefRoutes } from './routes/briefs'
+import { emailAgentRoutes } from './routes/emailAgent'
 
 export const prisma = new PrismaClient()
 
@@ -58,6 +59,7 @@ api.use('/ai', aiRoutes)
 api.use('/pulse', pulseRoutes)
 api.use('/onboarding', onboardingRoutes)
 api.use('/briefs', briefRoutes)
+api.use('/email-agent', emailAgentRoutes)
 
 app.use('/api/v1', api)
 

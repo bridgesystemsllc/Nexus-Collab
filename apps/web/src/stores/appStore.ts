@@ -13,6 +13,7 @@ type Page =
   | 'dept-manager'
   | 'pulse'
   | 'custom-dept'
+  | 'agent-settings'
 
 type Theme = 'light'
 
