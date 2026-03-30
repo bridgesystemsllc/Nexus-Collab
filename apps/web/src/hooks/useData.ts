@@ -56,16 +56,6 @@ export function useAddTaskNote() {
   })
 }
 
-// ─── Module Items ────────────────────────────────────────────
-export function useCreateModuleItem() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ deptId, moduleId, data }: { deptId: string; moduleId: string; data: any }) =>
-      api.post(`/departments/${deptId}/modules/${moduleId}/items`, { data }).then(r => r.data),
-    onSuccess: (_res, vars) => qc.invalidateQueries({ queryKey: ['department', vars.deptId] }),
-  })
-}
-
 // ─── Cowork ─────────────────────────────────────────────────
 export function useCoworkSpaces() {
   return useQuery({ queryKey: ['cowork'], queryFn: () => api.get('/cowork').then(r => r.data) })
@@ -83,38 +73,10 @@ export function usePostActivity() {
   })
 }
 
-export function useCreateCoworkSpace() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: any) => api.post('/cowork', data).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['cowork'] }),
-  })
-}
-
 // ─── Documents ──────────────────────────────────────────────
 export function useDocuments(filters?: Record<string, string>) {
   const params = new URLSearchParams(filters || {}).toString()
   return useQuery({ queryKey: ['documents', filters], queryFn: () => api.get(`/documents?${params}`).then(r => r.data) })
-}
-
-export function useCreateDocument() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: any) => api.post('/documents/upload', data).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['documents'] }),
-  })
-}
-
-// ─── Cowork task (scoped to a space) ────────────────────────
-export function useCreateCoworkTask(spaceId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (data: any) => api.post(`/cowork/${spaceId}/tasks`, data).then(r => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['cowork', spaceId] })
-      qc.invalidateQueries({ queryKey: ['tasks'] })
-    },
-  })
 }
 
 // ─── Everything ─────────────────────────────────────────────

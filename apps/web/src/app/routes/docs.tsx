@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react'
-import { FileText, Search, File, Plus, Loader2, Download } from 'lucide-react'
-import { useDocuments, useCreateDocument } from '@/hooks/useData'
-import { Dialog } from '@/components/Dialog'
+import { FileText, Search, File } from 'lucide-react'
+import { useDocuments } from '@/hooks/useData'
 
 const DOC_TYPES = [
   'All',
@@ -16,176 +15,14 @@ const DOC_TYPES = [
 ] as const
 
 function formatSize(bytes: number): string {
-  if (!bytes) return '—'
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const inputCls =
-  'w-full px-3 py-2 bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors'
-const labelCls = 'block text-xs font-medium text-[var(--text-tertiary)] mb-1 uppercase tracking-wider'
-const selectCls =
-  'w-full px-3 py-2 bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] transition-colors appearance-none'
-
-// ─── Document Detail Dialog ────────────────────────────────
-function DocDetailDialog({ doc, onClose }: { doc: any | null; onClose: () => void }) {
-  if (!doc) return null
-  return (
-    <Dialog open={!!doc} onClose={onClose} title={doc.name ?? 'Document'} wide>
-      <div className="space-y-4">
-        <div className="flex items-center gap-4">
-          <div
-            className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: 'var(--accent-subtle)' }}
-          >
-            <File className="w-7 h-7" style={{ color: 'var(--accent)' }} />
-          </div>
-          <div>
-            <p className="font-semibold text-[var(--text-primary)]">{doc.name}</p>
-            {doc.type && <span className="badge badge-accent mt-1">{doc.type}</span>}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 pt-2">
-          {doc.mimeType && (
-            <div>
-              <p className={labelCls}>MIME Type</p>
-              <p className="text-sm text-[var(--text-primary)]">{doc.mimeType}</p>
-            </div>
-          )}
-          {doc.size != null && (
-            <div>
-              <p className={labelCls}>Size</p>
-              <p className="text-sm text-[var(--text-primary)]">{formatSize(doc.size)}</p>
-            </div>
-          )}
-          {doc.createdAt && (
-            <div>
-              <p className={labelCls}>Created</p>
-              <p className="text-sm text-[var(--text-primary)]">
-                {new Date(doc.createdAt).toLocaleDateString('en-US', {
-                  month: 'long', day: 'numeric', year: 'numeric',
-                })}
-              </p>
-            </div>
-          )}
-          {doc.coworkSpace?.name && (
-            <div>
-              <p className={labelCls}>Cowork Space</p>
-              <p className="text-sm text-[var(--text-primary)]">{doc.coworkSpace.name}</p>
-            </div>
-          )}
-          {doc.uploader?.name && (
-            <div>
-              <p className={labelCls}>Uploaded By</p>
-              <p className="text-sm text-[var(--text-primary)]">{doc.uploader.name}</p>
-            </div>
-          )}
-        </div>
-
-        {doc.storageUrl && (
-          <div className="pt-2">
-            <a
-              href={doc.storageUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity w-fit"
-            >
-              <Download size={14} />
-              Open / Download
-            </a>
-          </div>
-        )}
-
-        <div className="flex justify-end pt-2">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </Dialog>
-  )
-}
-
-// ─── Create Document Dialog ────────────────────────────────
-function CreateDocDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const createDoc = useCreateDocument()
-  const [name, setName] = useState('')
-  const [type, setType] = useState('Brief')
-  const [mimeType, setMimeType] = useState('application/pdf')
-  const [url, setUrl] = useState('')
-
-  function reset() { setName(''); setType('Brief'); setMimeType('application/pdf'); setUrl('') }
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!name.trim()) return
-    createDoc.mutate(
-      {
-        name: name.trim(),
-        type,
-        mimeType,
-        size: 0,
-        storageKey: `manual/${Date.now()}-${name.trim().replace(/\s+/g, '-')}`,
-        storageUrl: url.trim() || undefined,
-      },
-      { onSuccess: () => { reset(); onClose() } }
-    )
-  }
-
-  return (
-    <Dialog open={open} onClose={onClose} title="New Document">
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div>
-          <label className={labelCls}>Document Name *</label>
-          <input className={inputCls} placeholder="e.g. Q4 Launch Brief" value={name} onChange={e => setName(e.target.value)} autoFocus />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className={labelCls}>Type</label>
-            <select className={selectCls} value={type} onChange={e => setType(e.target.value)}>
-              {DOC_TYPES.filter(t => t !== 'All').map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className={labelCls}>File Format</label>
-            <select className={selectCls} value={mimeType} onChange={e => setMimeType(e.target.value)}>
-              <option value="application/pdf">PDF</option>
-              <option value="application/vnd.openxmlformats-officedocument.wordprocessingml.document">Word (.docx)</option>
-              <option value="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">Excel (.xlsx)</option>
-              <option value="application/vnd.openxmlformats-officedocument.presentationml.presentation">PowerPoint (.pptx)</option>
-              <option value="image/png">Image (PNG)</option>
-              <option value="image/jpeg">Image (JPG)</option>
-              <option value="text/plain">Text</option>
-            </select>
-          </div>
-        </div>
-        <div>
-          <label className={labelCls}>Document URL (optional)</label>
-          <input className={inputCls} type="url" placeholder="https://drive.google.com/..." value={url} onChange={e => setUrl(e.target.value)} />
-        </div>
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-[var(--border-subtle)]">
-          <button type="button" onClick={() => { reset(); onClose() }} className="px-4 py-2 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors">Cancel</button>
-          <button type="submit" disabled={!name.trim() || createDoc.isPending} className="px-5 py-2 rounded-xl bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center gap-2">
-            {createDoc.isPending && <Loader2 size={14} className="animate-spin" />}
-            Create
-          </button>
-        </div>
-      </form>
-    </Dialog>
-  )
-}
-
-// ─── Main Page ─────────────────────────────────────────────
 export function DocsPage() {
   const [activeType, setActiveType] = useState<string>('All')
   const [search, setSearch] = useState('')
-  const [selectedDoc, setSelectedDoc] = useState<any | null>(null)
-  const [createOpen, setCreateOpen] = useState(false)
 
   const filters = useMemo(() => {
     const f: Record<string, string> = {}
@@ -214,22 +51,13 @@ export function DocsPage() {
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
-            Document Hub
-          </h1>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-            All documents across cowork spaces and departments
-          </p>
-        </div>
-        <button
-          onClick={() => setCreateOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity"
-        >
-          <Plus size={15} />
-          New Document
-        </button>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+          Document Hub
+        </h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+          All documents across cowork spaces and departments
+        </p>
       </div>
 
       {/* Search */}
@@ -282,11 +110,7 @@ export function DocsPage() {
       {!isLoading && filtered.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 stagger">
           {filtered.map((doc: any) => (
-            <div
-              key={doc.id}
-              className="data-cell flex flex-col cursor-pointer hover:border-[var(--accent)] transition-colors"
-              onClick={() => setSelectedDoc(doc)}
-            >
+            <div key={doc.id} className="data-cell flex flex-col">
               <div className="relative z-10 flex flex-col h-full">
                 <div className="flex items-start gap-3 mb-3">
                   <div
@@ -335,9 +159,6 @@ export function DocsPage() {
           </p>
         </div>
       )}
-
-      <DocDetailDialog doc={selectedDoc} onClose={() => setSelectedDoc(null)} />
-      <CreateDocDialog open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
   )
 }

@@ -201,9 +201,9 @@ model Document {
   storageKey   String
   storageUrl   String?
   type         String       @default("OTHER") // BRIEF, COA, SPEC_SHEET, QUOTE, PRICING, CONTRACT, REPORT, ARTWORK, INVOICE, OTHER
-  orgId        String?
-  org          Organization? @relation(fields: [orgId], references: [id])
-  uploadedById String?
+  orgId        String
+  org          Organization @relation(fields: [orgId], references: [id])
+  uploadedById String
   coworkSpaces CoworkSpace[] @relation("CoworkDocs")
   tasks        Task[]       @relation("TaskDocs")
   version      Int          @default(1)

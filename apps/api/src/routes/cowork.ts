@@ -152,8 +152,6 @@ coworkRoutes.post('/:id/tasks', async (req: Request, res: Response) => {
         title: req.body.title,
         description: req.body.description,
         priority: req.body.priority || 'MEDIUM',
-        status: req.body.status || 'NOT_STARTED',
-        effort: req.body.effort || undefined,
         dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
         ownerId: req.body.ownerId,
         departmentId: req.body.departmentId,
