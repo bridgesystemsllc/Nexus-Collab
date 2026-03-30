@@ -151,11 +151,13 @@ function BriefsTab({ items, onSelect }: { items: any[]; onSelect: (item: any) =>
   )
 }
 
-// ─── CM Productivity Tab ───────────────────────────────────
+// ─── CM Productivity Tab (Edit 4 — Grid/List toggle + click-through) ──
 function CMTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+
   if (items.length === 0) {
     return (
-      <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
+      <p className="text-[14px] text-[var(--text-tertiary)] py-8 text-center">
         No CM data found.
       </p>
     )
@@ -168,68 +170,195 @@ function CMTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => voi
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {items.map((item: any) => {
-        const d = item.data
-        return (
-          <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium text-[var(--text-primary)]">
-                {d.name}
-              </h3>
-              {d.status === 'attention' && (
-                <span className="badge badge-critical">Attention</span>
-              )}
-            </div>
+    <div>
+      {/* View Toggle */}
+      <div className="flex justify-end mb-4">
+        <div className="flex rounded-[8px] border border-[var(--border-subtle)] overflow-hidden">
+          <button
+            onClick={() => setViewMode('grid')}
+            className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
+              viewMode === 'grid'
+                ? 'bg-[var(--accent)] text-white'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
+            }`}
+          >
+            Grid
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${
+              viewMode === 'list'
+                ? 'bg-[var(--accent)] text-white'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
+            }`}
+          >
+            List
+          </button>
+        </div>
+      </div>
 
-            <div className="text-xs text-[var(--text-tertiary)]">
-              {(d.brands || []).join(', ')}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-[var(--text-tertiary)]">On-Time</p>
-                <p
-                  className="text-lg font-semibold tabular-nums"
-                  style={{ color: percentColor(d.onTime) }}
-                >
-                  {d.onTime}%
-                </p>
+      {viewMode === 'grid' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {items.map((item: any) => {
+            const d = item.data
+            return (
+              <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium text-[14px] text-[var(--text-primary)]">{d.name}</h3>
+                  {d.status === 'attention' && <span className="badge badge-critical">Attention</span>}
+                </div>
+                <div className="text-[12px] text-[var(--text-secondary)]">{(d.brands || []).join(', ')}</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[11px] text-[var(--text-tertiary)]">On-Time</p>
+                    <p className="text-lg font-semibold tabular-nums" style={{ color: percentColor(d.onTime) }}>{d.onTime}%</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-[var(--text-tertiary)]">Quality</p>
+                    <p className="text-lg font-semibold tabular-nums" style={{ color: percentColor(d.quality) }}>{d.quality}%</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-[12px] text-[var(--text-secondary)] pt-1 border-t border-[var(--border-subtle)]">
+                  <span>{d.activePOs} active POs</span>
+                  <span>{d.openIssues} issues</span>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-[var(--text-tertiary)]">Quality</p>
-                <p
-                  className="text-lg font-semibold tabular-nums"
-                  style={{ color: percentColor(d.quality) }}
-                >
-                  {d.quality}%
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between text-xs text-[var(--text-secondary)] pt-1 border-t border-[var(--border-subtle)]">
-              <span>{d.activePOs} active POs</span>
-              <span>{d.openIssues} issues</span>
-            </div>
-          </div>
-        )
-      })}
+            )
+          })}
+        </div>
+      ) : (
+        /* List View (Edit 4) */
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+          <table className="nexus-table">
+            <thead>
+              <tr>
+                <th>Contact Name</th>
+                <th>Products Manufactured</th>
+                <th>Active POs</th>
+                <th>Quality Score</th>
+                <th>Open Issues</th>
+                <th>On-Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item: any) => {
+                const d = item.data
+                return (
+                  <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
+                    <td>
+                      <div>
+                        <span className="font-medium text-[14px] text-[var(--text-primary)]">{d.name}</span>
+                        {d.address && <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">{d.address}</p>}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="flex flex-wrap gap-1">
+                        {(d.brands || []).map((b: string) => (
+                          <span key={b} className="badge badge-info text-[10px]">{b}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="text-[14px] font-medium text-[var(--accent)] tabular-nums cursor-pointer hover:underline">
+                        {d.activePOs}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="text-[14px] font-semibold tabular-nums" style={{ color: percentColor(d.quality) }}>
+                        {d.quality}%
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`text-[14px] font-medium tabular-nums ${d.openIssues > 0 ? 'text-[var(--warning)] cursor-pointer hover:underline' : 'text-[var(--text-primary)]'}`}>
+                        {d.openIssues}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="text-[14px] font-semibold tabular-nums" style={{ color: percentColor(d.onTime) }}>
+                        {d.onTime}%
+                      </span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
 
-// ─── Tech Transfers Tab ────────────────────────────────────
+// ─── Tech Transfers Tab (Edit 4 — with list view toggle + files) ──
 function TransfersTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+
   if (items.length === 0) {
     return (
-      <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
+      <p className="text-[14px] text-[var(--text-tertiary)] py-8 text-center">
         No tech transfers found.
       </p>
     )
   }
 
+  if (viewMode === 'list') {
+    return (
+      <div>
+        <div className="flex justify-end mb-4">
+          <div className="flex rounded-[8px] border border-[var(--border-subtle)] overflow-hidden">
+            <button onClick={() => setViewMode('grid')} className="px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]">Grid</button>
+            <button onClick={() => setViewMode('list')} className="px-3 py-1.5 text-[12px] font-medium bg-[var(--accent)] text-white">List</button>
+          </div>
+        </div>
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+          <table className="nexus-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>From → To</th>
+                <th>Status</th>
+                <th>Progress</th>
+                <th>Target</th>
+                <th>Files</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item: any) => {
+                const d = item.data
+                return (
+                  <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
+                    <td className="font-medium text-[14px] text-[var(--text-primary)]">{d.product}</td>
+                    <td className="text-[14px] text-[var(--text-secondary)]">{d.from} → {d.to}</td>
+                    <td><StatusBadge status={d.status} /></td>
+                    <td>
+                      <div className="flex items-center gap-2 min-w-[100px]">
+                        <div className="h-1.5 flex-1 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${d.progress}%`, background: d.progress === 100 ? 'var(--success)' : 'var(--accent)' }} />
+                        </div>
+                        <span className="text-[12px] tabular-nums text-[var(--text-secondary)]">{d.progress}%</span>
+                      </div>
+                    </td>
+                    <td className="text-[14px] text-[var(--text-secondary)]">{d.target}</td>
+                    <td className="text-[14px] text-[var(--accent)] tabular-nums">{d.docs} files</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div>
+      <div className="flex justify-end mb-4">
+        <div className="flex rounded-[8px] border border-[var(--border-subtle)] overflow-hidden">
+          <button onClick={() => setViewMode('grid')} className="px-3 py-1.5 text-[12px] font-medium bg-[var(--accent)] text-white">Grid</button>
+          <button onClick={() => setViewMode('list')} className="px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]">List</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {items.map((item: any) => {
         const d = item.data
         return (
@@ -277,6 +406,7 @@ function TransfersTab({ items, onSelect }: { items: any[]; onSelect: (item: any)
           </div>
         )
       })}
+      </div>
     </div>
   )
 }
