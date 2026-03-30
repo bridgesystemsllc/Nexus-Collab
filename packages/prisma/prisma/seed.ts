@@ -33,6 +33,7 @@ async function main() {
   const cmMod = await prisma.departmentModule.create({ data: { name: 'CM Productivity', type: 'CM_PRODUCTIVITY', departmentId: rd.id, sortOrder: 1 } })
   const ttMod = await prisma.departmentModule.create({ data: { name: 'Tech Transfers', type: 'TECH_TRANSFERS', departmentId: rd.id, sortOrder: 2 } })
   const frmMod = await prisma.departmentModule.create({ data: { name: 'Formulations', type: 'FORMULATIONS', departmentId: rd.id, sortOrder: 3 } })
+  const compMod = await prisma.departmentModule.create({ data: { name: 'Component Library', type: 'COMPONENT_LIBRARY', departmentId: rd.id, sortOrder: 6 } })
   const skuMod = await prisma.departmentModule.create({ data: { name: 'SKU Pipeline', type: 'SKU_PIPELINE', departmentId: ops.id, sortOrder: 0 } })
   const invMod = await prisma.departmentModule.create({ data: { name: 'Inventory Health', type: 'INVENTORY_HEALTH', departmentId: ops.id, sortOrder: 1 } })
   const prodMod = await prisma.departmentModule.create({ data: { name: 'Production Tracking', type: 'PRODUCTION_TRACKING', departmentId: ops.id, sortOrder: 2 } })
