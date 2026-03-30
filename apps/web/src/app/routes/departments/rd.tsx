@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Beaker,
+  Boxes,
   CheckCircle2,
   Clock,
   Download,
@@ -36,19 +37,19 @@ import { NewTransferModal, type TransferFormData } from '@/components/rd/NewTran
 import { FormulationDetailModal } from '@/components/rd/FormulationDetailModal'
 import { NewFormulationModal, type FormulationFormData } from '@/components/rd/NewFormulationModal'
 import { api } from '@/lib/api'
-import { NewArtworkModal } from '@/components/rd/artwork/NewArtworkModal'
-import { ArtworkProjectDetail } from '@/components/rd/artwork/ArtworkProjectDetail'
-import { ARTWORK_STATUS_COLORS, DEFAULT_COMPLIANCE_ITEMS, generateRetailerComplianceItems, getApprovalChainSummary, type ArtworkProject } from '@/components/rd/artwork/artworkData'
+import { NewComponentModal } from '@/components/rd/components/NewComponentModal'
+import { ComponentDetail } from '@/components/rd/components/ComponentDetail'
+import { COMPONENT_TYPE_COLORS, FEASIBILITY_STATUS_COLORS, getWorstCompatibility, getBestUnitCost, generatePartNumber, type Component as ComponentType } from '@/components/rd/components/componentData'
 
 // ─── Types ─────────────────────────────────────────────────
-type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations' | 'artwork'
+type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations' | 'components'
 
 const TABS: { key: RDTab; label: string; icon: React.ElementType }[] = [
   { key: 'briefs', label: 'Active Briefs', icon: FileText },
   { key: 'cm', label: 'CM Productivity', icon: Users },
   { key: 'transfers', label: 'Tech Transfers', icon: Repeat2 },
   { key: 'formulations', label: 'Formulations', icon: FlaskConical },
-  { key: 'artwork', label: 'Artwork', icon: Palette },
+  { key: 'components', label: 'Components', icon: Boxes },
 ]
 
 // ─── Shared Utilities ──────────────────────────────────────
@@ -1750,6 +1751,137 @@ function ArtworkTab({
   )
 }
 
+// ─── Components Tab ───────────────────────────────────────
+function ComponentsTab({
+  items,
+  moduleId,
+  onRefresh,
+}: {
+  items: any[]
+  moduleId: string | null
+  onRefresh: () => void
+}) {
+  const [showNewComponent, setShowNewComponent] = useState(false)
+  const [viewingComponent, setViewingComponent] = useState<any>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const components = useMemo(() => {
+    return items.map((item: any) => ({ id: item.id, moduleId: item.moduleId, ...item.data }))
+  }, [items])
+
+  const handleCreate = async (data: any) => {
+    if (!moduleId) return
+    setIsSubmitting(true)
+    try {
+      const componentData = {
+        ...data,
+        partNumber: data.partNumber || generatePartNumber(),
+        activityLog: [{ user: 'System', action: 'Component created', timestamp: new Date().toISOString() }],
+        createdBy: 'You',
+        createdAt: new Date().toISOString(),
+      }
+      await api.post(`/departments/_/modules/${moduleId}/items`, { data: componentData, status: data.status || 'Concept' })
+      setShowNewComponent(false)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to create component:', err)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleComponentUpdate = async (updates: any) => {
+    if (!viewingComponent) return
+    const item = items.find((i: any) => i.id === viewingComponent.id)
+    if (!item) return
+    const updated = { ...viewingComponent, ...updates }
+    try {
+      await api.patch(`/departments/_/modules/${item.moduleId}/items/${viewingComponent.id}`, { data: updated })
+      setViewingComponent(updated)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to update component:', err)
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div />
+        <button onClick={() => setShowNewComponent(true)} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
+          <Plus size={15} /> New Component
+        </button>
+      </div>
+
+      {components.length === 0 ? (
+        <div className="text-center py-12">
+          <Boxes size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
+          <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No components yet</p>
+          <button onClick={() => setShowNewComponent(true)} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Add Your First Component</button>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+          <table className="nexus-table">
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Part #</th>
+                <th>Type</th>
+                <th>Vendor</th>
+                <th>Status</th>
+                <th>Unit Cost</th>
+                <th>Target</th>
+                <th>Compatibility</th>
+                <th>Assigned</th>
+              </tr>
+            </thead>
+            <tbody>
+              {components.map((comp: any) => {
+                const typeColor = COMPONENT_TYPE_COLORS[comp.type] || '#6B7280'
+                const statusColor = FEASIBILITY_STATUS_COLORS[comp.status] || '#6B7280'
+                const primaryVendor = (comp.vendors || []).find((v: any) => v.vendorStatus === 'Primary') || (comp.vendors || [])[0]
+                const bestCost = getBestUnitCost(comp.moqTiers || [])
+                const compatibility = getWorstCompatibility(comp.compatibilityTests || [])
+                const assignmentCount = (comp.productAssignments || []).filter((a: any) => a.assignmentStatus === 'Active').length
+                const costVsTarget = comp.targetCostPerUnit && bestCost ? (bestCost <= comp.targetCostPerUnit ? 'under' : 'over') : null
+
+                return (
+                  <tr key={comp.id} className="clickable-row" onClick={() => setViewingComponent(comp)}>
+                    <td className="font-medium text-[var(--text-primary)]">{comp.name || '—'}</td>
+                    <td><span className="text-[12px] font-mono text-[var(--accent-secondary)]">{comp.partNumber || '—'}</span></td>
+                    <td><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: `${typeColor}18`, color: typeColor }}>{comp.type || '—'}</span></td>
+                    <td className="text-[13px] text-[var(--text-secondary)]">{primaryVendor?.vendorName || '—'}</td>
+                    <td><span className="badge text-[11px]" style={{ background: `${statusColor}18`, color: statusColor }}>{comp.status || 'Concept'}</span></td>
+                    <td className={`text-[13px] tabular-nums font-medium ${costVsTarget === 'under' ? 'text-[var(--success)]' : costVsTarget === 'over' ? 'text-[var(--danger)]' : 'text-[var(--text-secondary)]'}`}>
+                      {bestCost ? `$${bestCost.toFixed(2)}` : '—'}
+                    </td>
+                    <td className="text-[13px] tabular-nums text-[var(--text-secondary)]">
+                      {comp.targetCostPerUnit ? `$${Number(comp.targetCostPerUnit).toFixed(2)}` : '—'}
+                    </td>
+                    <td>
+                      {compatibility !== 'not_tested' ? (
+                        <span className="text-[11px] font-medium" style={{ color: compatibility === 'pass' ? '#10B981' : compatibility === 'fail' ? '#EF4444' : '#F59E0B' }}>
+                          {compatibility === 'pass' ? '✓' : compatibility === 'fail' ? '✗' : '⚠'} {compatibility === 'pass' ? 'Compatible' : compatibility === 'fail' ? 'Incompatible' : 'Conditional'}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-[var(--text-tertiary)]">○ Not Tested</span>
+                      )}
+                    </td>
+                    <td className="text-[13px] text-[var(--text-secondary)]">{assignmentCount > 0 ? `${assignmentCount} products` : '—'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <NewComponentModal open={showNewComponent} onClose={() => setShowNewComponent(false)} onSubmit={handleCreate} isSubmitting={isSubmitting} />
+      <ComponentDetail open={!!viewingComponent} component={viewingComponent} onClose={() => setViewingComponent(null)} onComponentUpdate={handleComponentUpdate} />
+    </div>
+  )
+}
+
 // ─── Main Page ─────────────────────────────────────────────
 export function RDPage() {
   const [activeTab, setActiveTab] = useState<RDTab>('briefs')
@@ -1767,22 +1899,22 @@ export function RDPage() {
 
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { briefs: [], cm: [], transfers: [], formulations: [], artwork: [], briefsModuleId: null, artworkModuleId: null }
+      return { briefs: [], cm: [], transfers: [], formulations: [], components: [], briefsModuleId: null, componentsModuleId: null }
     }
     const modules = deptDetail.modules as any[]
     const find = (type: string) =>
       modules.find((m: any) => m.type === type)?.items || []
     const briefsModule = modules.find((m: any) => m.type === 'BRIEFS')
-    const artworkModule = modules.find((m: any) => m.type === 'ARTWORK_TRACKER')
+    const componentsModule = modules.find((m: any) => m.type === 'COMPONENT_LIBRARY')
 
     return {
       briefs: find('BRIEFS'),
       cm: find('CM_PRODUCTIVITY'),
       transfers: find('TECH_TRANSFERS'),
       formulations: find('FORMULATIONS'),
-      artwork: find('ARTWORK_TRACKER'),
+      components: find('COMPONENT_LIBRARY'),
       briefsModuleId: briefsModule?.id || null,
-      artworkModuleId: artworkModule?.id || null,
+      componentsModuleId: componentsModule?.id || null,
     }
   }, [deptDetail])
 
@@ -1791,7 +1923,7 @@ export function RDPage() {
     cm: moduleData.cm,
     transfers: moduleData.transfers,
     formulations: moduleData.formulations,
-    artwork: moduleData.artwork,
+    components: moduleData.components,
   }
 
   return (
@@ -1836,11 +1968,10 @@ export function RDPage() {
             <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
           ) : activeTab === 'transfers' ? (
             <TransfersTab items={tabContent.transfers} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
-          ) : activeTab === 'artwork' ? (
-            <ArtworkTab
-              items={tabContent.artwork}
-              moduleId={moduleData.artworkModuleId}
-              briefs={moduleData.briefs}
+          ) : activeTab === 'components' ? (
+            <ComponentsTab
+              items={tabContent.components}
+              moduleId={moduleData.componentsModuleId}
               onRefresh={() => refetchDept()}
             />
           ) : (
