@@ -1191,7 +1191,7 @@ function UserManagementSection({
                       <span className="badge badge-accent text-[10px]">{user.role}</span>
                     </td>
                     <td className="text-[14px] text-[var(--text-primary)]">
-                      {dept?.name || user.department || '-'}
+                      {dept?.name || (typeof user.department === 'object' ? user.department?.name : user.department) || '-'}
                     </td>
                     <td>
                       <div className="flex items-center gap-1.5">
