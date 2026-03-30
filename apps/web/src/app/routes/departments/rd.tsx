@@ -24,7 +24,6 @@ import {
   Upload,
   Users,
   X,
-  AlertTriangle,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { NewBriefModal, type BriefFormData, EMPTY_FORM } from '@/components/briefs/NewBriefModal'
@@ -40,15 +39,23 @@ import { api } from '@/lib/api'
 import { NewComponentModal } from '@/components/rd/components/NewComponentModal'
 import { ComponentDetail } from '@/components/rd/components/ComponentDetail'
 import { COMPONENT_TYPE_COLORS, FEASIBILITY_STATUS_COLORS, getWorstCompatibility, getBestUnitCost, generatePartNumber, type Component as ComponentType } from '@/components/rd/components/componentData'
+import { NewNPDProjectModal, type NPDFormData } from '@/components/rd/npd/NewNPDProjectModal'
+import { NPDProjectDetail } from '@/components/rd/npd/NPDProjectDetail'
+import { STAGE_CONFIG, createDefaultTasks, getStageProgress, getOverallProgress, getCurrentStage, isStageUnlocked, type NPDTask } from '@/components/rd/npd/npdChecklist'
+import { NewArtworkModal } from '@/components/rd/artwork/NewArtworkModal'
+import { ArtworkProjectDetail } from '@/components/rd/artwork/ArtworkProjectDetail'
+import { ARTWORK_STATUS_COLORS, DEFAULT_COMPLIANCE_ITEMS, generateRetailerComplianceItems, getApprovalChainSummary } from '@/components/rd/artwork/artworkData'
 
 // ─── Types ─────────────────────────────────────────────────
-type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations' | 'components'
+type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd' | 'artwork' | 'components'
 
 const TABS: { key: RDTab; label: string; icon: React.ElementType }[] = [
   { key: 'briefs', label: 'Active Briefs', icon: FileText },
   { key: 'cm', label: 'CM Productivity', icon: Users },
   { key: 'transfers', label: 'Tech Transfers', icon: Repeat2 },
   { key: 'formulations', label: 'Formulations', icon: FlaskConical },
+  { key: 'npd', label: 'NPD Pipeline', icon: Rocket },
+  { key: 'artwork', label: 'Artwork', icon: Palette },
   { key: 'components', label: 'Components', icon: Boxes },
 ]
 
@@ -558,11 +565,11 @@ function BriefsTab({ items, moduleId, onRefresh, transferItems, formulationItems
         brief={viewingBrief}
         onClose={() => setViewingBrief(null)}
         onEdit={() => {
-          if (viewingBrief) openEdit(viewingBrief)
+          if (viewingBrief) { setEditingBrief(viewingBrief); setViewingBrief(null); setShowNewBrief(true) }
         }}
         onDelete={() => {
           if (viewingBrief) {
-            setDeletingBrief({ id: viewingBrief.id, name: viewingBrief.projectName })
+            setDeletingItem({ id: viewingBrief.id, name: viewingBrief.projectName })
           }
         }}
       />
@@ -582,10 +589,10 @@ function BriefsTab({ items, moduleId, onRefresh, transferItems, formulationItems
 
       {/* Delete Confirmation */}
       <DeleteConfirmDialog
-        open={!!deletingBrief}
-        briefName={deletingBrief?.name || ''}
+        open={!!deletingItem}
+        itemName={deletingItem?.name || ''}
         onConfirm={handleDelete}
-        onCancel={() => setDeletingBrief(null)}
+        onCancel={() => setDeletingItem(null)}
       />
     </div>
   )
@@ -868,15 +875,11 @@ function TransfersTab({
             <thead>
               <tr>
                 <th>Product</th>
-                <th>Brand</th>
-                <th>From → To</th>
+                <th>From / To</th>
                 <th>Linked Brief</th>
                 <th>Status</th>
-                <th>Priority</th>
                 <th>Progress</th>
-                <th>Linked Brief</th>
-                <th>Docs</th>
-                <th>Team</th>
+                <th>Target</th>
                 <th className="w-12">Actions</th>
               </tr>
             </thead>
@@ -1311,12 +1314,11 @@ function NPDTab({
                         {formatDate(proj.targetLaunchDate)}
                       </td>
                       <td>
-                        <ActionsMenu
-                          onView={() => setViewingProject(proj)}
-                          onEdit={() => setViewingProject(proj)}
-                          onDownload={() => {}}
-                          onDelete={() => setDeletingProject({ id: proj.id, name: proj.projectName })}
-                        />
+                        <ActionsMenu actions={[
+                          { label: 'View', icon: Eye, onClick: () => setViewingProject(proj) },
+                          { label: 'Edit', icon: Edit3, onClick: () => setViewingProject(proj) },
+                          { label: 'Delete', icon: Trash2, onClick: () => setDeletingProject({ id: proj.id, name: proj.projectName }), danger: true },
+                        ]} />
                       </td>
                     </tr>
                   )
@@ -1347,7 +1349,7 @@ function NPDTab({
       {/* Delete Confirmation */}
       <DeleteConfirmDialog
         open={!!deletingProject}
-        briefName={deletingProject?.name || ''}
+        itemName={deletingProject?.name || ''}
         onConfirm={handleDelete}
         onCancel={() => setDeletingProject(null)}
       />
@@ -1679,9 +1681,54 @@ function ComponentsTab({
   )
 }
 
+// ─── NPD Segmented Progress Bar ──────────────────────────
+function NPDSegmentedProgress({ tasks }: { tasks: NPDTask[] }) {
+  const stages = STAGE_CONFIG.filter(s => s.key !== '1/2' && s.key !== '2/3')
+  return (
+    <div className="flex items-center gap-0.5 w-full">
+      {stages.map((stage) => {
+        const { completed, total } = getStageProgress(tasks, stage.key)
+        const pct = total > 0 ? Math.round((completed / total) * 100) : 0
+        return (
+          <div key={stage.key} className="flex-1 h-2 rounded-full overflow-hidden bg-[var(--bg-elevated)]" title={`${stage.name}: ${completed}/${total}`}>
+            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: stage.color }} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Formulations Tab ────────────────────────────────────
+function FormulationsTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
+  if (items.length === 0) return <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">No formulations found.</p>
+  return (
+    <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+      <table className="nexus-table">
+        <thead><tr><th>Product</th><th>Version</th><th>Status</th><th>Stability</th><th>Changes</th></tr></thead>
+        <tbody>
+          {items.map((item: any) => {
+            const d = item.data
+            return (
+              <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
+                <td className="font-medium text-[var(--text-primary)]">{d.product}</td>
+                <td><span className="badge badge-accent font-mono text-xs">{d.ver}</span></td>
+                <td><StatusBadge status={d.status} /></td>
+                <td><StatusBadge status={d.stability} /></td>
+                <td className="text-[var(--text-secondary)] max-w-[300px] truncate">{d.changes}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 // ─── Main Page ─────────────────────────────────────────────
 export function RDPage() {
   const [activeTab, setActiveTab] = useState<RDTab>('briefs')
+  const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
 
   const { data: departments, isLoading: deptsLoading } = useDepartments()
 
@@ -1696,22 +1743,29 @@ export function RDPage() {
 
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { briefs: [], cm: [], transfers: [], formulations: [], components: [], briefsModuleId: null, componentsModuleId: null }
+      return { briefs: [], cm: [], transfers: [], formulations: [], npd: [], artwork: [], components: [], briefsModuleId: null, cmModuleId: null, transfersModuleId: null, formulationsModuleId: null, npdModuleId: null, artworkModuleId: null, componentsModuleId: null }
     }
     const modules = deptDetail.modules as any[]
     const find = (type: string) =>
       modules.find((m: any) => m.type === type)?.items || []
-    const briefsModule = modules.find((m: any) => m.type === 'BRIEFS')
-    const componentsModule = modules.find((m: any) => m.type === 'COMPONENT_LIBRARY')
+    const findModuleId = (type: string) =>
+      modules.find((m: any) => m.type === type)?.id || null
 
     return {
       briefs: find('BRIEFS'),
       cm: find('CM_PRODUCTIVITY'),
       transfers: find('TECH_TRANSFERS'),
       formulations: find('FORMULATIONS'),
+      npd: find('NPD_PIPELINE'),
+      artwork: find('ARTWORK'),
       components: find('COMPONENT_LIBRARY'),
-      briefsModuleId: briefsModule?.id || null,
-      componentsModuleId: componentsModule?.id || null,
+      briefsModuleId: findModuleId('BRIEFS'),
+      cmModuleId: findModuleId('CM_PRODUCTIVITY'),
+      transfersModuleId: findModuleId('TECH_TRANSFERS'),
+      formulationsModuleId: findModuleId('FORMULATIONS'),
+      npdModuleId: findModuleId('NPD_PIPELINE'),
+      artworkModuleId: findModuleId('ARTWORK'),
+      componentsModuleId: findModuleId('COMPONENT_LIBRARY'),
     }
   }, [deptDetail])
 
@@ -1720,6 +1774,8 @@ export function RDPage() {
     cm: moduleData.cm,
     transfers: moduleData.transfers,
     formulations: moduleData.formulations,
+    npd: moduleData.npd,
+    artwork: moduleData.artwork,
     components: moduleData.components,
   }
 
@@ -1764,16 +1820,20 @@ export function RDPage() {
           ) : activeTab === 'cm' ? (
             <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
           ) : activeTab === 'transfers' ? (
-            <TransfersTab items={tabContent.transfers} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
+            <TransfersTab items={tabContent.transfers} moduleId={moduleData.transfersModuleId} briefs={moduleData.briefs} onRefresh={() => refetchDept()} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
+          ) : activeTab === 'formulations' ? (
+            <FormulationsTab items={moduleData.formulations} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
+          ) : activeTab === 'npd' ? (
+            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} />
+          ) : activeTab === 'artwork' ? (
+            <ArtworkTab items={moduleData.artwork} moduleId={moduleData.artworkModuleId} briefs={moduleData.briefs} onRefresh={() => refetchDept()} />
           ) : activeTab === 'components' ? (
             <ComponentsTab
               items={tabContent.components}
               moduleId={moduleData.componentsModuleId}
               onRefresh={() => refetchDept()}
             />
-          ) : (
-            <FormulationsTab items={moduleData.formulations} moduleId={moduleData.formulationsModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
-          )}
+          ) : null}
         </div>
       </div>
     </div>
