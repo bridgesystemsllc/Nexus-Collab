@@ -13,7 +13,7 @@ import { taskRoutes } from './routes/tasks'
 import { coworkRoutes } from './routes/cowork'
 import { documentRoutes } from './routes/documents'
 import { everythingRoutes } from './routes/everything'
-import { integrationRoutes } from './routes/integrations'
+import { integrationRoutes, webhookRoutes } from './routes/integrations'
 import { aiRoutes } from './routes/ai'
 import { pulseRoutes } from './routes/pulse'
 import { onboardingRoutes } from './routes/onboarding'
@@ -60,6 +60,7 @@ api.use('/onboarding', onboardingRoutes)
 api.use('/briefs', briefRoutes)
 
 app.use('/api/v1', api)
+app.use('/api/v1/webhooks', webhookRoutes)
 
 // ─── Serve Frontend (Replit / Production) ───────────────────
 if (isReplit || process.env.NODE_ENV === 'production') {

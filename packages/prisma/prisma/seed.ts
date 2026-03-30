@@ -163,8 +163,11 @@ async function main() {
     { type: 'MICROSOFT_ONEDRIVE', name: 'Microsoft OneDrive', status: 'CONNECTED', syncCount: 3456, orgId: org.id },
     { type: 'AMAZON_VENDOR_CENTRAL', name: 'Amazon Vendor Central', status: 'DISCONNECTED', orgId: org.id },
     { type: 'SLACK', name: 'Slack', status: 'DISCONNECTED', orgId: org.id },
+    { type: 'GOOGLE_GMAIL', name: 'Google Gmail', status: 'DISCONNECTED', orgId: org.id },
+    { type: 'GOOGLE_SHEETS', name: 'Google Sheets', status: 'DISCONNECTED', orgId: org.id },
+    { type: 'ZAPIER', name: 'Zapier', status: 'DISCONNECTED', orgId: org.id },
   ] })
-  console.log('✅ Integrations: 6')
+  console.log('✅ Integrations: 9')
 
   // ─── Pulse
   await prisma.pulse.createMany({ data: [
