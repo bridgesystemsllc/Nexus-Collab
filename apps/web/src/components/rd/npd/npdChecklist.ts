@@ -438,6 +438,7 @@ export function createDefaultTasks(
  * Returns percentage (0–100) of completed tasks in a given stage.
  */
 export function getStageProgress(tasks: NPDTask[], stageKey: string): number {
+  if (!tasks || tasks.length === 0) return 0
   const stageTasks = tasks.filter((t) => t.stageKey === stageKey && t.status !== 'skipped')
   if (stageTasks.length === 0) return 0
   const completed = stageTasks.filter((t) => t.status === 'complete').length
@@ -452,6 +453,7 @@ export function getOverallProgress(tasks: NPDTask[]): {
   total: number
   percent: number
 } {
+  if (!tasks || tasks.length === 0) return { completed: 0, total: 0, percent: 0 }
   const activeTasks = tasks.filter((t) => t.status !== 'skipped')
   const total = activeTasks.length
   const completed = activeTasks.filter((t) => t.status === 'complete').length
@@ -467,6 +469,8 @@ export function getCurrentStage(
   tasks: NPDTask[],
   gateApprovals: { gate: string }[]
 ): string {
+  if (!tasks || tasks.length === 0) return '0'
+
   const stageKeys = ['0', '1', '1/2', '2', '2/3', '3', '4']
 
   for (let i = stageKeys.length - 1; i >= 0; i--) {
@@ -474,7 +478,8 @@ export function getCurrentStage(
     if (!isStageUnlocked(key, tasks, gateApprovals)) continue
 
     const stageTasks = tasks.filter((t) => t.stageKey === key)
-    const hasIncomplete = stageTasks.some((t) => t.status !== 'complete')
+    if (stageTasks.length === 0) continue
+    const hasIncomplete = stageTasks.some((t) => t.status !== 'complete' && t.status !== 'skipped')
     if (hasIncomplete) return key
   }
 
@@ -490,7 +495,8 @@ export function isStageUnlocked(
   tasks: NPDTask[],
   gateApprovals: { gate: string }[]
 ): boolean {
-  const gateSet = new Set(gateApprovals.map((g) => g.gate))
+  if (!tasks) return stageKey === '0'
+  const gateSet = new Set((gateApprovals || []).map((g) => g.gate))
 
   switch (stageKey) {
     case '0':
