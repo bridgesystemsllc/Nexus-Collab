@@ -18,11 +18,8 @@ import { aiRoutes } from './routes/ai'
 import { pulseRoutes } from './routes/pulse'
 import { onboardingRoutes } from './routes/onboarding'
 import { briefRoutes } from './routes/briefs'
-<<<<<<< feature/user-dept-management
 import { memberRoutes } from './routes/members'
-=======
 import { emailAgentRoutes } from './routes/emailAgent'
->>>>>>> main
 
 export const prisma = new PrismaClient()
 
@@ -69,11 +66,8 @@ api.use('/ai', aiRoutes)
 api.use('/pulse', pulseRoutes)
 api.use('/onboarding', onboardingRoutes)
 api.use('/briefs', briefRoutes)
-<<<<<<< feature/user-dept-management
 api.use('/members', memberRoutes)
-=======
 api.use('/email-agent', emailAgentRoutes)
->>>>>>> main
 
 app.use('/api/v1', api)
 app.use('/api/v1/webhooks', webhookRoutes)
