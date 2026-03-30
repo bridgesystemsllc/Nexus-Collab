@@ -15,7 +15,10 @@ import {
   Repeat2,
   Sparkles,
   Trash2,
+  Upload,
   Users,
+  X,
+  AlertTriangle,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
@@ -227,6 +230,204 @@ function DeleteConfirmDialog({ open, briefName, onConfirm, onCancel }: {
   )
 }
 
+// ─── Import Brief Modal ───────────────────────────────────
+function ImportBriefModal({
+  open,
+  onClose,
+  onImported,
+}: {
+  open: boolean
+  onClose: () => void
+  onImported: (data: BriefFormData) => void
+}) {
+  const [file, setFile] = useState<File | null>(null)
+  const [parsing, setParsing] = useState(false)
+  const [error, setError] = useState('')
+  const [dragOver, setDragOver] = useState(false)
+
+  if (!open) return null
+
+  const handleFileSelect = (selectedFile: File) => {
+    const validTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+    ]
+    if (!validTypes.includes(selectedFile.type) && !selectedFile.name.match(/\.(pdf|doc|docx|txt)$/i)) {
+      setError('Please upload a PDF, Word (.doc/.docx), or text file')
+      return
+    }
+    if (selectedFile.size > 10 * 1024 * 1024) {
+      setError('File must be under 10MB')
+      return
+    }
+    setFile(selectedFile)
+    setError('')
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    if (e.dataTransfer.files[0]) handleFileSelect(e.dataTransfer.files[0])
+  }
+
+  const handleParse = async () => {
+    if (!file) return
+    setParsing(true)
+    setError('')
+
+    try {
+      // Read file as text (for PDFs, we send the raw content — Claude can handle it)
+      const text = await file.text()
+
+      const { data } = await api.post('/ai/parse-brief-document', {
+        content: text,
+        filename: file.name,
+        mimeType: file.type,
+      })
+
+      if (data.error) {
+        setError(data.error)
+        setParsing(false)
+        return
+      }
+
+      // Map parsed data to BriefFormData, filling in defaults for missing fields
+      const briefData: BriefFormData = {
+        ...EMPTY_FORM,
+        ...data.briefData,
+        briefStatus: 'Brief Submitted',
+        phase: 1,
+        // Ensure arrays are arrays
+        markets: Array.isArray(data.briefData.markets) ? data.briefData.markets : [],
+        projectContacts: Array.isArray(data.briefData.projectContacts) && data.briefData.projectContacts.length > 0
+          ? data.briefData.projectContacts
+          : [{ name: '', role: '', email: '' }],
+        teamMembers: Array.isArray(data.briefData.teamMembers) && data.briefData.teamMembers.length > 0
+          ? data.briefData.teamMembers
+          : [{ name: '', role: '' }],
+        supportingDocs: [],
+      }
+
+      onImported(briefData)
+    } catch (err: any) {
+      setError(err.response?.data?.error || err.message || 'Failed to parse document')
+    } finally {
+      setParsing(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl shadow-2xl w-full max-w-lg">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-[var(--border-subtle)]">
+          <div>
+            <h2 className="text-[16px] font-semibold text-[var(--text-primary)]">Import Brief from Document</h2>
+            <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">
+              Upload a PDF or Word document — AI will extract the brief fields
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Drop Zone */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+            className={`border-2 border-dashed rounded-xl p-8 text-center transition-all ${
+              dragOver
+                ? 'border-[var(--accent)] bg-[var(--accent-subtle)]'
+                : file
+                  ? 'border-[var(--success)] bg-[var(--success-light)]'
+                  : 'border-[var(--border-default)] hover:border-[var(--accent)]'
+            }`}
+          >
+            {file ? (
+              <div className="flex items-center justify-center gap-3">
+                <FileText size={24} className="text-[var(--success)]" />
+                <div className="text-left">
+                  <p className="text-[14px] font-medium text-[var(--text-primary)]">{file.name}</p>
+                  <p className="text-[12px] text-[var(--text-secondary)]">
+                    {(file.size / 1024).toFixed(0)} KB — Ready to parse
+                  </p>
+                </div>
+                <button
+                  onClick={() => setFile(null)}
+                  className="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--danger)]"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <>
+                <Upload size={32} className="mx-auto mb-3 text-[var(--text-tertiary)]" />
+                <p className="text-[14px] text-[var(--text-primary)] font-medium">
+                  Drop your brief document here
+                </p>
+                <p className="text-[12px] text-[var(--text-tertiary)] mt-1">
+                  PDF, Word (.doc/.docx), or text files up to 10MB
+                </p>
+                <label className="inline-flex items-center gap-1.5 mt-3 px-4 py-2 rounded-lg text-[13px] font-medium text-[var(--accent)] bg-[var(--accent-subtle)] cursor-pointer hover:bg-[var(--accent-light)] transition-colors">
+                  <Upload size={14} /> Browse Files
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt"
+                    className="hidden"
+                    onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+                  />
+                </label>
+              </>
+            )}
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-[var(--danger-light)] border border-[var(--danger)]">
+              <AlertTriangle size={14} className="text-[var(--danger)] flex-shrink-0" />
+              <p className="text-[13px] text-[var(--danger)]">{error}</p>
+            </div>
+          )}
+
+          {/* Info */}
+          <div className="p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+            <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed">
+              The AI will extract product name, brand, CM, dates, ingredients, packaging details, claims, and other brief fields from your document.
+              You can review and edit all fields before submitting.
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 p-5 border-t border-[var(--border-subtle)]">
+          <button onClick={onClose} className="btn-ghost px-4 py-2 text-[14px]">Cancel</button>
+          <button
+            onClick={handleParse}
+            disabled={!file || parsing}
+            className="btn-primary flex items-center gap-2 px-5 py-2 text-[14px] disabled:opacity-40"
+          >
+            {parsing ? (
+              <>
+                <Loader2 size={14} className="animate-spin" /> Parsing with AI...
+              </>
+            ) : (
+              <>
+                <Sparkles size={14} /> Parse & Import
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Active Briefs Tab ─────────────────────────────────────
 function BriefsTab({
   items,
@@ -242,6 +443,8 @@ function BriefsTab({
   const [viewingBrief, setViewingBrief] = useState<(BriefFormData & { id: string }) | null>(null)
   const [deletingBrief, setDeletingBrief] = useState<{ id: string; name: string } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importedData, setImportedData] = useState<BriefFormData | null>(null)
 
   // Convert module items to brief data
   const briefs = useMemo(() => {
@@ -332,12 +535,20 @@ function BriefsTab({
       {/* Header with New Brief button */}
       <div className="flex items-center justify-between mb-4">
         <div />
-        <button
-          onClick={() => { setEditingBrief(null); setShowNewBrief(true) }}
-          className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]"
-        >
-          <Plus size={15} /> New Brief
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center gap-1.5 btn-ghost px-4 py-2.5 rounded-full text-[13px]"
+          >
+            <Upload size={15} /> Import Brief
+          </button>
+          <button
+            onClick={() => { setEditingBrief(null); setShowNewBrief(true) }}
+            className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]"
+          >
+            <Plus size={15} /> New Brief
+          </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -405,9 +616,9 @@ function BriefsTab({
       {/* New / Edit Brief Modal */}
       <NewBriefModal
         open={showNewBrief}
-        onClose={() => { setShowNewBrief(false); setEditingBrief(null) }}
+        onClose={() => { setShowNewBrief(false); setEditingBrief(null); setImportedData(null) }}
         onSubmit={handleSubmit}
-        initialData={editingBrief}
+        initialData={editingBrief || importedData}
         isSubmitting={isSubmitting}
       />
 
@@ -423,6 +634,19 @@ function BriefsTab({
           if (viewingBrief) {
             setDeletingBrief({ id: viewingBrief.id, name: viewingBrief.projectName })
           }
+        }}
+      />
+
+      {/* Import Brief Modal */}
+      <ImportBriefModal
+        open={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImported={(data) => {
+          setShowImportModal(false)
+          setEditingBrief(null)
+          // Pre-fill the new brief form with imported data and open it
+          setImportedData(data)
+          setShowNewBrief(true)
         }}
       />
 
