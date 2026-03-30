@@ -35,7 +35,7 @@ export const io = new SocketServer(httpServer, {
 })
 
 // ─── Middleware ──────────────────────────────────────────────
-app.use(helmet({ contentSecurityPolicy: false }))
+app.use(helmet({ contentSecurityPolicy: false, frameguard: false }))
 app.use(cors({ origin: isReplit ? '*' : frontendUrl, credentials: !isReplit }))
 app.use(compression())
 app.use(morgan('dev'))
