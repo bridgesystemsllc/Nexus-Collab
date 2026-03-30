@@ -284,11 +284,14 @@ function TaskRow({
     onTaskUpdate(task.id, updates)
   }
 
+  const taskNotes = task.notes || []
+  const taskAttachments = task.attachments || []
+
   const handlePostNote = () => {
     if (!noteText.trim()) return
     onTaskUpdate(task.id, {
       notes: [
-        ...task.notes,
+        ...taskNotes,
         { user: 'You', text: noteText.trim(), createdAt: new Date().toISOString() },
       ],
     })
@@ -448,13 +451,13 @@ function TaskRow({
           )}
 
           {/* Attachments */}
-          {task.attachments.length > 0 && (
+          {taskAttachments.length > 0 && (
             <div>
               <label className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider mb-1.5 flex items-center gap-1.5 block">
                 <Paperclip size={11} /> Attachments
               </label>
               <div className="flex flex-wrap gap-2">
-                {task.attachments.map((att, i) => (
+                {taskAttachments.map((att, i) => (
                   <a
                     key={i}
                     href={att.url}
@@ -473,11 +476,11 @@ function TaskRow({
           {/* Notes */}
           <div>
             <label className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider mb-1.5 flex items-center gap-1.5 block">
-              <MessageSquare size={11} /> Notes ({task.notes.length})
+              <MessageSquare size={11} /> Notes ({taskNotes.length})
             </label>
-            {task.notes.length > 0 && (
+            {taskNotes.length > 0 && (
               <div className="space-y-2 mb-2 max-h-40 overflow-y-auto">
-                {task.notes.map((note, i) => (
+                {taskNotes.map((note, i) => (
                   <div key={i} className="p-2.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-[11px] font-semibold text-[var(--text-primary)]">
@@ -954,7 +957,7 @@ function OverviewTab({
           <div>
             <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider mb-1.5">Markets</p>
             <div className="flex flex-wrap gap-1.5">
-              {project.markets.length > 0 ? project.markets.map((m) => (
+              {(project.markets || []).length > 0 ? (project.markets || []).map((m) => (
                 <span key={m} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--accent-light)] text-[var(--accent)]">
                   {m}
                 </span>
@@ -972,7 +975,7 @@ function OverviewTab({
           Team Assignments
         </h4>
         <div className="grid grid-cols-2 gap-2">
-          {project.teamAssignments.map((tm, i) => (
+          {(project.teamAssignments || []).map((tm, i) => (
             <div
               key={i}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[var(--bg-base)] border border-[var(--border-subtle)]"
@@ -992,25 +995,38 @@ function OverviewTab({
       </div>
 
       {/* Stage Dates */}
-      {Object.keys(project.stageDates).length > 0 && (
+      {project.stageDates && Object.keys(project.stageDates).length > 0 && (
         <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
           <h4 className="text-[12px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">
             Stage Target Dates
           </h4>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {STAGES.map((s) =>
-              project.stageDates[s.key] ? (
-                <div key={s.key} className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.color }} />
-                  <div>
-                    <p className="text-[11px] text-[var(--text-tertiary)]">{s.label}</p>
-                    <p className="text-[13px] text-[var(--text-primary)] tabular-nums">
-                      {formatDate(project.stageDates[s.key])}
-                    </p>
+            {(() => {
+              const STAGE_DATE_KEYS: Record<string, string> = {
+                '0': 'stage0Target',
+                '1': 'stage1Target',
+                '1/2': 'gate12Target',
+                '2': 'stage2Target',
+                '2/3': 'gate23Target',
+                '3': 'stage3Target',
+                '4': 'stage4Target',
+              }
+              return STAGES.map((s) => {
+                const dateKey = STAGE_DATE_KEYS[s.key]
+                const dateVal = dateKey ? project.stageDates[dateKey] : undefined
+                return dateVal ? (
+                  <div key={s.key} className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.color }} />
+                    <div>
+                      <p className="text-[11px] text-[var(--text-tertiary)]">{s.label}</p>
+                      <p className="text-[13px] text-[var(--text-primary)] tabular-nums">
+                        {formatDate(dateVal)}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ) : null
-            )}
+                ) : null
+              })
+            })()}
           </div>
         </div>
       )}
@@ -1023,8 +1039,8 @@ function OverviewTab({
 function DocumentsTab({ project }: { project: NPDProject }) {
   const allDocs = useMemo(() => {
     const docs: { taskNumber: string; taskName: string; stageKey: string; name: string; url: string }[] = []
-    project.tasks.forEach((t) => {
-      t.attachments.forEach((a) => {
+    ;(project.tasks || []).forEach((t) => {
+      ;(t.attachments || []).forEach((a) => {
         docs.push({
           taskNumber: t.taskNumber,
           taskName: t.taskName,
@@ -1098,7 +1114,8 @@ function DocumentsTab({ project }: { project: NPDProject }) {
 /* ─────────────────────── Tab: Activity Log ─────────────────────────── */
 
 function ActivityLogTab({ project }: { project: NPDProject }) {
-  if (project.activityLog.length === 0) {
+  const log = project.activityLog || []
+  if (log.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <Clock size={40} className="text-[var(--text-tertiary)] mb-3" />
@@ -1116,7 +1133,7 @@ function ActivityLogTab({ project }: { project: NPDProject }) {
       <div className="absolute left-4 top-2 bottom-2 w-px bg-[var(--border-default)]" />
 
       <div className="space-y-0">
-        {project.activityLog.map((entry, i) => {
+        {log.map((entry, i) => {
           const stageColor = entry.stage ? STAGE_COLOR_MAP[entry.stage] : 'var(--accent)'
           return (
             <div key={i} className="relative flex gap-4 py-3 pl-1">
@@ -1169,15 +1186,22 @@ export function NPDProjectDetail({
 
   if (!open || !project) return null
 
-  const allCountable = project.tasks.filter((t) => t.status !== 'skipped')
+  // Defensive: ensure arrays exist (DB JSON may lack these fields)
+  const tasks = project.tasks || []
+  const gateApprovals = project.gateApprovals || []
+  const teamAssignments = project.teamAssignments || []
+  const activityLog = project.activityLog || []
+  const markets = project.markets || []
+
+  const allCountable = tasks.filter((t) => t.status !== 'skipped')
   const allCompleted = allCountable.filter((t) => t.status === 'complete').length
   const overallPercent = allCountable.length > 0
     ? Math.round((allCompleted / allCountable.length) * 100)
     : 0
 
-  const activeStage = getActiveStage(project.tasks, project.gateApprovals)
+  const activeStage = getActiveStage(tasks, gateApprovals)
 
-  const launchManager = project.teamAssignments.find(
+  const launchManager = teamAssignments.find(
     (t) => t.role.toLowerCase().includes('launch manager') || t.role.toLowerCase().includes('project manager')
   )
 
@@ -1281,10 +1305,10 @@ export function NPDProjectDetail({
           {/* Row 5: Stage pipeline */}
           <div className="flex items-center gap-1">
             {STAGES.map((stage, idx) => {
-              const progress = stageProgress(project.tasks, stage.key)
-              const locked = !isStageUnlocked(stage.key, project.tasks, project.gateApprovals)
+              const progress = stageProgress(tasks, stage.key)
+              const locked = !isStageUnlocked(stage.key, tasks, gateApprovals)
               const isActive = stage.key === activeStage
-              const completed = progress === 100 && (!stage.isGate || isGateApproved(project.gateApprovals, stage.key))
+              const completed = progress === 100 && (!stage.isGate || isGateApproved(gateApprovals, stage.key))
 
               return (
                 <div key={stage.key} className="flex items-center">
@@ -1380,17 +1404,17 @@ export function NPDProjectDetail({
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 py-5">
           {activeTab === 'checklist' && (
             <ChecklistTab
-              project={project}
+              project={{ ...project, tasks, gateApprovals, teamAssignments, activityLog, markets }}
               onTaskUpdate={onTaskUpdate}
               onGateApprove={onGateApprove}
               stageRefs={stageRefs}
             />
           )}
           {activeTab === 'overview' && (
-            <OverviewTab project={project} onProjectUpdate={onProjectUpdate} />
+            <OverviewTab project={{ ...project, tasks, gateApprovals, teamAssignments, activityLog, markets }} onProjectUpdate={onProjectUpdate} />
           )}
-          {activeTab === 'documents' && <DocumentsTab project={project} />}
-          {activeTab === 'activity' && <ActivityLogTab project={project} />}
+          {activeTab === 'documents' && <DocumentsTab project={{ ...project, tasks, gateApprovals, teamAssignments, activityLog, markets }} />}
+          {activeTab === 'activity' && <ActivityLogTab project={{ ...project, tasks, gateApprovals, teamAssignments, activityLog, markets }} />}
         </div>
       </div>
     </div>

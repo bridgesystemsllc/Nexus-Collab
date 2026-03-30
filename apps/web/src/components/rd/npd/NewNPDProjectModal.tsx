@@ -576,12 +576,13 @@ function StepStageDates({ form, setForm }: StepProps) {
 // ─── Main Modal ────────────────────────────────────────────
 export function NewNPDProjectModal({ open, onClose, onSubmit, isSubmitting }: Props) {
   const [step, setStep] = useState(0)
-  const [form, setForm] = useState<NPDFormData>(EMPTY_NPD_FORM)
+  const [form, setForm] = useState<NPDFormData>(() => JSON.parse(JSON.stringify(EMPTY_NPD_FORM)))
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (open) {
-      setForm(EMPTY_NPD_FORM)
+      // Deep clone to prevent mutation of the default form
+      setForm(JSON.parse(JSON.stringify(EMPTY_NPD_FORM)))
       setStep(0)
       setErrors({})
     }
