@@ -13,6 +13,7 @@ import {
   Loader2,
   Lock,
   MoreHorizontal,
+  Palette,
   Plus,
   Repeat2,
   Rocket,
@@ -35,19 +36,19 @@ import { NewTransferModal, type TransferFormData } from '@/components/rd/NewTran
 import { FormulationDetailModal } from '@/components/rd/FormulationDetailModal'
 import { NewFormulationModal, type FormulationFormData } from '@/components/rd/NewFormulationModal'
 import { api } from '@/lib/api'
-import { NewNPDProjectModal, type NPDFormData } from '@/components/rd/npd/NewNPDProjectModal'
-import { NPDProjectDetail } from '@/components/rd/npd/NPDProjectDetail'
-import { STAGE_CONFIG, createDefaultTasks, getStageProgress, getOverallProgress, getCurrentStage, isStageUnlocked, type NPDTask } from '@/components/rd/npd/npdChecklist'
+import { NewArtworkModal } from '@/components/rd/artwork/NewArtworkModal'
+import { ArtworkProjectDetail } from '@/components/rd/artwork/ArtworkProjectDetail'
+import { ARTWORK_STATUS_COLORS, DEFAULT_COMPLIANCE_ITEMS, generateRetailerComplianceItems, getApprovalChainSummary, type ArtworkProject } from '@/components/rd/artwork/artworkData'
 
 // ─── Types ─────────────────────────────────────────────────
-type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd'
+type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations' | 'artwork'
 
 const TABS: { key: RDTab; label: string; icon: React.ElementType }[] = [
   { key: 'briefs', label: 'Active Briefs', icon: FileText },
   { key: 'cm', label: 'CM Productivity', icon: Users },
   { key: 'transfers', label: 'Tech Transfers', icon: Repeat2 },
   { key: 'formulations', label: 'Formulations', icon: FlaskConical },
-  { key: 'npd', label: 'NPD', icon: Rocket },
+  { key: 'artwork', label: 'Artwork', icon: Palette },
 ]
 
 // ─── Shared Utilities ──────────────────────────────────────
@@ -1556,6 +1557,199 @@ function NPDTab({
   )
 }
 
+// ─── Artwork Tab ──────────────────────────────────────────
+function ArtworkTab({
+  items,
+  moduleId,
+  briefs,
+  onRefresh,
+}: {
+  items: any[]
+  moduleId: string | null
+  briefs: any[]
+  onRefresh: () => void
+}) {
+  const [showNewArtwork, setShowNewArtwork] = useState(false)
+  const [viewingArtwork, setViewingArtwork] = useState<any>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const projects = useMemo(() => {
+    return items.map((item: any) => ({
+      id: item.id,
+      moduleId: item.moduleId,
+      ...item.data,
+    }))
+  }, [items])
+
+  const handleCreate = async (data: any) => {
+    if (!moduleId) return
+    setIsSubmitting(true)
+    try {
+      // Generate compliance checklist
+      const staticItems = DEFAULT_COMPLIANCE_ITEMS.map((item, i) => ({
+        ...item,
+        id: `comp-${Date.now()}-${i}`,
+      }))
+      const retailerItems = generateRetailerComplianceItems(data.targetRetailers || []).map((item, i) => ({
+        ...item,
+        id: `comp-ret-${Date.now()}-${i}`,
+      }))
+
+      const projectData: any = {
+        ...data,
+        currentVersion: 'v1.0',
+        status: 'Draft',
+        versions: [],
+        submissions: [],
+        complianceChecklist: [...staticItems, ...retailerItems],
+        activityLog: [{
+          user: 'System',
+          action: 'Artwork project created',
+          timestamp: new Date().toISOString(),
+        }],
+        createdBy: 'You',
+        createdAt: new Date().toISOString(),
+      }
+
+      await api.post(`/departments/_/modules/${moduleId}/items`, {
+        data: projectData,
+        status: 'Draft',
+      })
+
+      setShowNewArtwork(false)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to create artwork project:', err)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleProjectUpdate = async (updates: any) => {
+    if (!viewingArtwork) return
+    const item = items.find((i: any) => i.id === viewingArtwork.id)
+    if (!item) return
+
+    const updatedProject = { ...viewingArtwork, ...updates }
+    try {
+      await api.patch(`/departments/_/modules/${item.moduleId}/items/${viewingArtwork.id}`, {
+        data: updatedProject,
+      })
+      setViewingArtwork(updatedProject)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to update artwork project:', err)
+    }
+  }
+
+  const formatDate = (d: string) => {
+    if (!d) return '—'
+    try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) } catch { return d }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <div />
+        <button
+          onClick={() => setShowNewArtwork(true)}
+          className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]"
+        >
+          <Plus size={15} /> New Artwork Project
+        </button>
+      </div>
+
+      {projects.length === 0 ? (
+        <div className="text-center py-12">
+          <Palette size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
+          <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No artwork projects yet</p>
+          <button onClick={() => setShowNewArtwork(true)} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">
+            Create Your First Artwork Project
+          </button>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+          <table className="nexus-table">
+            <thead>
+              <tr>
+                <th>Artwork Name</th>
+                <th>Brand</th>
+                <th>Channel</th>
+                <th>Version</th>
+                <th>Status</th>
+                <th>Approval</th>
+                <th>Due Date</th>
+                <th>Last Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projects.map((proj: any) => {
+                const statusColor = ARTWORK_STATUS_COLORS[proj.status] || '#6B7280'
+                const latestVersion = (proj.versions || [])[(proj.versions || []).length - 1]
+                const approvals = latestVersion?.approvals || proj.approvalChain?.map((a: any) => ({ ...a, status: 'pending' })) || []
+                const { approved, total } = getApprovalChainSummary(approvals)
+
+                return (
+                  <tr key={proj.id} className="clickable-row" onClick={() => setViewingArtwork(proj)}>
+                    <td className="font-medium text-[var(--text-primary)]">{proj.artworkName || '—'}</td>
+                    <td><span className="badge badge-accent text-[11px]">{proj.brand || '—'}</span></td>
+                    <td>
+                      <div className="flex gap-1 flex-wrap">
+                        {(proj.channels || []).map((ch: string) => (
+                          <span key={ch} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">{ch}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="text-[12px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'rgba(124,58,237,0.12)', color: '#7C3AED' }}>
+                        {proj.currentVersion || 'v1.0'}
+                      </span>
+                    </td>
+                    <td>
+                      <span className="badge text-[11px]" style={{ background: `${statusColor}18`, color: statusColor }}>{proj.status || 'Draft'}</span>
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-1">
+                        {approvals.slice(0, 5).map((a: any, i: number) => (
+                          <div
+                            key={i}
+                            className="w-2 h-2 rounded-full"
+                            style={{
+                              background: a.status === 'approved' ? '#10B981' : a.status === 'rejected' ? '#EF4444' : 'var(--border-strong)',
+                            }}
+                            title={`${a.role}: ${a.status}`}
+                          />
+                        ))}
+                        <span className="text-[10px] text-[var(--text-tertiary)] ml-1">{approved}/{total}</span>
+                      </div>
+                    </td>
+                    <td className="text-[13px] text-[var(--text-secondary)]">{formatDate(proj.submissionDueDate)}</td>
+                    <td className="text-[13px] text-[var(--text-secondary)]">{formatDate(proj.createdAt)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <NewArtworkModal
+        open={showNewArtwork}
+        onClose={() => setShowNewArtwork(false)}
+        onSubmit={handleCreate}
+        isSubmitting={isSubmitting}
+      />
+
+      <ArtworkProjectDetail
+        open={!!viewingArtwork}
+        project={viewingArtwork}
+        onClose={() => setViewingArtwork(null)}
+        onProjectUpdate={handleProjectUpdate}
+      />
+    </div>
+  )
+}
+
 // ─── Main Page ─────────────────────────────────────────────
 export function RDPage() {
   const [activeTab, setActiveTab] = useState<RDTab>('briefs')
@@ -1573,22 +1767,22 @@ export function RDPage() {
 
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { briefs: [], cm: [], transfers: [], formulations: [], briefsModuleId: null, transfersModuleId: null }
+      return { briefs: [], cm: [], transfers: [], formulations: [], artwork: [], briefsModuleId: null, artworkModuleId: null }
     }
     const modules = deptDetail.modules as any[]
     const find = (type: string) =>
       modules.find((m: any) => m.type === type)?.items || []
     const briefsModule = modules.find((m: any) => m.type === 'BRIEFS')
-    const transfersModule = modules.find((m: any) => m.type === 'TECH_TRANSFERS')
+    const artworkModule = modules.find((m: any) => m.type === 'ARTWORK_TRACKER')
 
     return {
       briefs: find('BRIEFS'),
       cm: find('CM_PRODUCTIVITY'),
       transfers: find('TECH_TRANSFERS'),
       formulations: find('FORMULATIONS'),
-      npd: find('NPD_PIPELINE'),
+      artwork: find('ARTWORK_TRACKER'),
       briefsModuleId: briefsModule?.id || null,
-      transfersModuleId: transfersModule?.id || null,
+      artworkModuleId: artworkModule?.id || null,
     }
   }, [deptDetail])
 
@@ -1597,7 +1791,7 @@ export function RDPage() {
     cm: moduleData.cm,
     transfers: moduleData.transfers,
     formulations: moduleData.formulations,
-    npd: moduleData.npd,
+    artwork: moduleData.artwork,
   }
 
   return (
@@ -1641,12 +1835,13 @@ export function RDPage() {
           ) : activeTab === 'cm' ? (
             <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
           ) : activeTab === 'transfers' ? (
-            <TransfersTab
-              items={tabContent.transfers}
-              moduleId={moduleData.transfersModuleId}
+            <TransfersTab items={tabContent.transfers} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
+          ) : activeTab === 'artwork' ? (
+            <ArtworkTab
+              items={tabContent.artwork}
+              moduleId={moduleData.artworkModuleId}
               briefs={moduleData.briefs}
               onRefresh={() => refetchDept()}
-              onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })}
             />
           ) : (
             <FormulationsTab items={moduleData.formulations} moduleId={moduleData.formulationsModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
