@@ -115,6 +115,27 @@ export function useAIAction() {
   })
 }
 
+// ─── Onboarding ────────────────────────────────────────────
+export function useOnboardingStatus() {
+  return useQuery({
+    queryKey: ['onboarding-status'],
+    queryFn: () => api.get('/onboarding/status').then(r => r.data),
+    staleTime: 60_000,
+  })
+}
+
+export function useSubmitOnboarding() {
+  return useMutation({
+    mutationFn: (data: any) => api.post('/onboarding', data).then(r => r.data),
+  })
+}
+
+export function useCheckSlug() {
+  return useMutation({
+    mutationFn: (slug: string) => api.get(`/onboarding/check-slug/${slug}`).then(r => r.data),
+  })
+}
+
 // ─── Pulse ──────────────────────────────────────────────────
 export function usePulse(filters?: Record<string, string>) {
   const params = new URLSearchParams(filters || {}).toString()

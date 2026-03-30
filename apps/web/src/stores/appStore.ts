@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 type Page =
+  | 'onboarding'
   | 'dashboard'
   | 'everything'
   | 'rd'
