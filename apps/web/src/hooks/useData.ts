@@ -18,6 +18,76 @@ export function useCreateDepartment() {
   })
 }
 
+// ─── Members ───────────────────────────────────────────────
+export function useMembers() {
+  return useQuery({ queryKey: ['members'], queryFn: () => api.get('/members').then(r => r.data) })
+}
+
+export function useCreateMember() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: any) => api.post('/members', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['members'] }),
+  })
+}
+
+export function useUpdateMember() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: any) => api.patch(`/members/${id}`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+    },
+  })
+}
+
+export function useDeleteMember() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/members/${id}`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+    },
+  })
+}
+
+export function useInviteMember() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: any) => api.post('/members/invite', data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['invites'] })
+    },
+  })
+}
+
+export function useInvites() {
+  return useQuery({ queryKey: ['invites'], queryFn: () => api.get('/members/invites').then(r => r.data) })
+}
+
+export function useRevokeInvite() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/members/invites/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['invites'] }),
+  })
+}
+
+export function useAssignDepartment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ memberId, departmentId }: { memberId: string; departmentId: string }) =>
+      api.post(`/members/${memberId}/assign-department`, { departmentId }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+    },
+  })
+}
+
 // ─── Tasks ──────────────────────────────────────────────────
 export function useTasks(filters?: Record<string, string>) {
   const params = new URLSearchParams(filters || {}).toString()
