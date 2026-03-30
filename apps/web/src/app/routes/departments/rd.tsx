@@ -20,6 +20,7 @@ import {
   Target,
   Trash2,
   Users,
+  X,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { NewBriefModal, type BriefFormData, EMPTY_FORM } from '@/components/briefs/NewBriefModal'
@@ -507,81 +508,305 @@ function CMTab({ items, moduleId, onRefresh, briefItems }: { items: any[]; modul
   )
 }
 
-// ─── Tech Transfers Tab (Expanded) ─────────────────────────
-function TransfersTab({ items, moduleId, onRefresh, briefItems, cmItems }: {
-  items: any[]; moduleId: string | null; onRefresh: () => void; briefItems: any[]; cmItems: any[]
+// ─── New/Edit Transfer Modal ──────────────────────────────
+function NewTransferModal({
+  open,
+  onClose,
+  onSubmit,
+  initialData,
+  isSubmitting,
+  briefs,
+}: {
+  open: boolean
+  onClose: () => void
+  onSubmit: (data: any) => void
+  initialData?: any
+  isSubmitting: boolean
+  briefs: any[]
+}) {
+  const [form, setForm] = useState({
+    product: '',
+    from: '',
+    to: '',
+    status: 'Planning',
+    progress: 0,
+    target: '',
+    docs: 0,
+    linkedBriefId: '',
+    notes: '',
+  })
+
+  // Reset form when modal opens
+  useState(() => {
+    if (open && initialData) {
+      setForm({ ...form, ...initialData })
+    } else if (open) {
+      setForm({ product: '', from: '', to: '', status: 'Planning', progress: 0, target: '', docs: 0, linkedBriefId: '', notes: '' })
+    }
+  })
+
+  // Sync when initialData changes
+  useMemo(() => {
+    if (open && initialData) {
+      setForm({ product: initialData.product || '', from: initialData.from || '', to: initialData.to || '', status: initialData.status || 'Planning', progress: initialData.progress || 0, target: initialData.target || '', docs: initialData.docs || 0, linkedBriefId: initialData.linkedBriefId || '', notes: initialData.notes || '' })
+    } else if (open) {
+      setForm({ product: '', from: '', to: '', status: 'Planning', progress: 0, target: '', docs: 0, linkedBriefId: '', notes: '' })
+    }
+  }, [open, initialData])
+
+  if (!open) return null
+
+  // When a brief is selected, auto-fill product name and CM
+  const handleBriefSelect = (briefId: string) => {
+    setForm(prev => ({ ...prev, linkedBriefId: briefId }))
+    if (briefId) {
+      const brief = briefs.find((b: any) => b.id === briefId)
+      if (brief) {
+        const d = brief.data || brief
+        const updates: any = { linkedBriefId: briefId }
+        if (!form.product && d.projectName) updates.product = d.projectName
+        if (!form.to && d.contractManufacturer) updates.to = d.contractManufacturer
+        setForm(prev => ({ ...prev, ...updates }))
+      }
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b border-[var(--border-subtle)]">
+          <h2 className="text-[16px] font-semibold text-[var(--text-primary)]">
+            {initialData ? 'Edit Tech Transfer' : 'New Tech Transfer'}
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Linked Brief — the key feature */}
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              Linked Active Brief
+            </label>
+            <select
+              value={form.linkedBriefId}
+              onChange={(e) => handleBriefSelect(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+            >
+              <option value="">— Select an Active Brief (optional) —</option>
+              {briefs.map((item: any) => {
+                const d = item.data || item
+                const name = d.projectName || d.name || 'Unnamed Brief'
+                const brand = d.brand || ''
+                return (
+                  <option key={item.id} value={item.id}>
+                    {name}{brand ? ` — ${brand}` : ''}{d.contractManufacturer ? ` (${d.contractManufacturer})` : ''}
+                  </option>
+                )
+              })}
+            </select>
+            {form.linkedBriefId && (
+              <p className="text-[11px] text-[var(--success)] mt-1 flex items-center gap-1">
+                <FileText size={10} /> Brief linked — product and CM auto-filled
+              </p>
+            )}
+          </div>
+
+          {/* Product Name */}
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              Product Name <span className="text-[var(--danger)]">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.product}
+              onChange={(e) => setForm({ ...form, product: e.target.value })}
+              placeholder="e.g. Goddess Strength Shampoo 11oz"
+              required
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+            />
+          </div>
+
+          {/* From / To */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                From <span className="text-[var(--danger)]">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.from}
+                onChange={(e) => setForm({ ...form, from: e.target.value })}
+                placeholder="Source CM / facility"
+                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                To <span className="text-[var(--danger)]">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.to}
+                onChange={(e) => setForm({ ...form, to: e.target.value })}
+                placeholder="Destination CM / facility"
+                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Status / Target Date */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">Status</label>
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+              >
+                <option value="Planning">Planning</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Complete">Complete</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">Target Date</label>
+              <input
+                type="date"
+                value={form.target}
+                onChange={(e) => setForm({ ...form, target: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">Notes</label>
+            <textarea
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              rows={3}
+              placeholder="Additional details about this transfer..."
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-input)] border border-[var(--border-default)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors resize-y"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 p-5 border-t border-[var(--border-subtle)]">
+          <button onClick={onClose} className="btn-ghost px-4 py-2 text-[14px]">Cancel</button>
+          <button
+            onClick={() => onSubmit(form)}
+            disabled={isSubmitting || !form.product.trim() || !form.from.trim() || !form.to.trim()}
+            className="btn-primary px-5 py-2 text-[14px] disabled:opacity-40"
+          >
+            {isSubmitting ? 'Saving...' : initialData ? 'Save Changes' : 'Create Transfer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Tech Transfers Tab (with create, link briefs, list/grid) ──
+function TransfersTab({
+  items,
+  moduleId,
+  briefs,
+  onRefresh,
+  onSelect,
+}: {
+  items: any[]
+  moduleId: string | null
+  briefs: any[]
+  onRefresh: () => void
+  onSelect: (item: any) => void
 }) {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [showNewTransfer, setShowNewTransfer] = useState(false)
   const [editingTransfer, setEditingTransfer] = useState<any>(null)
-  const [viewingTransfer, setViewingTransfer] = useState<any>(null)
-  const [deletingItem, setDeletingItem] = useState<{ id: string; name: string } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const transfers = useMemo(() => items.map((item: any) => ({ id: item.id, moduleId: item.moduleId, ...item.data })), [items])
+  // Build a brief lookup map for display
+  const briefMap = useMemo(() => {
+    const map: Record<string, any> = {}
+    briefs.forEach((item: any) => {
+      map[item.id] = item.data || item
+    })
+    return map
+  }, [briefs])
 
-  const handleSubmit = async (data: TransferFormData) => {
+  const handleSubmit = async (data: any) => {
     if (!moduleId) return
     setIsSubmitting(true)
     try {
       if (editingTransfer) {
-        await api.patch(`/departments/_/modules/${editingTransfer.moduleId}/items/${editingTransfer.id}`, { data, status: data.status || 'Draft' })
+        const item = items.find((i: any) => i.id === editingTransfer.id)
+        if (item) {
+          await api.patch(`/departments/_/modules/${item.moduleId}/items/${editingTransfer.id}`, {
+            data: { ...data },
+            status: data.status,
+          })
+        }
       } else {
-        await api.post(`/departments/_/modules/${moduleId}/items`, { data: { ...data, status: 'Draft', progress: 0 }, status: 'Draft' })
+        await api.post(`/departments/_/modules/${moduleId}/items`, {
+          data: { ...data, docs: 0 },
+          status: data.status,
+        })
       }
-      setShowNewTransfer(false); setEditingTransfer(null); onRefresh()
-    } catch (err) { console.error('Failed to save transfer:', err) } finally { setIsSubmitting(false) }
-  }
-
-  const handleDelete = async () => {
-    if (!deletingItem) return
-    try {
-      const item = items.find((i: any) => i.id === deletingItem.id)
-      if (item) await api.delete(`/departments/_/modules/${item.moduleId}/items/${deletingItem.id}`)
-      setDeletingItem(null); setViewingTransfer(null); onRefresh()
-    } catch (err) { console.error('Failed to delete transfer:', err) }
-  }
-
-  const handleStatusChange = async (transfer: any, newStatus: string) => {
-    try {
-      const updatedLog = [...(transfer.activityLog || []), { author: 'System', authorInitial: 'S', action: `Status changed: ${transfer.status} → ${newStatus}`, timestamp: new Date().toISOString(), type: 'status_change' }]
-      await api.patch(`/departments/_/modules/${transfer.moduleId}/items/${transfer.id}`, { data: { ...transfer, status: newStatus, activityLog: updatedLog }, status: newStatus })
+      setShowNewTransfer(false)
+      setEditingTransfer(null)
       onRefresh()
-    } catch (err) { console.error('Failed to update status:', err) }
+    } catch (err) {
+      console.error('Failed to save transfer:', err)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const handleMilestoneComplete = async (transfer: any, index: number) => {
-    try {
-      const milestones = [...(transfer.milestones || [])]
-      milestones[index] = { ...milestones[index], completed: true, completedDate: new Date().toISOString() }
-      const completedCount = milestones.filter((m: any) => m.completed).length
-      const progress = Math.round((completedCount / milestones.length) * 100)
-      const updatedLog = [...(transfer.activityLog || []), { author: 'System', authorInitial: 'S', action: `Milestone completed: ${milestones[index].label}`, timestamp: new Date().toISOString(), type: 'milestone_completed' }]
-      await api.patch(`/departments/_/modules/${transfer.moduleId}/items/${transfer.id}`, { data: { ...transfer, milestones, progress, activityLog: updatedLog } })
-      onRefresh()
-    } catch (err) { console.error('Failed to complete milestone:', err) }
+  const handleEdit = (item: any) => {
+    setEditingTransfer({ id: item.id, ...item.data })
+    setShowNewTransfer(true)
+  }
+
+  const getLinkedBriefName = (d: any) => {
+    if (!d.linkedBriefId) return null
+    const brief = briefMap[d.linkedBriefId]
+    return brief ? (brief.projectName || brief.name) : null
   }
 
   return (
     <div>
+      {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex rounded-[8px] border border-[var(--border-subtle)] overflow-hidden">
-          {(['grid', 'list'] as const).map((mode) => (
-            <button key={mode} onClick={() => setViewMode(mode)} className={`px-3 py-1.5 text-[12px] font-medium transition-colors ${viewMode === mode ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'}`}>
-              {mode.charAt(0).toUpperCase() + mode.slice(1)}
-            </button>
-          ))}
+        <div />
+        <div className="flex items-center gap-3">
+          <div className="flex rounded-[8px] border border-[var(--border-subtle)] overflow-hidden">
+            <button onClick={() => setViewMode('grid')} className={`px-3 py-1.5 text-[12px] font-medium ${viewMode === 'grid' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'}`}>Grid</button>
+            <button onClick={() => setViewMode('list')} className={`px-3 py-1.5 text-[12px] font-medium ${viewMode === 'list' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'}`}>List</button>
+          </div>
+          <button
+            onClick={() => { setEditingTransfer(null); setShowNewTransfer(true) }}
+            className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]"
+          >
+            <Plus size={15} /> New Transfer
+          </button>
         </div>
-        <button onClick={() => { setEditingTransfer(null); setShowNewTransfer(true) }} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
-          <Plus size={15} /> New Tech Transfer
-        </button>
       </div>
 
-      {transfers.length === 0 ? (
+      {items.length === 0 ? (
         <div className="text-center py-12">
           <Repeat2 size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
           <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No tech transfers yet</p>
-          <button onClick={() => { setEditingTransfer(null); setShowNewTransfer(true) }} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Create First Transfer</button>
+          <button
+            onClick={() => { setEditingTransfer(null); setShowNewTransfer(true) }}
+            className="btn-primary px-5 py-2.5 rounded-lg text-[14px]"
+          >
+            Create Your First Transfer
+          </button>
         </div>
       ) : viewMode === 'list' ? (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
@@ -591,6 +816,7 @@ function TransfersTab({ items, moduleId, onRefresh, briefItems, cmItems }: {
                 <th>Product</th>
                 <th>Brand</th>
                 <th>From → To</th>
+                <th>Linked Brief</th>
                 <th>Status</th>
                 <th>Priority</th>
                 <th>Progress</th>
@@ -601,204 +827,39 @@ function TransfersTab({ items, moduleId, onRefresh, briefItems, cmItems }: {
               </tr>
             </thead>
             <tbody>
-              {transfers.map((t: any) => (
-                <tr key={t.id} className="clickable-row" onClick={() => setViewingTransfer(t)}>
-                  <td className="font-medium text-[14px] text-[var(--text-primary)]">{t.product}</td>
-                  <td>{t.brand ? <span className="badge badge-info text-[10px]">{t.brand}</span> : '—'}</td>
-                  <td className="text-[14px] text-[var(--text-secondary)]">{t.from || t.fromCM} → {t.to || t.toCM}</td>
-                  <td><StatusBadge status={t.status} /></td>
-                  <td>{t.priority ? <StatusBadge status={t.priority} /> : '—'}</td>
-                  <td>
-                    <div className="flex items-center gap-2 min-w-[100px]">
-                      <div className="h-1.5 flex-1 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${t.progress || 0}%`, background: t.progress === 100 ? 'var(--success)' : 'var(--accent)' }} />
-                      </div>
-                      <span className="text-[12px] tabular-nums text-[var(--text-secondary)]">{t.progress || 0}%</span>
-                    </div>
-                  </td>
-                  <td>{t.linkedBriefName ? <span className="badge badge-accent text-[10px]">{t.linkedBriefName}</span> : <span className="text-[var(--text-tertiary)] text-[12px]">None</span>}</td>
-                  <td className="text-[14px] text-[var(--accent)] tabular-nums">{(t.files?.length || t.docs || 0) + (t.sharepointLinks?.length || 0)}</td>
-                  <td>
-                    <div className="flex -space-x-1.5">
-                      {(t.teamMembers || []).slice(0, 3).map((m: any, i: number) => (
-                        <div key={i} className="w-6 h-6 rounded-full bg-[var(--accent-light)] border-2 border-[var(--bg-elevated)] flex items-center justify-center text-[9px] font-semibold text-[var(--accent)]">
-                          {m.name?.charAt(0)?.toUpperCase() || '?'}
-                        </div>
-                      ))}
-                      {(t.teamMembers?.length || 0) > 3 && <span className="text-[10px] text-[var(--text-tertiary)] ml-1">+{t.teamMembers.length - 3}</span>}
-                    </div>
-                  </td>
-                  <td>
-                    <ActionsMenu actions={[
-                      { label: 'View', icon: Eye, onClick: () => setViewingTransfer(t) },
-                      { label: 'Edit', icon: Edit3, onClick: () => { setEditingTransfer(t); setShowNewTransfer(true) } },
-                      { label: 'Delete', icon: Trash2, onClick: () => setDeletingItem({ id: t.id, name: t.product }), danger: true },
-                    ]} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {transfers.map((t: any) => (
-            <div key={t.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => setViewingTransfer(t)}>
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium text-sm text-[var(--text-primary)]">{t.product}</h3>
-                <StatusBadge status={t.status} />
-              </div>
-              {t.brand && <span className="badge badge-info text-[10px]">{t.brand}</span>}
-              {t.priority && t.priority !== 'Standard' && <span className="ml-1 badge text-[10px]" style={{ background: t.priority === 'Critical' ? 'var(--danger-light)' : 'var(--warning-light)', color: t.priority === 'Critical' ? 'var(--danger)' : 'var(--warning)' }}>{t.priority}</span>}
-              <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                <span className="truncate">{t.from || t.fromCM}</span>
-                <ArrowRight size={12} className="text-[var(--accent)] flex-shrink-0" />
-                <span className="truncate">{t.to || t.toCM}</span>
-              </div>
-              <div>
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-[var(--text-tertiary)]">Progress</span>
-                  <span className="tabular-nums text-[var(--text-secondary)]">{t.progress || 0}%</span>
-                </div>
-                <div className="h-2 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${t.progress || 0}%`, background: t.progress === 100 ? 'var(--success)' : 'var(--accent)' }} />
-                </div>
-              </div>
-              <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
-                <span className="flex items-center gap-1"><Clock size={11} /> {t.target || t.targetCompletionDate || '—'}</span>
-                <span>{(t.files?.length || t.docs || 0)} docs</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <TransferDetailModal open={!!viewingTransfer} transfer={viewingTransfer} onClose={() => setViewingTransfer(null)} onEdit={() => { if (viewingTransfer) { setEditingTransfer(viewingTransfer); setViewingTransfer(null); setShowNewTransfer(true) } }} onDelete={() => { if (viewingTransfer) setDeletingItem({ id: viewingTransfer.id, name: viewingTransfer.product }) }} onStatusChange={(s) => { if (viewingTransfer) handleStatusChange(viewingTransfer, s) }} onMilestoneComplete={(i) => { if (viewingTransfer) handleMilestoneComplete(viewingTransfer, i) }} briefItems={briefItems} />
-      <NewTransferModal open={showNewTransfer} onClose={() => { setShowNewTransfer(false); setEditingTransfer(null) }} onSubmit={handleSubmit} initialData={editingTransfer} isSubmitting={isSubmitting} briefItems={briefItems} cmItems={cmItems} />
-      <DeleteConfirmDialog open={!!deletingItem} itemName={deletingItem?.name || ''} onConfirm={handleDelete} onCancel={() => setDeletingItem(null)} />
-    </div>
-  )
-}
-
-// ─── Formulations Tab (Expanded) ───────────────────────────
-function FormulationsTab({ items, moduleId, onRefresh, briefItems }: {
-  items: any[]; moduleId: string | null; onRefresh: () => void; briefItems: any[]
-}) {
-  const [showNewFormulation, setShowNewFormulation] = useState(false)
-  const [editingFormulation, setEditingFormulation] = useState<any>(null)
-  const [viewingFormulation, setViewingFormulation] = useState<any>(null)
-  const [deletingItem, setDeletingItem] = useState<{ id: string; name: string } | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const formulations = useMemo(() => items.map((item: any) => ({ id: item.id, moduleId: item.moduleId, ...item.data })), [items])
-
-  const handleSubmit = async (data: FormulationFormData) => {
-    if (!moduleId) return
-    setIsSubmitting(true)
-    try {
-      if (editingFormulation) {
-        await api.patch(`/departments/_/modules/${editingFormulation.moduleId}/items/${editingFormulation.id}`, { data, status: data.status || 'Draft' })
-      } else {
-        await api.post(`/departments/_/modules/${moduleId}/items`, { data: { ...data, version: 'v1.0', status: 'Draft', stability: 'Pending' }, status: 'Draft' })
-      }
-      setShowNewFormulation(false); setEditingFormulation(null); onRefresh()
-    } catch (err) { console.error('Failed to save formulation:', err) } finally { setIsSubmitting(false) }
-  }
-
-  const handleDelete = async () => {
-    if (!deletingItem) return
-    try {
-      const item = items.find((i: any) => i.id === deletingItem.id)
-      if (item) await api.delete(`/departments/_/modules/${item.moduleId}/items/${deletingItem.id}`)
-      setDeletingItem(null); setViewingFormulation(null); onRefresh()
-    } catch (err) { console.error('Failed to delete formulation:', err) }
-  }
-
-  const sdsStatus = (f: any) => {
-    if (!f.sdsSheets?.length) return null
-    const now = Date.now()
-    const ninety = 90 * 86400000
-    const hasExpired = f.sdsSheets.some((s: any) => s.expiryDate && new Date(s.expiryDate).getTime() < now)
-    const hasExpiring = f.sdsSheets.some((s: any) => {
-      if (!s.expiryDate) return false
-      const exp = new Date(s.expiryDate).getTime()
-      return exp >= now && exp - now < ninety
-    })
-    if (hasExpired) return 'expired'
-    if (hasExpiring) return 'expiring'
-    return 'current'
-  }
-
-  const openIssueCount = (f: any) => (f.issues || []).filter((i: any) => i.status !== 'Resolved' && i.status !== 'Accepted Risk').length
-  const hasCriticalIssue = (f: any) => (f.issues || []).some((i: any) => i.priority === 'Critical' && i.status !== 'Resolved')
-
-  return (
-    <div>
-      <div className="flex items-center justify-end mb-4">
-        <button onClick={() => { setEditingFormulation(null); setShowNewFormulation(true) }} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
-          <Plus size={15} /> New Formulation
-        </button>
-      </div>
-
-      {formulations.length === 0 ? (
-        <div className="text-center py-12">
-          <FlaskConical size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
-          <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No formulations yet</p>
-          <button onClick={() => { setEditingFormulation(null); setShowNewFormulation(true) }} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Create First Formulation</button>
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
-          <table className="nexus-table">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Brand</th>
-                <th>Version</th>
-                <th>Status</th>
-                <th>Stability</th>
-                <th>FDA Status</th>
-                <th>Issues</th>
-                <th>SDS</th>
-                <th>Last Updated</th>
-                <th>Docs</th>
-                <th className="w-12">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {formulations.map((f: any) => {
-                const issues = openIssueCount(f)
-                const critical = hasCriticalIssue(f)
-                const sds = sdsStatus(f)
+              {items.map((item: any) => {
+                const d = item.data
+                const briefName = getLinkedBriefName(d)
                 return (
-                  <tr key={f.id} className="clickable-row" onClick={() => setViewingFormulation(f)}>
-                    <td className="font-medium text-[var(--text-primary)]">{f.product || f.productName || '—'}</td>
-                    <td>{f.brand ? <span className="badge badge-info text-[10px]">{f.brand}</span> : '—'}</td>
-                    <td><span className="badge badge-accent font-mono text-xs">{f.ver || f.version || 'v1.0'}</span></td>
-                    <td><StatusBadge status={f.status || 'Draft'} /></td>
-                    <td><StatusBadge status={f.stability || 'Pending'} /></td>
-                    <td><StatusBadge status={f.fdaStatus || 'Not Required'} /></td>
+                  <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
+                    <td className="font-medium text-[14px] text-[var(--text-primary)]">{d.product}</td>
+                    <td className="text-[14px] text-[var(--text-secondary)]">{d.from} → {d.to}</td>
                     <td>
-                      {issues > 0 ? (
-                        <span className={`badge text-[11px] ${critical ? 'badge-emergency' : 'badge-critical'}`}>
-                          {critical && <AlertTriangle size={10} />} {issues}
+                      {briefName ? (
+                        <span className="inline-flex items-center gap-1 text-[12px] text-[var(--accent)]">
+                          <FileText size={11} /> {briefName}
                         </span>
-                      ) : <span className="text-[var(--text-tertiary)] text-[12px]">0</span>}
+                      ) : (
+                        <span className="text-[12px] text-[var(--text-tertiary)]">—</span>
+                      )}
                     </td>
+                    <td><StatusBadge status={d.status} /></td>
                     <td>
-                      {f.sdsSheets?.length ? (
-                        <span className={`text-[12px] font-medium ${sds === 'expired' ? 'text-[var(--danger)]' : sds === 'expiring' ? 'text-[var(--warning)]' : 'text-[var(--text-secondary)]'}`}>
-                          {f.sdsSheets.length} {sds === 'expired' ? '⚠' : sds === 'expiring' ? '⏳' : ''}
-                        </span>
-                      ) : <span className="text-[var(--text-tertiary)] text-[12px]">0</span>}
+                      <div className="flex items-center gap-2 min-w-[100px]">
+                        <div className="h-1.5 flex-1 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${d.progress}%`, background: d.progress === 100 ? 'var(--success)' : 'var(--accent)' }} />
+                        </div>
+                        <span className="text-[12px] tabular-nums text-[var(--text-secondary)]">{d.progress}%</span>
+                      </div>
                     </td>
-                    <td className="text-[13px] text-[var(--text-secondary)]">{relativeTime(f.updatedAt || f.createdAt)}</td>
-                    <td className="text-[14px] text-[var(--accent)] tabular-nums">{(f.files?.length || 0) + (f.sharepointLinks?.length || 0)}</td>
+                    <td className="text-[14px] text-[var(--text-secondary)]">{d.target}</td>
                     <td>
-                      <ActionsMenu actions={[
-                        { label: 'View', icon: Eye, onClick: () => setViewingFormulation(f) },
-                        { label: 'Edit', icon: Edit3, onClick: () => { setEditingFormulation(f); setShowNewFormulation(true) } },
-                        { label: 'Delete', icon: Trash2, onClick: () => setDeletingItem({ id: f.id, name: f.product || f.productName }), danger: true },
-                      ]} />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleEdit(item) }}
+                        className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                      >
+                        <Edit3 size={14} />
+                      </button>
                     </td>
                   </tr>
                 )
@@ -806,46 +867,63 @@ function FormulationsTab({ items, moduleId, onRefresh, briefItems }: {
             </tbody>
           </table>
         </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {items.map((item: any) => {
+            const d = item.data
+            const briefName = getLinkedBriefName(d)
+            return (
+              <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium text-sm text-[var(--text-primary)]">{d.product}</h3>
+                  <StatusBadge status={d.status} />
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                  <span className="truncate">{d.from}</span>
+                  <ArrowRight size={12} className="text-[var(--accent)] flex-shrink-0" />
+                  <span className="truncate">{d.to}</span>
+                </div>
+
+                {/* Linked Brief chip */}
+                {briefName && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--accent-subtle)] text-[var(--accent)]">
+                      <FileText size={10} /> {briefName}
+                    </span>
+                  </div>
+                )}
+
+                {/* Progress */}
+                <div>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-[var(--text-tertiary)]">Progress</span>
+                    <span className="tabular-nums text-[var(--text-secondary)]">{d.progress}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+                    <div className="h-full rounded-full transition-all" style={{ width: `${d.progress}%`, background: d.progress === 100 ? 'var(--success)' : 'var(--accent)' }} />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
+                  <span className="flex items-center gap-1"><Clock size={11} /> Target: {d.target}</span>
+                  <button onClick={(e) => { e.stopPropagation(); handleEdit(item) }} className="text-[var(--accent)] hover:underline text-[11px]">Edit</button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       )}
 
-      <FormulationDetailModal open={!!viewingFormulation} formulation={viewingFormulation} onClose={() => setViewingFormulation(null)} onEdit={() => { if (viewingFormulation) { setEditingFormulation(viewingFormulation); setViewingFormulation(null); setShowNewFormulation(true) } }} onDelete={() => { if (viewingFormulation) setDeletingItem({ id: viewingFormulation.id, name: viewingFormulation.product || viewingFormulation.productName }) }} briefItems={briefItems} />
-      <NewFormulationModal open={showNewFormulation} onClose={() => { setShowNewFormulation(false); setEditingFormulation(null) }} onSubmit={handleSubmit} initialData={editingFormulation} isSubmitting={isSubmitting} briefItems={briefItems} />
-      <DeleteConfirmDialog open={!!deletingItem} itemName={deletingItem?.name || ''} onConfirm={handleDelete} onCancel={() => setDeletingItem(null)} />
-    </div>
-  )
-}
-
-// ─── Segmented NPD Progress Bar ───────────────────────────
-function NPDSegmentedProgress({ tasks }: { tasks: NPDTask[] }) {
-  const stages = ['0', '1', '2', '3', '4']
-  const gateKeys = ['1/2', '2/3']
-
-  return (
-    <div className="flex items-center gap-0.5 min-w-[140px]">
-      {stages.map((key, i) => {
-        const config = STAGE_CONFIG.find(s => s.key === key)
-        const progress = getStageProgress(tasks, key)
-        return (
-          <div key={key} className="flex items-center gap-0.5 flex-1">
-            <div
-              className="h-2 flex-1 rounded-sm overflow-hidden"
-              style={{ background: 'var(--border-default)' }}
-              title={`${config?.name}: ${progress}%`}
-            >
-              <div
-                className="h-full rounded-sm transition-all"
-                style={{
-                  width: `${progress}%`,
-                  background: config?.color || 'var(--accent)',
-                }}
-              />
-            </div>
-            {i < stages.length - 1 && gateKeys[i - (i > 1 ? 1 : 0)] && i > 0 && i < 4 && (
-              <span className="text-[8px] text-[var(--text-tertiary)]">•</span>
-            )}
-          </div>
-        )
-      })}
+      {/* New/Edit Transfer Modal */}
+      <NewTransferModal
+        open={showNewTransfer}
+        onClose={() => { setShowNewTransfer(false); setEditingTransfer(null) }}
+        onSubmit={handleSubmit}
+        initialData={editingTransfer}
+        isSubmitting={isSubmitting}
+        briefs={briefs}
+      />
     </div>
   )
 }
@@ -1240,13 +1318,13 @@ export function RDPage() {
 
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { briefs: [], cm: [], transfers: [], formulations: [], npd: [], briefsModuleId: null, npdModuleId: null }
+      return { briefs: [], cm: [], transfers: [], formulations: [], briefsModuleId: null, transfersModuleId: null }
     }
     const modules = deptDetail.modules as any[]
     const find = (type: string) =>
       modules.find((m: any) => m.type === type)?.items || []
     const briefsModule = modules.find((m: any) => m.type === 'BRIEFS')
-    const npdModule = modules.find((m: any) => m.type === 'NPD_PIPELINE')
+    const transfersModule = modules.find((m: any) => m.type === 'TECH_TRANSFERS')
 
     return {
       briefs: find('BRIEFS'),
@@ -1255,7 +1333,7 @@ export function RDPage() {
       formulations: find('FORMULATIONS'),
       npd: find('NPD_PIPELINE'),
       briefsModuleId: briefsModule?.id || null,
-      npdModuleId: npdModule?.id || null,
+      transfersModuleId: transfersModule?.id || null,
     }
   }, [deptDetail])
 
@@ -1308,13 +1386,12 @@ export function RDPage() {
           ) : activeTab === 'cm' ? (
             <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
           ) : activeTab === 'transfers' ? (
-            <TransfersTab items={tabContent.transfers} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
-          ) : activeTab === 'npd' ? (
-            <NPDTab
-              items={tabContent.npd}
-              moduleId={moduleData.npdModuleId}
-              departmentId={rdDept?.id || null}
+            <TransfersTab
+              items={tabContent.transfers}
+              moduleId={moduleData.transfersModuleId}
+              briefs={moduleData.briefs}
               onRefresh={() => refetchDept()}
+              onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })}
             />
           ) : (
             <FormulationsTab items={moduleData.formulations} moduleId={moduleData.formulationsModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
