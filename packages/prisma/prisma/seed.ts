@@ -33,6 +33,7 @@ async function main() {
   const cmMod = await prisma.departmentModule.create({ data: { name: 'CM Productivity', type: 'CM_PRODUCTIVITY', departmentId: rd.id, sortOrder: 1 } })
   const ttMod = await prisma.departmentModule.create({ data: { name: 'Tech Transfers', type: 'TECH_TRANSFERS', departmentId: rd.id, sortOrder: 2 } })
   const frmMod = await prisma.departmentModule.create({ data: { name: 'Formulations', type: 'FORMULATIONS', departmentId: rd.id, sortOrder: 3 } })
+  const npdMod = await prisma.departmentModule.create({ data: { name: 'NPD Pipeline', type: 'NPD_PIPELINE', departmentId: rd.id, sortOrder: 4 } })
   const skuMod = await prisma.departmentModule.create({ data: { name: 'SKU Pipeline', type: 'SKU_PIPELINE', departmentId: ops.id, sortOrder: 0 } })
   const invMod = await prisma.departmentModule.create({ data: { name: 'Inventory Health', type: 'INVENTORY_HEALTH', departmentId: ops.id, sortOrder: 1 } })
   const prodMod = await prisma.departmentModule.create({ data: { name: 'Production Tracking', type: 'PRODUCTION_TRACKING', departmentId: ops.id, sortOrder: 2 } })
@@ -163,8 +164,11 @@ async function main() {
     { type: 'MICROSOFT_ONEDRIVE', name: 'Microsoft OneDrive', status: 'CONNECTED', syncCount: 3456, orgId: org.id },
     { type: 'AMAZON_VENDOR_CENTRAL', name: 'Amazon Vendor Central', status: 'DISCONNECTED', orgId: org.id },
     { type: 'SLACK', name: 'Slack', status: 'DISCONNECTED', orgId: org.id },
+    { type: 'GOOGLE_GMAIL', name: 'Google Gmail', status: 'DISCONNECTED', orgId: org.id },
+    { type: 'GOOGLE_SHEETS', name: 'Google Sheets', status: 'DISCONNECTED', orgId: org.id },
+    { type: 'ZAPIER', name: 'Zapier', status: 'DISCONNECTED', orgId: org.id },
   ] })
-  console.log('✅ Integrations: 6')
+  console.log('✅ Integrations: 9')
 
   // ─── Pulse
   await prisma.pulse.createMany({ data: [

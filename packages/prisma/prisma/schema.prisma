@@ -320,6 +320,23 @@ model Pulse {
   @@index([read])
 }
 
+// ─── Email Agent Log ────────────────────────────────────────
+model EmailAgentLog {
+  id               String   @id @default(cuid())
+  messageId        String   @unique
+  senderEmail      String
+  subject          String
+  status           String   @default("processing") // processing, complete, partial, parse_error, awaiting_clarification
+  parsedPlan       Json?
+  executionResults Json?
+  error            String?
+  receivedAt       DateTime?
+  createdAt        DateTime @default(now())
+
+  @@index([senderEmail])
+  @@index([status])
+}
+
 // ─── Escalation Rule ────────────────────────────────────────
 model EscalationRule {
   id           String   @id @default(cuid())

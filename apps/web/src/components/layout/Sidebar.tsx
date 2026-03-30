@@ -16,6 +16,7 @@ import { useAppStore } from '@/stores/appStore'
 import { useDepartments } from '@/hooks/useData'
 import type { LucideIcon } from 'lucide-react'
 
+<<<<<<< feature/user-dept-management
 type Page = Parameters<ReturnType<typeof useAppStore.getState>['setPage']>[0]
 
 interface NavItem {
@@ -60,6 +61,39 @@ const systemSection: NavSection = {
 const fallbackDeptItems: NavItem[] = [
   { id: 'rd', label: 'R&D', icon: FlaskConical },
   { id: 'ops', label: 'Operations', icon: Settings2 },
+=======
+const navSections = [
+  {
+    label: 'OVERVIEW',
+    items: [
+      { id: 'dashboard' as const, label: 'Command Center', icon: LayoutDashboard },
+      { id: 'everything' as const, label: 'Everything', icon: Database },
+    ],
+  },
+  {
+    label: 'DEPARTMENTS',
+    items: [
+      { id: 'rd' as const, label: 'R&D', icon: FlaskConical },
+      { id: 'ops' as const, label: 'Operations', icon: Settings2 },
+    ],
+  },
+  {
+    label: 'COLLABORATION',
+    items: [
+      { id: 'cowork' as const, label: 'Cowork Spaces', icon: Users },
+      { id: 'docs' as const, label: 'Documents', icon: FileText },
+    ],
+  },
+  {
+    label: 'SYSTEM',
+    items: [
+      { id: 'integrations' as const, label: 'Integrations', icon: Plug },
+      { id: 'agent-settings' as const, label: 'Email Agent', icon: Bot },
+      { id: 'dept-manager' as const, label: 'Dept Manager', icon: Boxes },
+      { id: 'pulse' as const, label: 'Pulse', icon: Bell },
+    ],
+  },
+>>>>>>> main
 ]
 
 function buildDeptItems(departments: any[]): NavItem[] {
