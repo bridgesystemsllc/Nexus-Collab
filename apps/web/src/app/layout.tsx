@@ -2,6 +2,7 @@ import { useAppStore } from '@/stores/appStore'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { AIPanel } from '@/components/layout/AIPanel'
+import { OnboardingGuard } from '@/components/onboarding/OnboardingGuard'
 import { DashboardPage } from '@/app/routes/dashboard'
 import { EverythingPage } from '@/app/routes/everything'
 import { RDPage } from '@/app/routes/departments/rd'
@@ -50,17 +51,55 @@ export function App() {
   const aiPanelOpen = useAppStore((s) => s.aiPanelOpen)
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
-      <Sidebar />
+    <OnboardingGuard>
+      <div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
+        <Sidebar />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar />
-        <main className="flex-1 overflow-y-auto">
-          <PageContent />
-        </main>
+        <div className="flex-1 flex flex-col min-w-0">
+          <TopBar />
+          <main className="flex-1 overflow-y-auto">
+            <MeetingBotBanner />
+            <PageContent />
+          </main>
+        </div>
+
+        {aiPanelOpen && <AIPanel />}
       </div>
+    </OnboardingGuard>
+  )
+}
 
-      {aiPanelOpen && <AIPanel />}
+function MeetingBotBanner() {
+  const currentPage = useAppStore((s) => s.currentPage)
+  const showBanner = localStorage.getItem('nexus-show-meeting-bot-banner') === 'true'
+    && !localStorage.getItem('nexus-meeting-bot-banner-dismissed')
+
+  if (!showBanner || currentPage !== 'dashboard') return null
+
+  const dismiss = () => {
+    localStorage.setItem('nexus-meeting-bot-banner-dismissed', 'true')
+    // Force re-render
+    window.dispatchEvent(new Event('storage'))
+  }
+
+  return (
+    <div className="mx-6 mt-4 p-4 bg-[var(--accent-subtle)] border border-[var(--accent)]/20 rounded-[12px] flex items-center justify-between animate-fade-in">
+      <div className="flex items-center gap-3">
+        <span className="text-[20px]">🤖</span>
+        <p className="text-[14px] text-[var(--text-primary)]">
+          <span className="font-medium">Set up your Meeting AI Bot</span>
+          {' — '}
+          <span className="text-[var(--text-secondary)]">connect your calendar to start auto-joining meetings and syncing notes.</span>
+        </p>
+      </div>
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <button className="text-[13px] text-[var(--accent)] font-medium hover:underline">
+          Set up now
+        </button>
+        <button onClick={dismiss} className="text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] text-[12px]">
+          Dismiss
+        </button>
+      </div>
     </div>
   )
 }

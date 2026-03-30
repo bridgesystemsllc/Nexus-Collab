@@ -9,17 +9,44 @@ datasource db {
 
 // ─── Organization ───────────────────────────────────────────
 model Organization {
-  id           String        @id @default(cuid())
-  name         String
-  slug         String        @unique
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  departments  Department[]
-  brands       Brand[]
-  members      Member[]
-  projects     Project[]
-  documents    Document[]
-  integrations Integration[]
+  id                 String               @id @default(cuid())
+  name               String
+  slug               String               @unique
+  logoUrl            String?
+  color              String?
+  industry           String?
+  usageContext       String?
+  referralSource     String?
+  phoneNumber        String?
+  featureInterests   String[]
+  onboardingComplete Boolean              @default(false)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  departments        Department[]
+  brands             Brand[]
+  members            Member[]
+  projects           Project[]
+  documents          Document[]
+  integrations       Integration[]
+  invites            OrganizationInvite[]
+}
+
+// ─── Organization Invite ────────────────────────────────────
+model OrganizationInvite {
+  id           String       @id @default(cuid())
+  orgId        String
+  org          Organization @relation(fields: [orgId], references: [id])
+  invitedEmail String
+  role         String       @default("member")
+  invitedBy    String
+  inviter      Member       @relation(fields: [invitedBy], references: [id])
+  token        String       @unique
+  status       String       @default("pending") // pending, accepted, expired
+  expiresAt    DateTime
+  createdAt    DateTime     @default(now())
+
+  @@index([orgId])
+  @@index([token])
 }
 
 // ─── Member ─────────────────────────────────────────────────
@@ -38,6 +65,7 @@ model Member {
   activities   Activity[]
   tasksOwned   Task[]       @relation("TaskOwner")
   notes        Note[]
+  invitesSent  OrganizationInvite[]
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
