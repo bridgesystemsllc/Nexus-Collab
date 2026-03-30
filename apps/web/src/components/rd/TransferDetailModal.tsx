@@ -148,7 +148,8 @@ function MilestoneTracker({
   milestones: { label: string; targetDate: string; completed: boolean; completedDate: string; note: string }[]
   onComplete: (index: number) => void
 }) {
-  const items = milestones?.length > 0 ? milestones : DEFAULT_MILESTONES.map((label) => ({
+  const validMilestones = milestones?.filter(Boolean) ?? []
+  const items = validMilestones.length > 0 ? validMilestones : DEFAULT_MILESTONES.map((label) => ({
     label,
     targetDate: '',
     completed: false,

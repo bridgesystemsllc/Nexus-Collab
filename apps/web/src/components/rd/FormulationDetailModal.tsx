@@ -370,7 +370,7 @@ export function FormulationDetailModal({
             )}
 
             {/* Restricted Ingredients Chips */}
-            {f.restrictedIngredients && f.restrictedIngredients.length > 0 && (
+            {Array.isArray(f.restrictedIngredients) && f.restrictedIngredients.length > 0 && (
               <div>
                 <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider mb-1.5">Restricted Ingredients</p>
                 <div className="flex flex-wrap gap-1.5">
@@ -437,7 +437,7 @@ export function FormulationDetailModal({
             </div>
 
             {/* Country Registrations */}
-            {f.countryRegistrations && f.countryRegistrations.length > 0 && (
+            {Array.isArray(f.countryRegistrations) && f.countryRegistrations.length > 0 && (
               <div className="mt-4">
                 <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider mb-1.5">Country Registrations</p>
                 <div className="flex flex-wrap gap-1.5">
@@ -466,7 +466,7 @@ export function FormulationDetailModal({
 
           {/* ── Formulation Changes Log ────────────────────── */}
           <SectionCard icon={ListChecks} label="Formulation Changes Log">
-            {f.changes && f.changes.length > 0 ? (
+            {Array.isArray(f.changes) && f.changes.length > 0 ? (
               <div className="overflow-x-auto rounded-lg border border-[var(--border-subtle)]">
                 <table className="nexus-table w-full text-[13px]">
                   <thead>
@@ -675,7 +675,7 @@ export function FormulationDetailModal({
             {/* SDS Sheets Tab */}
             {docsTab === 'sds' && (
               <div>
-                {f.sdsSheets && f.sdsSheets.length > 0 ? (
+                {Array.isArray(f.sdsSheets) && f.sdsSheets.length > 0 ? (
                   <div className="overflow-x-auto rounded-lg border border-[var(--border-subtle)]">
                     <table className="nexus-table w-full text-[13px]">
                       <thead>
