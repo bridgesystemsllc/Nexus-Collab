@@ -13,11 +13,16 @@ import { taskRoutes } from './routes/tasks'
 import { coworkRoutes } from './routes/cowork'
 import { documentRoutes } from './routes/documents'
 import { everythingRoutes } from './routes/everything'
-import { integrationRoutes } from './routes/integrations'
+import { integrationRoutes, webhookRoutes } from './routes/integrations'
 import { aiRoutes } from './routes/ai'
 import { pulseRoutes } from './routes/pulse'
 import { onboardingRoutes } from './routes/onboarding'
 import { briefRoutes } from './routes/briefs'
+<<<<<<< feature/user-dept-management
+import { memberRoutes } from './routes/members'
+=======
+import { emailAgentRoutes } from './routes/emailAgent'
+>>>>>>> main
 
 export const prisma = new PrismaClient()
 
@@ -35,7 +40,13 @@ export const io = new SocketServer(httpServer, {
 })
 
 // ─── Middleware ──────────────────────────────────────────────
-app.use(helmet({ contentSecurityPolicy: false }))
+app.use(helmet({
+  contentSecurityPolicy: false,
+  frameguard: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginResourcePolicy: false,
+  crossOriginEmbedderPolicy: false,
+}))
 app.use(cors({ origin: isReplit ? '*' : frontendUrl, credentials: !isReplit }))
 app.use(compression())
 app.use(morgan('dev'))
@@ -58,8 +69,14 @@ api.use('/ai', aiRoutes)
 api.use('/pulse', pulseRoutes)
 api.use('/onboarding', onboardingRoutes)
 api.use('/briefs', briefRoutes)
+<<<<<<< feature/user-dept-management
+api.use('/members', memberRoutes)
+=======
+api.use('/email-agent', emailAgentRoutes)
+>>>>>>> main
 
 app.use('/api/v1', api)
+app.use('/api/v1/webhooks', webhookRoutes)
 
 // ─── Serve Frontend (Replit / Production) ───────────────────
 if (isReplit || process.env.NODE_ENV === 'production') {
