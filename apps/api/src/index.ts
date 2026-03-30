@@ -17,6 +17,7 @@ import { integrationRoutes } from './routes/integrations'
 import { aiRoutes } from './routes/ai'
 import { pulseRoutes } from './routes/pulse'
 import { onboardingRoutes } from './routes/onboarding'
+import { briefRoutes } from './routes/briefs'
 
 export const prisma = new PrismaClient()
 
@@ -56,6 +57,7 @@ api.use('/integrations', integrationRoutes)
 api.use('/ai', aiRoutes)
 api.use('/pulse', pulseRoutes)
 api.use('/onboarding', onboardingRoutes)
+api.use('/briefs', briefRoutes)
 
 app.use('/api/v1', api)
 

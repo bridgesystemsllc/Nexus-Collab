@@ -1,18 +1,28 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import {
   ArrowRight,
   Beaker,
   CheckCircle2,
   Clock,
+  Download,
+  Eye,
+  Edit3,
   FileText,
   FlaskConical,
   Loader2,
+  MoreHorizontal,
+  Plus,
   Repeat2,
   Sparkles,
+  Trash2,
   Users,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
+import { NewBriefModal, type BriefFormData, EMPTY_FORM } from '@/components/briefs/NewBriefModal'
+import { BriefDetailView } from '@/components/briefs/BriefDetailView'
+import { generateBriefPDF } from '@/utils/generateBriefPDF'
+import { api } from '@/lib/api'
 
 // ─── Types ─────────────────────────────────────────────────
 type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations'
@@ -81,72 +91,348 @@ function PhaseBar({ phase, total }: { phase: number; total: number }) {
 
 // ─── Status Badge ──────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    'Formula Approved': 'badge-healthy',
-    'In Formulation': 'badge-info',
-    'Stability Testing': 'badge-critical',
-    'Brief Submitted': 'badge-accent',
-    'Approved': 'badge-healthy',
-    'In Review': 'badge-info',
-    'Draft': 'badge-accent',
-    'Complete': 'badge-healthy',
-    'In Progress': 'badge-info',
-    'Planning': 'badge-critical',
-    'Pass': 'badge-healthy',
-    'Testing': 'badge-critical',
-    'Pending': 'badge-accent',
+  const map: Record<string, { className: string; color?: string }> = {
+    'Formula Approved': { className: 'badge-healthy' },
+    'In Formulation': { className: 'badge-critical' },
+    'Stability Testing': { className: '', color: '#EF4444' },
+    'Brief Submitted': { className: 'badge-info' },
+    'Draft': { className: '', color: '#6B7280' },
+    'Approved': { className: 'badge-healthy' },
+    'In Review': { className: 'badge-info' },
+    'Complete': { className: 'badge-healthy' },
+    'In Progress': { className: 'badge-info' },
+    'Planning': { className: 'badge-critical' },
+    'Pass': { className: 'badge-healthy' },
+    'Testing': { className: 'badge-critical' },
+    'Pending': { className: 'badge-accent' },
+  }
+
+  const style = map[status]
+  if (style?.color) {
+    return (
+      <span
+        className="badge"
+        style={{
+          background: `${style.color}18`,
+          color: style.color,
+        }}
+      >
+        {status}
+      </span>
+    )
   }
 
   return (
-    <span className={`badge ${map[status] || 'badge-accent'}`}>
+    <span className={`badge ${style?.className || 'badge-accent'}`}>
       {status}
     </span>
   )
 }
 
+// ─── Actions Menu ──────────────────────────────────────────
+function ActionsMenu({
+  onView,
+  onEdit,
+  onDownload,
+  onDelete,
+}: {
+  onView: () => void
+  onEdit: () => void
+  onDownload: () => void
+  onDelete: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          setOpen(!open)
+        }}
+        className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-20 w-44 py-1 rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-lg">
+          <button
+            onClick={(e) => { e.stopPropagation(); setOpen(false); onView() }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          >
+            <Eye size={14} /> View
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setOpen(false); onEdit() }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          >
+            <Edit3 size={14} /> Edit
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setOpen(false); onDownload() }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+          >
+            <Download size={14} /> Download PDF
+          </button>
+          <div className="my-1 border-t border-[var(--border-subtle)]" />
+          <button
+            onClick={(e) => { e.stopPropagation(); setOpen(false); onDelete() }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-[var(--danger)] hover:bg-[var(--danger-light)]"
+          >
+            <Trash2 size={14} /> Delete
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Delete Confirmation Dialog ────────────────────────────
+function DeleteConfirmDialog({ open, briefName, onConfirm, onCancel }: {
+  open: boolean
+  briefName: string
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative z-10 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl shadow-2xl w-full max-w-md p-6">
+        <h3 className="text-[16px] font-semibold text-[var(--text-primary)] mb-2">Delete Brief</h3>
+        <p className="text-[14px] text-[var(--text-secondary)] mb-5">
+          Are you sure you want to delete <strong>"{briefName}"</strong>? This action cannot be undone.
+        </p>
+        <div className="flex justify-end gap-3">
+          <button onClick={onCancel} className="btn-ghost px-4 py-2 text-[14px]">Cancel</button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 rounded-lg text-[14px] font-medium text-white bg-[var(--danger)] hover:opacity-90 transition-opacity"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Active Briefs Tab ─────────────────────────────────────
-function BriefsTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
-  if (items.length === 0) {
-    return (
-      <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
-        No active briefs found.
-      </p>
-    )
+function BriefsTab({
+  items,
+  moduleId,
+  onRefresh,
+}: {
+  items: any[]
+  moduleId: string | null
+  onRefresh: () => void
+}) {
+  const [showNewBrief, setShowNewBrief] = useState(false)
+  const [editingBrief, setEditingBrief] = useState<(BriefFormData & { id: string }) | null>(null)
+  const [viewingBrief, setViewingBrief] = useState<(BriefFormData & { id: string }) | null>(null)
+  const [deletingBrief, setDeletingBrief] = useState<{ id: string; name: string } | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Convert module items to brief data
+  const briefs = useMemo(() => {
+    return items.map((item: any) => ({
+      id: item.id,
+      moduleId: item.moduleId,
+      ...item.data,
+    }))
+  }, [items])
+
+  const handleSubmit = async (data: BriefFormData, isDraft: boolean) => {
+    if (!moduleId) return
+    setIsSubmitting(true)
+    try {
+      const briefData = {
+        ...data,
+        briefStatus: isDraft ? 'Draft' : data.briefStatus || 'Brief Submitted',
+        phase: data.phase || 1,
+      }
+
+      if (editingBrief) {
+        // Update existing
+        const item = items.find((i: any) => i.id === editingBrief.id)
+        if (item) {
+          await api.patch(`/departments/_/modules/${item.moduleId}/items/${editingBrief.id}`, {
+            data: briefData,
+            status: briefData.briefStatus,
+          })
+        }
+      } else {
+        // Create new
+        await api.post(`/departments/_/modules/${moduleId}/items`, {
+          data: briefData,
+          status: briefData.briefStatus,
+        })
+      }
+
+      setShowNewBrief(false)
+      setEditingBrief(null)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to save brief:', err)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingBrief) return
+    try {
+      const item = items.find((i: any) => i.id === deletingBrief.id)
+      if (item) {
+        await api.delete(`/departments/_/modules/${item.moduleId}/items/${deletingBrief.id}`)
+      }
+      setDeletingBrief(null)
+      setViewingBrief(null)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to delete brief:', err)
+    }
+  }
+
+  const openView = (brief: any) => {
+    setViewingBrief(brief)
+  }
+
+  const openEdit = (brief: any) => {
+    setEditingBrief(brief)
+    setViewingBrief(null)
+    setShowNewBrief(true)
+  }
+
+  const downloadPDF = (brief: any) => {
+    generateBriefPDF(brief)
+  }
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '—'
+    try {
+      return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    } catch {
+      return dateStr
+    }
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
-      <table className="nexus-table">
-        <thead>
-          <tr>
-            <th>Brief Name</th>
-            <th>Brand</th>
-            <th>CM</th>
-            <th>Status</th>
-            <th>Phase Progress</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item: any) => {
-            const d = item.data
-            return (
-              <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
-                <td className="font-medium text-[var(--text-primary)]">
-                  {d.name}
-                </td>
-                <td className="text-[var(--text-secondary)]">{d.brand}</td>
-                <td className="text-[var(--text-secondary)]">{d.cm}</td>
-                <td>
-                  <StatusBadge status={d.status} />
-                </td>
-                <td className="min-w-[160px]">
-                  <PhaseBar phase={d.phase} total={d.totalPhases} />
-                </td>
+    <div>
+      {/* Header with New Brief button */}
+      <div className="flex items-center justify-between mb-4">
+        <div />
+        <button
+          onClick={() => { setEditingBrief(null); setShowNewBrief(true) }}
+          className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]"
+        >
+          <Plus size={15} /> New Brief
+        </button>
+      </div>
+
+      {/* Table */}
+      {briefs.length === 0 ? (
+        <div className="text-center py-12">
+          <FileText size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
+          <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No active briefs yet</p>
+          <button
+            onClick={() => { setEditingBrief(null); setShowNewBrief(true) }}
+            className="btn-primary px-5 py-2.5 rounded-lg text-[14px]"
+          >
+            Create Your First Brief
+          </button>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+          <table className="nexus-table">
+            <thead>
+              <tr>
+                <th>Brief Name</th>
+                <th>Brand</th>
+                <th>CM</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Phase Progress</th>
+                <th className="w-12">Actions</th>
               </tr>
-            )
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {briefs.map((brief: any) => (
+                <tr
+                  key={brief.id}
+                  className="clickable-row"
+                  onClick={() => openView(brief)}
+                >
+                  <td className="font-medium text-[var(--text-primary)]">
+                    {brief.projectName || brief.name || '—'}
+                  </td>
+                  <td className="text-[var(--text-secondary)]">{brief.brand || '—'}</td>
+                  <td className="text-[var(--text-secondary)]">{brief.contractManufacturer || brief.cm || '—'}</td>
+                  <td className="text-[var(--text-secondary)] text-[13px]">
+                    {formatDate(brief.dateOfRequest)}
+                  </td>
+                  <td>
+                    <StatusBadge status={brief.briefStatus || brief.status || 'Draft'} />
+                  </td>
+                  <td className="min-w-[160px]">
+                    <PhaseBar phase={brief.phase || 1} total={5} />
+                  </td>
+                  <td>
+                    <ActionsMenu
+                      onView={() => openView(brief)}
+                      onEdit={() => openEdit(brief)}
+                      onDownload={() => downloadPDF(brief)}
+                      onDelete={() => setDeletingBrief({ id: brief.id, name: brief.projectName || brief.name })}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* New / Edit Brief Modal */}
+      <NewBriefModal
+        open={showNewBrief}
+        onClose={() => { setShowNewBrief(false); setEditingBrief(null) }}
+        onSubmit={handleSubmit}
+        initialData={editingBrief}
+        isSubmitting={isSubmitting}
+      />
+
+      {/* Brief Detail View */}
+      <BriefDetailView
+        open={!!viewingBrief}
+        brief={viewingBrief}
+        onClose={() => setViewingBrief(null)}
+        onEdit={() => {
+          if (viewingBrief) openEdit(viewingBrief)
+        }}
+        onDelete={() => {
+          if (viewingBrief) {
+            setDeletingBrief({ id: viewingBrief.id, name: viewingBrief.projectName })
+          }
+        }}
+      />
+
+      {/* Delete Confirmation */}
+      <DeleteConfirmDialog
+        open={!!deletingBrief}
+        briefName={deletingBrief?.name || ''}
+        onConfirm={handleDelete}
+        onCancel={() => setDeletingBrief(null)}
+      />
     </div>
   )
 }
@@ -477,7 +763,7 @@ export function RDPage() {
     return departments.find((d: any) => d.type === 'BUILTIN_RD') || null
   }, [departments])
 
-  const { data: deptDetail, isLoading: detailLoading } = useDepartment(
+  const { data: deptDetail, isLoading: detailLoading, refetch: refetchDept } = useDepartment(
     rdDept?.id || ''
   )
 
@@ -486,17 +772,19 @@ export function RDPage() {
   // Organize module items by type
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { briefs: [], cm: [], transfers: [], formulations: [] }
+      return { briefs: [], cm: [], transfers: [], formulations: [], briefsModuleId: null }
     }
     const modules = deptDetail.modules as any[]
     const find = (type: string) =>
       modules.find((m: any) => m.type === type)?.items || []
+    const briefsModule = modules.find((m: any) => m.type === 'BRIEFS')
 
     return {
       briefs: find('BRIEFS'),
       cm: find('CM_PRODUCTIVITY'),
       transfers: find('TECH_TRANSFERS'),
       formulations: find('FORMULATIONS'),
+      briefsModuleId: briefsModule?.id || null,
     }
   }, [deptDetail])
 
@@ -561,7 +849,11 @@ export function RDPage() {
               <CardsSkeleton />
             )
           ) : activeTab === 'briefs' ? (
-            <BriefsTab items={tabContent.briefs} onSelect={(item) => setSelectedItem({ item, type: 'BRIEFS' })} />
+            <BriefsTab
+              items={tabContent.briefs}
+              moduleId={moduleData.briefsModuleId}
+              onRefresh={() => refetchDept()}
+            />
           ) : activeTab === 'cm' ? (
             <CMTab items={tabContent.cm} onSelect={(item) => setSelectedItem({ item, type: 'CM_PRODUCTIVITY' })} />
           ) : activeTab === 'transfers' ? (
