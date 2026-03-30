@@ -20,14 +20,14 @@
   --border-default: #E8E5E0;
   --border-strong: #D3D0CA;
 
-  /* Text */
-  --text-primary: #37352F;
-  --text-secondary: #787774;
-  --text-tertiary: #B4B0A8;
+  /* Text — Darkened for legibility */
+  --text-primary: #1A1A1A;
+  --text-secondary: #4A4A4A;
+  --text-tertiary: #7A7A7A;
 
   /* Chrome (deprecated, kept for compat) */
-  --chrome: #787774;
-  --chrome-bright: #37352F;
+  --chrome: #4A4A4A;
+  --chrome-bright: #1A1A1A;
 
   /* Brand / Accent */
   --accent: #2F80ED;
@@ -261,7 +261,7 @@ body {
   padding: 12px 16px;
   text-align: left;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
