@@ -11,10 +11,13 @@ import {
   FileText,
   FlaskConical,
   Loader2,
+  Lock,
   MoreHorizontal,
   Plus,
   Repeat2,
+  Rocket,
   Sparkles,
+  Target,
   Trash2,
   Users,
 } from 'lucide-react'
@@ -29,15 +32,19 @@ import { NewTransferModal, type TransferFormData } from '@/components/rd/NewTran
 import { FormulationDetailModal } from '@/components/rd/FormulationDetailModal'
 import { NewFormulationModal, type FormulationFormData } from '@/components/rd/NewFormulationModal'
 import { api } from '@/lib/api'
+import { NewNPDProjectModal, type NPDFormData } from '@/components/rd/npd/NewNPDProjectModal'
+import { NPDProjectDetail } from '@/components/rd/npd/NPDProjectDetail'
+import { STAGE_CONFIG, createDefaultTasks, getStageProgress, getOverallProgress, getCurrentStage, isStageUnlocked, type NPDTask } from '@/components/rd/npd/npdChecklist'
 
 // ─── Types ─────────────────────────────────────────────────
-type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations'
+type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd'
 
 const TABS: { key: RDTab; label: string; icon: React.ElementType }[] = [
   { key: 'briefs', label: 'Active Briefs', icon: FileText },
   { key: 'cm', label: 'CM Productivity', icon: Users },
   { key: 'transfers', label: 'Tech Transfers', icon: Repeat2 },
   { key: 'formulations', label: 'Formulations', icon: FlaskConical },
+  { key: 'npd', label: 'NPD', icon: Rocket },
 ]
 
 // ─── Shared Utilities ──────────────────────────────────────
@@ -808,6 +815,414 @@ function FormulationsTab({ items, moduleId, onRefresh, briefItems }: {
   )
 }
 
+// ─── Segmented NPD Progress Bar ───────────────────────────
+function NPDSegmentedProgress({ tasks }: { tasks: NPDTask[] }) {
+  const stages = ['0', '1', '2', '3', '4']
+  const gateKeys = ['1/2', '2/3']
+
+  return (
+    <div className="flex items-center gap-0.5 min-w-[140px]">
+      {stages.map((key, i) => {
+        const config = STAGE_CONFIG.find(s => s.key === key)
+        const progress = getStageProgress(tasks, key)
+        return (
+          <div key={key} className="flex items-center gap-0.5 flex-1">
+            <div
+              className="h-2 flex-1 rounded-sm overflow-hidden"
+              style={{ background: 'var(--border-default)' }}
+              title={`${config?.name}: ${progress}%`}
+            >
+              <div
+                className="h-full rounded-sm transition-all"
+                style={{
+                  width: `${progress}%`,
+                  background: config?.color || 'var(--accent)',
+                }}
+              />
+            </div>
+            {i < stages.length - 1 && gateKeys[i - (i > 1 ? 1 : 0)] && i > 0 && i < 4 && (
+              <span className="text-[8px] text-[var(--text-tertiary)]">•</span>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── NPD Tab ──────────────────────────────────────────────
+function NPDTab({
+  items,
+  moduleId,
+  departmentId,
+  onRefresh,
+}: {
+  items: any[]
+  moduleId: string | null
+  departmentId: string | null
+  onRefresh: () => void
+}) {
+  const [showNewProject, setShowNewProject] = useState(false)
+  const [viewingProject, setViewingProject] = useState<any>(null)
+  const [deletingProject, setDeletingProject] = useState<{ id: string; name: string } | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Convert module items to NPD project data
+  const projects = useMemo(() => {
+    return items.map((item: any) => ({
+      id: item.id,
+      moduleId: item.moduleId,
+      ...item.data,
+    }))
+  }, [items])
+
+  const handleCreateProject = async (data: NPDFormData) => {
+    setIsSubmitting(true)
+    try {
+      // Auto-create NPD_PIPELINE module if it doesn't exist yet
+      let targetModuleId = moduleId
+      if (!targetModuleId && departmentId) {
+        const res = await api.post(`/departments/${departmentId}/modules`, {
+          name: 'NPD Pipeline',
+          type: 'NPD_PIPELINE',
+          sortOrder: 4,
+        })
+        targetModuleId = res.data.id
+      }
+      if (!targetModuleId) return
+      // Generate the 34 tasks from the master checklist
+      const tasks = createDefaultTasks(
+        data.teamAssignments.map(t => ({ role: t.role, assignedName: t.assignedName })),
+        {
+          stage0Target: data.stageDates.stage0Target,
+          stage1Target: data.stageDates.stage1Target,
+          gate12Target: data.stageDates.gate12Target,
+          stage2Target: data.stageDates.stage2Target,
+          gate23Target: data.stageDates.gate23Target,
+          stage3Target: data.stageDates.stage3Target,
+          stage4Target: data.stageDates.stage4Target,
+        }
+      )
+
+      // Add IDs to tasks
+      const tasksWithIds = tasks.map((t, i) => ({
+        ...t,
+        id: `task-${Date.now()}-${i}`,
+      }))
+
+      const projectData = {
+        ...data,
+        tasks: tasksWithIds,
+        gateApprovals: [],
+        status: 'Active',
+        activityLog: [{
+          user: 'System',
+          action: 'Project created with 34 tasks generated',
+          timestamp: new Date().toISOString(),
+        }],
+      }
+
+      await api.post(`/departments/_/modules/${targetModuleId}/items`, {
+        data: projectData,
+        status: 'Active',
+      })
+
+      setShowNewProject(false)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to create NPD project:', err)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleTaskUpdate = async (taskId: string, updates: Partial<NPDTask>) => {
+    if (!viewingProject) return
+    const item = items.find((i: any) => i.id === viewingProject.id)
+    if (!item) return
+
+    const updatedTasks = (viewingProject.tasks || []).map((t: any) =>
+      t.id === taskId ? { ...t, ...updates } : t
+    )
+
+    const newLog = {
+      user: 'You',
+      action: updates.status === 'complete'
+        ? `Completed task: ${updatedTasks.find((t: any) => t.id === taskId)?.taskName}`
+        : `Updated task: ${updatedTasks.find((t: any) => t.id === taskId)?.taskName}`,
+      timestamp: new Date().toISOString(),
+      stage: updatedTasks.find((t: any) => t.id === taskId)?.stageKey,
+    }
+
+    const updatedProject = {
+      ...viewingProject,
+      tasks: updatedTasks,
+      activityLog: [...(viewingProject.activityLog || []), newLog],
+    }
+
+    try {
+      await api.patch(`/departments/_/modules/${item.moduleId}/items/${viewingProject.id}`, {
+        data: updatedProject,
+      })
+      setViewingProject(updatedProject)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to update task:', err)
+    }
+  }
+
+  const handleGateApprove = async (gate: string, notes: string) => {
+    if (!viewingProject) return
+    const item = items.find((i: any) => i.id === viewingProject.id)
+    if (!item) return
+
+    const approval = {
+      gate,
+      approvedBy: 'You',
+      approvedAt: new Date().toISOString(),
+      notes,
+    }
+
+    const newLog = {
+      user: 'You',
+      action: `Approved ${gate === '1/2' ? 'Gate 1/2 (Pipe/Launch)' : 'Gate 2/3 (Artwork)'}`,
+      timestamp: new Date().toISOString(),
+      stage: gate,
+    }
+
+    const updatedProject = {
+      ...viewingProject,
+      gateApprovals: [...(viewingProject.gateApprovals || []), approval],
+      activityLog: [...(viewingProject.activityLog || []), newLog],
+    }
+
+    try {
+      await api.patch(`/departments/_/modules/${item.moduleId}/items/${viewingProject.id}`, {
+        data: updatedProject,
+      })
+      setViewingProject(updatedProject)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to approve gate:', err)
+    }
+  }
+
+  const handleProjectUpdate = async (updates: any) => {
+    if (!viewingProject) return
+    const item = items.find((i: any) => i.id === viewingProject.id)
+    if (!item) return
+
+    const updatedProject = { ...viewingProject, ...updates }
+    try {
+      await api.patch(`/departments/_/modules/${item.moduleId}/items/${viewingProject.id}`, {
+        data: updatedProject,
+      })
+      setViewingProject(updatedProject)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to update project:', err)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingProject) return
+    try {
+      const item = items.find((i: any) => i.id === deletingProject.id)
+      if (item) {
+        await api.delete(`/departments/_/modules/${item.moduleId}/items/${deletingProject.id}`)
+      }
+      setDeletingProject(null)
+      setViewingProject(null)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to delete NPD project:', err)
+    }
+  }
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '—'
+    try {
+      return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    } catch {
+      return dateStr
+    }
+  }
+
+  const getStageBadgeColor = (stageKey: string) => {
+    const config = STAGE_CONFIG.find(s => s.key === stageKey)
+    return config?.color || 'var(--accent)'
+  }
+
+  return (
+    <div>
+      {/* Header with New Project button */}
+      <div className="flex items-center justify-between mb-4">
+        <div />
+        <button
+          onClick={() => setShowNewProject(true)}
+          className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]"
+        >
+          <Plus size={15} /> New NPD Project
+        </button>
+      </div>
+
+      {/* Table */}
+      {projects.length === 0 ? (
+        <div className="text-center py-12">
+          <Rocket size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
+          <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No NPD projects yet</p>
+          <button
+            onClick={() => setShowNewProject(true)}
+            className="btn-primary px-5 py-2.5 rounded-lg text-[14px]"
+          >
+            Create Your First NPD Project
+          </button>
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+          <table className="nexus-table">
+            <thead>
+              <tr>
+                <th>Project Name</th>
+                <th>Brand</th>
+                <th>Category</th>
+                <th>Current Stage</th>
+                <th>Gate Status</th>
+                <th>Tasks</th>
+                <th>Progress</th>
+                <th>Launch Manager</th>
+                <th>Target Launch</th>
+                <th className="w-12">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...projects]
+                .sort((a, b) => new Date(a.targetLaunchDate || 0).getTime() - new Date(b.targetLaunchDate || 0).getTime())
+                .map((proj: any) => {
+                  const tasks: NPDTask[] = proj.tasks || []
+                  const { completed, total, percent } = getOverallProgress(tasks)
+                  const currentStage = getCurrentStage(tasks, proj.gateApprovals || [])
+                  const currentConfig = STAGE_CONFIG.find(s => s.key === currentStage)
+                  const launchManager = (proj.teamAssignments || []).find((t: any) => t.role === 'Launch Manager')
+                  const gateApprovals = proj.gateApprovals || []
+                  const hasBlockedTasks = tasks.some(t => t.status === 'blocked')
+
+                  // Determine gate status
+                  let gateStatus = ''
+                  if (currentStage === '1/2' || currentStage === '2/3') {
+                    const gateTask = tasks.find(t => t.stageKey === currentStage)
+                    if (gateTask?.status === 'complete') {
+                      gateStatus = 'Gate Pending'
+                    } else {
+                      gateStatus = 'In Progress'
+                    }
+                  } else if (gateApprovals.length > 0) {
+                    gateStatus = 'Gate Approved'
+                  }
+
+                  return (
+                    <tr
+                      key={proj.id}
+                      className="clickable-row"
+                      onClick={() => setViewingProject(proj)}
+                    >
+                      <td className="font-medium text-[var(--text-primary)]">
+                        <div className="flex items-center gap-2">
+                          {proj.projectName || '—'}
+                          {hasBlockedTasks && (
+                            <span className="badge" style={{ background: '#EF444418', color: '#EF4444', fontSize: '10px' }}>
+                              Blocked
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <span className="badge badge-accent text-[11px]">{proj.brand || '—'}</span>
+                      </td>
+                      <td className="text-[var(--text-secondary)] text-[13px]">{proj.category || '—'}</td>
+                      <td>
+                        {currentConfig && (
+                          <span
+                            className="badge text-[11px]"
+                            style={{
+                              background: `${currentConfig.color}18`,
+                              color: currentConfig.color,
+                            }}
+                          >
+                            Stage {currentConfig.key} — {currentConfig.name}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {gateStatus && (
+                          <span
+                            className="badge text-[11px]"
+                            style={{
+                              background: gateStatus === 'Gate Approved' ? '#10B98118' : gateStatus === 'Gate Pending' ? '#F9731618' : '#F59E0B18',
+                              color: gateStatus === 'Gate Approved' ? '#10B981' : gateStatus === 'Gate Pending' ? '#F97316' : '#F59E0B',
+                            }}
+                          >
+                            {gateStatus}
+                          </span>
+                        )}
+                      </td>
+                      <td className="text-[13px] tabular-nums text-[var(--text-secondary)]">
+                        {completed} / {total}
+                      </td>
+                      <td className="min-w-[160px]">
+                        <NPDSegmentedProgress tasks={tasks} />
+                      </td>
+                      <td className="text-[13px] text-[var(--text-secondary)]">
+                        {launchManager?.assignedName || '—'}
+                      </td>
+                      <td className="text-[13px] text-[var(--text-secondary)]">
+                        {formatDate(proj.targetLaunchDate)}
+                      </td>
+                      <td>
+                        <ActionsMenu
+                          onView={() => setViewingProject(proj)}
+                          onEdit={() => setViewingProject(proj)}
+                          onDownload={() => {}}
+                          onDelete={() => setDeletingProject({ id: proj.id, name: proj.projectName })}
+                        />
+                      </td>
+                    </tr>
+                  )
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* New NPD Project Modal */}
+      <NewNPDProjectModal
+        open={showNewProject}
+        onClose={() => setShowNewProject(false)}
+        onSubmit={handleCreateProject}
+        isSubmitting={isSubmitting}
+      />
+
+      {/* NPD Project Detail */}
+      <NPDProjectDetail
+        open={!!viewingProject}
+        project={viewingProject}
+        onClose={() => setViewingProject(null)}
+        onTaskUpdate={handleTaskUpdate}
+        onGateApprove={handleGateApprove}
+        onProjectUpdate={handleProjectUpdate}
+      />
+
+      {/* Delete Confirmation */}
+      <DeleteConfirmDialog
+        open={!!deletingProject}
+        briefName={deletingProject?.name || ''}
+        onConfirm={handleDelete}
+        onCancel={() => setDeletingProject(null)}
+      />
+    </div>
+  )
+}
+
 // ─── Main Page ─────────────────────────────────────────────
 export function RDPage() {
   const [activeTab, setActiveTab] = useState<RDTab>('briefs')
@@ -825,23 +1240,32 @@ export function RDPage() {
 
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { briefs: [], cm: [], transfers: [], formulations: [], briefsModuleId: null, cmModuleId: null, transfersModuleId: null, formulationsModuleId: null }
+      return { briefs: [], cm: [], transfers: [], formulations: [], npd: [], briefsModuleId: null, npdModuleId: null }
     }
     const modules = deptDetail.modules as any[]
-    const find = (type: string) => modules.find((m: any) => m.type === type)?.items || []
-    const findId = (type: string) => modules.find((m: any) => m.type === type)?.id || null
+    const find = (type: string) =>
+      modules.find((m: any) => m.type === type)?.items || []
+    const briefsModule = modules.find((m: any) => m.type === 'BRIEFS')
+    const npdModule = modules.find((m: any) => m.type === 'NPD_PIPELINE')
 
     return {
       briefs: find('BRIEFS'),
       cm: find('CM_PRODUCTIVITY'),
       transfers: find('TECH_TRANSFERS'),
       formulations: find('FORMULATIONS'),
-      briefsModuleId: findId('BRIEFS'),
-      cmModuleId: findId('CM_PRODUCTIVITY'),
-      transfersModuleId: findId('TECH_TRANSFERS'),
-      formulationsModuleId: findId('FORMULATIONS'),
+      npd: find('NPD_PIPELINE'),
+      briefsModuleId: briefsModule?.id || null,
+      npdModuleId: npdModule?.id || null,
     }
   }, [deptDetail])
+
+  const tabContent: Record<RDTab, any[]> = {
+    briefs: moduleData.briefs,
+    cm: moduleData.cm,
+    transfers: moduleData.transfers,
+    formulations: moduleData.formulations,
+    npd: moduleData.npd,
+  }
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -851,8 +1275,12 @@ export function RDPage() {
           {rdDept?.icon || <Beaker size={20} />}
         </span>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">R&D Department</h1>
-          <p className="text-sm text-[var(--text-tertiary)]">Formulations, briefs, tech transfers, CM coordination</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
+            R&D Department
+          </h1>
+          <p className="text-sm text-[var(--text-tertiary)]">
+            Formulations, briefs, tech transfers, CM coordination, NPD pipeline
+          </p>
         </div>
       </div>
 
@@ -880,7 +1308,14 @@ export function RDPage() {
           ) : activeTab === 'cm' ? (
             <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
           ) : activeTab === 'transfers' ? (
-            <TransfersTab items={moduleData.transfers} moduleId={moduleData.transfersModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} cmItems={moduleData.cm} />
+            <TransfersTab items={tabContent.transfers} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
+          ) : activeTab === 'npd' ? (
+            <NPDTab
+              items={tabContent.npd}
+              moduleId={moduleData.npdModuleId}
+              departmentId={rdDept?.id || null}
+              onRefresh={() => refetchDept()}
+            />
           ) : (
             <FormulationsTab items={moduleData.formulations} moduleId={moduleData.formulationsModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
           )}
