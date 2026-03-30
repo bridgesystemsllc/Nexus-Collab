@@ -5,7 +5,9 @@ import {
   Cloud,
   Copy,
   Database,
+  ExternalLink,
   Hash,
+  Key,
   Mail,
   MessageCircle,
   Pencil,
@@ -397,6 +399,125 @@ function ErpConfigModal({
   )
 }
 
+// ─── OAuth Setup Modal ───────────────────────────────────────
+
+const PROVIDER_DOCS: Record<string, { label: string; docsUrl: string; steps: string[] }> = {
+  microsoft: {
+    label: 'Microsoft',
+    docsUrl: 'https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
+    steps: [
+      'Go to Azure Portal → App registrations → New registration',
+      'Set the Redirect URI to your app URL + /auth/callback/microsoft',
+      'Under Certificates & secrets, create a new client secret',
+      'Copy the Application (client) ID, Directory (tenant) ID, and client secret value',
+      'Add the 4 secrets below to your Replit project secrets',
+    ],
+  },
+  google: {
+    label: 'Google',
+    docsUrl: 'https://console.cloud.google.com/apis/credentials',
+    steps: [
+      'Go to Google Cloud Console → APIs & Services → Credentials',
+      'Create OAuth 2.0 Client ID → Web application',
+      'Add your app URL + /auth/callback/google as an authorized redirect URI',
+      'Copy the Client ID and Client Secret',
+      'Add the 3 secrets below to your Replit project secrets',
+    ],
+  },
+}
+
+function OAuthSetupModal({
+  provider,
+  requiredVars,
+  onClose,
+}: {
+  provider: string
+  requiredVars: { key: string; description: string }[]
+  onClose: () => void
+}) {
+  const [copied, setCopied] = useState<string | null>(null)
+  const info = PROVIDER_DOCS[provider]
+  if (!info) return null
+
+  const copy = (text: string) => {
+    navigator.clipboard.writeText(text)
+    setCopied(text)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  return (
+    <Dialog open={true} onClose={onClose} title={`Connect ${info.label}`} subtitle="OAuth setup required" wide>
+      <div className="space-y-6">
+        {/* Explanation */}
+        <div className="flex gap-3 p-4 rounded-[12px] bg-[var(--warning-light)] border border-[var(--warning)]">
+          <Key size={18} className="text-[var(--warning)] flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[13px] font-medium text-[var(--text-primary)]">
+              OAuth credentials needed
+            </p>
+            <p className="text-[12px] text-[var(--text-secondary)] mt-1">
+              To connect your {info.label} account, you need to register an OAuth app and add the credentials to your Replit project secrets.
+            </p>
+          </div>
+        </div>
+
+        {/* Steps */}
+        <div>
+          <p className="text-[12px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">Setup steps</p>
+          <ol className="space-y-2">
+            {info.steps.map((step, i) => (
+              <li key={i} className="flex gap-3 text-[13px] text-[var(--text-primary)]">
+                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-[var(--accent-subtle)] text-[var(--accent)] text-[11px] font-semibold flex items-center justify-center">
+                  {i + 1}
+                </span>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        {/* Required secrets */}
+        <div>
+          <p className="text-[12px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-3">Required secrets</p>
+          <div className="space-y-2">
+            {requiredVars.map((v) => (
+              <div key={v.key} className="flex items-center gap-3 p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] font-mono font-semibold text-[var(--accent)]">{v.key}</p>
+                  <p className="text-[11px] text-[var(--text-secondary)] mt-0.5 truncate">{v.description}</p>
+                </div>
+                <button
+                  onClick={() => copy(v.key)}
+                  className="p-1.5 rounded-[6px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors flex-shrink-0"
+                  title="Copy key name"
+                >
+                  {copied === v.key ? <CheckCircle2 size={14} className="text-[var(--success)]" /> : <Copy size={14} />}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA */}
+        <div className="flex gap-3 pt-2">
+          <a
+            href={info.docsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary flex items-center gap-2 text-[13px]"
+          >
+            <ExternalLink size={14} />
+            Open {info.label} Console
+          </a>
+          <button onClick={onClose} className="btn-ghost text-[13px]">
+            Close
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
 // ─── Main Page ───────────────────────────────────────────────
 
 export function IntegrationsPage() {
@@ -410,6 +531,7 @@ export function IntegrationsPage() {
   const [showErpModal, setShowErpModal] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [connecting, setConnecting] = useState<string | null>(null)
+  const [oauthSetup, setOauthSetup] = useState<{ provider: string; required: { key: string; description: string }[] } | null>(null)
 
   // Auto-dismiss toast after 5 seconds
   useEffect(() => {
@@ -457,7 +579,7 @@ export function IntegrationsPage() {
       if (group === 'microsoft' || group === 'google') {
         const connectType = group === 'microsoft' ? 'MICROSOFT_OUTLOOK' : 'GOOGLE_GMAIL'
         const { data } = await api.post(`/integrations/${connectType}/connect`)
-        window.location.href = data.authUrl
+        window.open(data.authUrl, '_blank', 'noopener,noreferrer')
       } else if (type === 'ZAPIER') {
         const { data } = await api.post('/integrations/ZAPIER/connect')
         setZapierWebhookUrl(data.webhookUrl)
@@ -470,7 +592,12 @@ export function IntegrationsPage() {
         refetch()
       }
     } catch (err: any) {
-      setToast({ type: 'error', message: err?.response?.data?.message || `Failed to connect ${integration.name}` })
+      const errData = err?.response?.data
+      if (errData?.error === 'configuration_required') {
+        setOauthSetup({ provider: errData.provider, required: errData.required })
+      } else {
+        setToast({ type: 'error', message: errData?.message || `Failed to connect ${integration.name}` })
+      }
     } finally {
       setConnecting(null)
     }
@@ -507,9 +634,14 @@ export function IntegrationsPage() {
       const connectType = group === 'microsoft' ? 'MICROSOFT_OUTLOOK' : 'GOOGLE_GMAIL'
       try {
         const { data } = await api.post(`/integrations/${connectType}/connect`)
-        window.location.href = data.authUrl
+        window.open(data.authUrl, '_blank', 'noopener,noreferrer')
       } catch (err: any) {
-        setToast({ type: 'error', message: err?.response?.data?.message || 'Failed to reconnect' })
+        const errData = err?.response?.data
+        if (errData?.error === 'configuration_required') {
+          setOauthSetup({ provider: errData.provider, required: errData.required })
+        } else {
+          setToast({ type: 'error', message: errData?.message || 'Failed to reconnect' })
+        }
       }
     }
   }
@@ -699,6 +831,15 @@ export function IntegrationsPage() {
             setToast({ type: 'success', message: 'ERP Kareve Sync connected successfully' })
             refetch()
           }}
+        />
+      )}
+
+      {/* OAuth Setup Modal */}
+      {oauthSetup && (
+        <OAuthSetupModal
+          provider={oauthSetup.provider}
+          requiredVars={oauthSetup.required}
+          onClose={() => setOauthSetup(null)}
         />
       )}
     </div>

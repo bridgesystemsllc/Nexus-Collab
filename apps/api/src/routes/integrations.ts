@@ -37,14 +37,29 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
       const clientId = process.env.MICROSOFT_CLIENT_ID
       const tenantId = process.env.MICROSOFT_TENANT_ID
       const redirectUri = process.env.MICROSOFT_REDIRECT_URI
+
+      if (!clientId || !tenantId || !redirectUri) {
+        return res.status(400).json({
+          error: 'configuration_required',
+          provider: 'microsoft',
+          message: 'Microsoft OAuth credentials are not configured.',
+          required: [
+            { key: 'MICROSOFT_CLIENT_ID', description: 'Azure AD application (client) ID' },
+            { key: 'MICROSOFT_TENANT_ID', description: 'Azure AD tenant ID (use "common" for multi-tenant)' },
+            { key: 'MICROSOFT_CLIENT_SECRET', description: 'Azure AD client secret value' },
+            { key: 'MICROSOFT_REDIRECT_URI', description: `OAuth callback URL, e.g. https://your-app.replit.app/auth/callback/microsoft` },
+          ],
+        })
+      }
+
       const state = generateState('microsoft')
       const scopes =
         'openid profile offline_access Mail.Read Mail.Send Mail.ReadWrite Files.ReadWrite.All ChannelMessage.Send Chat.ReadWrite User.Read'
 
       const params = new URLSearchParams({
-        client_id: clientId || '',
+        client_id: clientId,
         response_type: 'code',
-        redirect_uri: redirectUri || '',
+        redirect_uri: redirectUri,
         scope: scopes,
         response_mode: 'query',
         state,
@@ -56,11 +71,28 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
 
     // ── Google OAuth ─────────────────────────────────────────
     if (type.startsWith('GOOGLE_')) {
+      const clientId = process.env.GOOGLE_CLIENT_ID
+      const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+      const redirectUri = process.env.GOOGLE_REDIRECT_URI
+
+      if (!clientId || !clientSecret || !redirectUri) {
+        return res.status(400).json({
+          error: 'configuration_required',
+          provider: 'google',
+          message: 'Google OAuth credentials are not configured.',
+          required: [
+            { key: 'GOOGLE_CLIENT_ID', description: 'Google OAuth 2.0 client ID' },
+            { key: 'GOOGLE_CLIENT_SECRET', description: 'Google OAuth 2.0 client secret' },
+            { key: 'GOOGLE_REDIRECT_URI', description: `OAuth callback URL, e.g. https://your-app.replit.app/auth/callback/google` },
+          ],
+        })
+      }
+
       const state = generateState('google')
 
       const params = new URLSearchParams({
-        client_id: process.env.GOOGLE_CLIENT_ID || '',
-        redirect_uri: process.env.GOOGLE_REDIRECT_URI || '',
+        client_id: clientId,
+        redirect_uri: redirectUri,
         response_type: 'code',
         scope: [
           'https://www.googleapis.com/auth/gmail.readonly',
