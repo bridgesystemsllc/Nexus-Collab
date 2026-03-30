@@ -129,7 +129,7 @@ function SKUPipelineTab({ items, onSelect }: { items: any[]; onSelect: (item: an
             <StepProgression step={d.step} total={d.totalSteps} />
 
             {d.blocker && (
-              <div className="flex items-start gap-2 p-2 rounded-lg bg-[rgba(255,69,58,0.06)] border border-[rgba(255,69,58,0.15)]">
+              <div className="flex items-start gap-2 p-2 rounded-lg bg-[var(--danger-light)] border border-[var(--danger)]">
                 <AlertTriangle
                   size={13}
                   className="text-[var(--danger)] mt-0.5 flex-shrink-0"
@@ -412,7 +412,7 @@ export function OpsPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit">
+      <div className="flex items-center gap-0.5 p-1 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-default)] w-fit">
         {TABS.map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.key
@@ -420,11 +420,13 @@ export function OpsPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                isActive
-                  ? 'bg-[var(--accent)] text-white shadow-md'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
-              }`}
+              className="flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-all"
+              style={{
+                background: isActive ? 'var(--bg-elevated)' : 'transparent',
+                color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                boxShadow: isActive ? 'var(--shadow-xs)' : 'none',
+                fontWeight: isActive ? 550 : 500,
+              }}
             >
               <Icon size={15} />
               {tab.label}

@@ -1,4 +1,4 @@
-import { Search, Bell, Sun, Moon } from 'lucide-react'
+import { Search, Bell } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { usePulse } from '@/hooks/useData'
 
@@ -18,8 +18,6 @@ const pageTitles: Record<string, string> = {
 
 export function TopBar() {
   const currentPage = useAppStore((s) => s.currentPage)
-  const theme = useAppStore((s) => s.theme)
-  const toggleTheme = useAppStore((s) => s.toggleTheme)
   const setPage = useAppStore((s) => s.setPage)
   const { data: pulseData } = usePulse()
 
@@ -33,11 +31,14 @@ export function TopBar() {
 
   return (
     <header
-      className="flex items-center justify-between px-6 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]"
-      style={{ height: 56 }}
+      className="flex items-center justify-between px-6 border-b bg-[var(--bg-base)]"
+      style={{ height: 52, borderColor: 'var(--border-subtle)' }}
     >
       {/* Page Title */}
-      <h1 className="text-lg font-semibold tracking-tight text-[var(--text-primary)]">
+      <h1
+        className="text-[28px] font-bold tracking-tight"
+        style={{ color: 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1.2 }}
+      >
         {title}
       </h1>
 
@@ -47,36 +48,33 @@ export function TopBar() {
         <div className="relative">
           <Search
             size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]"
+            className="absolute left-3 top-1/2 -translate-y-1/2"
+            style={{ color: 'var(--text-tertiary)' }}
           />
           <input
             type="text"
             placeholder="Search NEXUS..."
-            className="pl-9 pr-4 py-1.5 w-64 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+            className="pl-9 pr-4 py-2 w-64 rounded-lg text-sm outline-none transition-colors"
+            style={{
+              background: 'var(--bg-input)',
+              border: '1px solid var(--border-default)',
+              color: 'var(--text-primary)',
+            }}
           />
         </div>
-
-        {/* Theme Toggle */}
-        <button
-          onClick={toggleTheme}
-          className="relative p-2 rounded-lg hover:bg-[var(--bg-elevated)] transition-colors group"
-          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-        >
-          {theme === 'dark' ? (
-            <Sun size={18} className="text-[var(--text-secondary)] group-hover:text-[var(--warning)] transition-colors" />
-          ) : (
-            <Moon size={18} className="text-[var(--text-secondary)] group-hover:text-[var(--accent)] transition-colors" />
-          )}
-        </button>
 
         {/* Pulse Bell */}
         <button
           onClick={() => setPage('pulse')}
-          className="relative p-2 rounded-lg hover:bg-[var(--bg-elevated)] transition-colors"
+          className="relative p-2 rounded-lg transition-colors"
+          style={{ color: 'var(--text-secondary)' }}
         >
-          <Bell size={18} className="text-[var(--text-secondary)]" />
+          <Bell size={18} />
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--accent)] text-white text-[10px] font-bold leading-none">
+            <span
+              className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-bold leading-none"
+              style={{ background: 'var(--accent)' }}
+            >
               {unreadCount > 99 ? '99+' : unreadCount}
             </span>
           )}

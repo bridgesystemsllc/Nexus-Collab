@@ -55,19 +55,30 @@ export function Sidebar() {
 
   return (
     <aside
-      className="h-screen flex flex-col border-r border-[var(--border-subtle)] bg-[var(--bg-surface)] transition-all duration-200"
-      style={{ width: sidebarCollapsed ? 64 : 240 }}
+      className="h-screen flex flex-col transition-all duration-200"
+      style={{
+        width: sidebarCollapsed ? 64 : 240,
+        background: 'var(--bg-surface)',
+        borderRight: '1px solid var(--border-default)',
+      }}
     >
       {/* Logo / Title */}
-      <div className="flex items-center justify-between px-4 h-14 border-b border-[var(--border-subtle)]">
+      <div
+        className="flex items-center justify-between px-4 h-14"
+        style={{ borderBottom: '1px solid var(--border-default)' }}
+      >
         {!sidebarCollapsed && (
-          <span className="text-lg font-bold tracking-tight text-[var(--accent)]">
+          <span
+            className="text-lg font-bold tracking-tight"
+            style={{ color: 'var(--accent-secondary)' }}
+          >
             NEXUS
           </span>
         )}
         <button
           onClick={toggleSidebar}
-          className="p-1.5 rounded-md hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-colors"
+          className="p-1.5 rounded-md transition-colors"
+          style={{ color: 'var(--text-secondary)' }}
         >
           {sidebarCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
         </button>
@@ -78,7 +89,10 @@ export function Sidebar() {
         {navSections.map((section) => (
           <div key={section.label}>
             {!sidebarCollapsed && (
-              <div className="px-3 mb-2 text-[11px] font-medium tracking-[0.08em] text-[var(--text-tertiary)] uppercase">
+              <div
+                className="px-3 mb-2 text-[11px] font-semibold tracking-[0.06em] uppercase"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
                 {section.label}
               </div>
             )}
@@ -106,15 +120,15 @@ export function Sidebar() {
       </nav>
 
       {/* Bottom: AI Assistant */}
-      <div className="p-2 border-t border-[var(--border-subtle)]">
+      <div style={{ padding: 8, borderTop: '1px solid var(--border-default)' }}>
         <button
           onClick={toggleAIPanel}
           className={`nav-item w-full ${sidebarCollapsed ? 'justify-center px-0' : ''}`}
           title={sidebarCollapsed ? 'AI Assistant' : undefined}
         >
-          <Bot size={18} className="text-[var(--accent)]" />
+          <Bot size={18} style={{ color: 'var(--accent)' }} />
           {!sidebarCollapsed && (
-            <span className="text-[var(--accent)] font-medium">AI Assistant</span>
+            <span style={{ color: 'var(--accent)', fontWeight: 550 }}>NEXUS AI</span>
           )}
         </button>
       </div>
