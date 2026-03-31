@@ -14,13 +14,17 @@ import {
   Send,
   AlertCircle,
   Calendar,
+  Mail,
+  Trash2,
+  X,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useCoworkSpace, useMembers, useCreateCoworkTask, usePostActivity } from '@/hooks/useData'
+import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/appStore'
 import { TaskDetailDialog } from '@/components/TaskDetailDialog'
 
-type Tab = 'activity' | 'tasks' | 'files'
+type Tab = 'activity' | 'tasks' | 'files' | 'emails'
 
 const PRIORITY_COLORS: Record<string, string> = {
   CRITICAL: '#EB5757',
@@ -88,7 +92,7 @@ function formatSize(bytes: number): string {
 export function CoworkDetailPage() {
   const selectedCoworkId = useAppStore((s) => s.selectedCoworkId)
   const setSelectedCowork = useAppStore((s) => s.setSelectedCowork)
-  const { data: space, isLoading } = useCoworkSpace(selectedCoworkId ?? '')
+  const { data: space, isLoading, refetch } = useCoworkSpace(selectedCoworkId ?? '')
   const [activeTab, setActiveTab] = useState<Tab>('activity')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
 
@@ -121,6 +125,7 @@ export function CoworkDetailPage() {
     { key: 'activity', label: 'Activity', icon: MessageSquare },
     { key: 'tasks', label: 'Tasks', icon: CheckSquare },
     { key: 'files', label: 'Files', icon: FileText },
+    { key: 'emails', label: 'Emails', icon: Mail },
   ]
 
   return (
@@ -264,6 +269,8 @@ export function CoworkDetailPage() {
         />
       )}
       {activeTab === 'files' && <FilesTab documents={space.documents ?? []} />}
+
+      {activeTab === 'emails' && <EmailsTab spaceId={space.id} emails={space.emails ?? []} onRefresh={refetch} />}
 
       <TaskDetailDialog taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
     </div>
@@ -740,6 +747,210 @@ function FilesTab({ documents }: { documents: any[] }) {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// ─── Emails Tab ─────────────────────────────────────────────
+function EmailsTab({
+  spaceId,
+  emails,
+  onRefresh,
+}: {
+  spaceId: string
+  emails: any[]
+  onRefresh: () => void
+}) {
+  const [showAttach, setShowAttach] = useState(false)
+  const [form, setForm] = useState({
+    subject: '',
+    fromAddr: '',
+    toAddrs: '',
+    date: new Date().toISOString().slice(0, 10),
+    snippet: '',
+  })
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleAttach = async () => {
+    if (!form.subject.trim()) return
+    setSubmitting(true)
+    try {
+      await api.post(`/cowork/${spaceId}/emails`, {
+        subject: form.subject.trim(),
+        fromAddr: form.fromAddr.trim(),
+        toAddrs: form.toAddrs.split(',').map((e: string) => e.trim()).filter(Boolean),
+        date: form.date || new Date().toISOString(),
+        snippet: form.snippet.trim(),
+      })
+      setForm({ subject: '', fromAddr: '', toAddrs: '', date: new Date().toISOString().slice(0, 10), snippet: '' })
+      setShowAttach(false)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to attach email:', err)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const handleRemove = async (emailId: string) => {
+    try {
+      await api.delete(`/cowork/${spaceId}/emails/${emailId}`)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to remove email:', err)
+    }
+  }
+
+  const formatEmailDate = (d: string) => {
+    if (!d) return '—'
+    try {
+      return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    } catch { return d }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] text-[var(--text-secondary)]">
+          {emails.length} email{emails.length !== 1 ? 's' : ''} linked to this space
+        </p>
+        <button
+          onClick={() => setShowAttach(!showAttach)}
+          className="flex items-center gap-1.5 btn-primary px-3 py-2 rounded-lg text-[13px]"
+        >
+          <Mail size={14} /> Attach Email
+        </button>
+      </div>
+
+      {/* Attach Form */}
+      {showAttach && (
+        <div className="p-4 rounded-xl border border-[var(--accent)] bg-[var(--accent-subtle)] space-y-3 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <h4 className="text-[14px] font-semibold text-[var(--text-primary)]">Attach an Email</h4>
+            <button onClick={() => setShowAttach(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+              <X size={16} />
+            </button>
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1">
+              Subject <span className="text-[var(--danger)]">*</span>
+            </label>
+            <input
+              type="text"
+              value={form.subject}
+              onChange={(e) => setForm({ ...form, subject: e.target.value })}
+              placeholder="Email subject line"
+              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[14px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1">From</label>
+              <input
+                type="email"
+                value={form.fromAddr}
+                onChange={(e) => setForm({ ...form, fromAddr: e.target.value })}
+                placeholder="sender@example.com"
+                className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[14px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1">To (comma-separated)</label>
+              <input
+                type="text"
+                value={form.toAddrs}
+                onChange={(e) => setForm({ ...form, toAddrs: e.target.value })}
+                placeholder="recipient@example.com"
+                className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[14px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1">Date</label>
+            <input
+              type="date"
+              value={form.date}
+              onChange={(e) => setForm({ ...form, date: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[14px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1">Summary / Snippet</label>
+            <textarea
+              value={form.snippet}
+              onChange={(e) => setForm({ ...form, snippet: e.target.value })}
+              rows={3}
+              placeholder="Key points from the email relevant to this space..."
+              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[14px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-colors resize-y"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setShowAttach(false)} className="btn-ghost px-3 py-2 text-[13px]">Cancel</button>
+            <button
+              onClick={handleAttach}
+              disabled={!form.subject.trim() || submitting}
+              className="btn-primary flex items-center gap-1.5 px-4 py-2 text-[13px] disabled:opacity-40"
+            >
+              {submitting ? 'Attaching...' : 'Attach Email'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Email List */}
+      {emails.length === 0 && !showAttach ? (
+        <div className="flex flex-col items-center py-16 text-[var(--text-tertiary)]">
+          <Mail className="w-10 h-10 mb-3 opacity-40" />
+          <p className="text-[14px]">No emails linked yet</p>
+          <p className="text-[12px] mt-1">Attach relevant emails to keep your team in context.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {emails.map((email: any) => (
+            <div
+              key={email.id}
+              className="flex items-start gap-3 p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--border-default)] transition-colors group"
+            >
+              <div className="w-9 h-9 rounded-lg bg-[var(--accent-subtle)] flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Mail size={16} className="text-[var(--accent)]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[14px] font-medium text-[var(--text-primary)] truncate">
+                  {email.subject}
+                </p>
+                <div className="flex items-center gap-3 mt-1 text-[12px] text-[var(--text-secondary)]">
+                  {email.fromAddr && (
+                    <span className="flex items-center gap-1">
+                      <User size={10} /> {email.fromAddr}
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1">
+                    <Clock size={10} /> {formatEmailDate(email.date)}
+                  </span>
+                  {(email.toAddrs || []).length > 0 && (
+                    <span className="text-[var(--text-tertiary)]">
+                      To: {email.toAddrs.slice(0, 2).join(', ')}{email.toAddrs.length > 2 ? ` +${email.toAddrs.length - 2}` : ''}
+                    </span>
+                  )}
+                </div>
+                {email.snippet && (
+                  <p className="text-[13px] text-[var(--text-secondary)] mt-2 leading-relaxed line-clamp-3">
+                    {email.snippet}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => handleRemove(email.id)}
+                className="p-1.5 rounded-lg text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 hover:text-[var(--danger)] hover:bg-[var(--danger-light)] transition-all flex-shrink-0"
+                title="Remove email"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
