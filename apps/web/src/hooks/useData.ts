@@ -135,6 +135,25 @@ export function useCoworkSpace(id: string) {
   return useQuery({ queryKey: ['cowork', id], queryFn: () => api.get(`/cowork/${id}`).then(r => r.data), enabled: !!id })
 }
 
+export function useCreateCoworkSpace() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: any) => api.post('/cowork', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cowork'] }),
+  })
+}
+
+export function useCreateCoworkTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ spaceId, ...data }: any) => api.post(`/cowork/${spaceId}/tasks`, data).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['cowork', vars.spaceId] })
+      qc.invalidateQueries({ queryKey: ['cowork'] })
+    },
+  })
+}
+
 export function usePostActivity() {
   const qc = useQueryClient()
   return useMutation({
