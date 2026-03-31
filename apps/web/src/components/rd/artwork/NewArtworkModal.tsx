@@ -179,8 +179,7 @@ export function NewArtworkModal({ open, onClose, onSubmit, isSubmitting }: Props
 
       {/* Slide-over panel */}
       <div
-        className="relative z-10 flex flex-col bg-[var(--bg-elevated)] border-l border-[var(--border-default)] shadow-2xl w-full"
-        style={{ maxWidth: 960, animation: 'slideInRight 0.3s ease-out' }}
+        className="relative z-10 flex flex-col bg-[var(--bg-elevated)] border-l border-[var(--border-default)] shadow-2xl w-full max-w-[960px] h-screen animate-slide-in-right"
       >
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">

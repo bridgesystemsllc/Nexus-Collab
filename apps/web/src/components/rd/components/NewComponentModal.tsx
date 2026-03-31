@@ -1261,8 +1261,7 @@ export function NewComponentModal({ open, onClose, onSubmit, isSubmitting }: New
 
       {/* Slide-over panel — 960px */}
       <div
-        className="relative z-10 flex flex-col bg-[var(--bg-elevated)] border-l border-[var(--border-default)] shadow-2xl w-full max-w-[960px] animate-slide-in-right"
-        style={{ height: '100vh' }}
+        className="relative z-10 flex flex-col bg-[var(--bg-elevated)] border-l border-[var(--border-default)] shadow-2xl w-full max-w-[960px] h-screen animate-slide-in-right"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">

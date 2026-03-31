@@ -394,8 +394,7 @@ export function ArtworkProjectDetail({ open, project, onClose, onProjectUpdate }
 
       {/* Panel */}
       <div
-        className="relative z-10 flex flex-col bg-[var(--bg-elevated)] border-l border-[var(--border-default)] shadow-2xl w-full max-w-[960px] animate-slide-in-right"
-        style={{ height: '100vh' }}
+        className="relative z-10 flex flex-col bg-[var(--bg-elevated)] border-l border-[var(--border-default)] shadow-2xl w-full max-w-[960px] h-screen animate-slide-in-right"
       >
         {/* ─── HEADER ─────────────────────────────────────── */}
         <div className="flex-shrink-0 border-b border-[var(--border-subtle)]">
