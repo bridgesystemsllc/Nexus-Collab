@@ -48,6 +48,134 @@ const AUTH_GROUP: Record<string, string> = {
   GOOGLE_SHEETS: 'google',
 }
 
+// ─── ERP Settings Section (editable API URL + Key) ───────────
+
+function ErpSettingsSection({
+  integration,
+  onTestConnection,
+  testing,
+  testResult,
+}: {
+  integration: any
+  onTestConnection: () => void
+  testing: boolean
+  testResult: { ok: boolean; message: string } | null
+}) {
+  const [editing, setEditing] = useState(false)
+  const [apiUrl, setApiUrl] = useState(integration.config?.apiUrl || '')
+  const [apiKey, setApiKey] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState('')
+
+  const handleSave = async () => {
+    setSaving(true)
+    setSaveMsg('')
+    try {
+      await api.post('/integrations/ERP_KAREVE_SYNC/connect', {
+        apiUrl: apiUrl.trim(),
+        apiKey: apiKey.trim() || undefined,
+      })
+      setSaveMsg('Credentials updated')
+      setEditing(false)
+      setApiKey('')
+    } catch (err: any) {
+      setSaveMsg(err?.response?.data?.error || 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="p-4 rounded-[12px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">ERP Configuration</h3>
+        {!editing && (
+          <button onClick={() => setEditing(true)} className="text-[12px] text-[var(--accent)] font-medium hover:underline">
+            Edit Credentials
+          </button>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              API URL
+            </label>
+            <input
+              type="text"
+              value={apiUrl}
+              onChange={(e) => setApiUrl(e.target.value)}
+              placeholder="https://erp.kareve.com/api/v1"
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors font-mono"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              API Key <span className="normal-case text-[var(--text-tertiary)]">(leave blank to keep current)</span>
+            </label>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Enter new API key"
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving || !apiUrl.trim()}
+              className="btn-primary text-[13px] px-4 py-2 disabled:opacity-40"
+            >
+              {saving ? 'Saving...' : 'Save Credentials'}
+            </button>
+            <button onClick={() => { setEditing(false); setApiUrl(integration.config?.apiUrl || ''); setApiKey('') }} className="btn-ghost text-[13px] px-3 py-2">
+              Cancel
+            </button>
+          </div>
+          {saveMsg && (
+            <p className={`text-[12px] ${saveMsg.includes('updated') ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+              {saveMsg}
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-[0.06em]">API URL</p>
+            <p className="text-[13px] text-[var(--text-primary)] mt-1 font-mono">{integration.config?.apiUrl || 'Not configured'}</p>
+          </div>
+          <div>
+            <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-[0.06em]">API Key</p>
+            <p className="text-[13px] text-[var(--text-secondary)] mt-1 font-mono flex items-center gap-1.5">
+              <Key size={12} />
+              {integration.config?.apiKey ? '••••••••' + String(integration.config.apiKey).slice(-4) : 'Not configured'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3 pt-2 border-t border-[var(--border-subtle)]">
+        <button
+          onClick={onTestConnection}
+          disabled={testing}
+          className="btn-ghost text-[13px] flex items-center gap-2"
+        >
+          <RefreshCw size={13} className={testing ? 'animate-spin' : ''} />
+          Test Connection
+        </button>
+        {testResult && (
+          <p className={`text-[12px] flex items-center gap-1 ${testResult.ok ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+            {testResult.ok ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
+            {testResult.message}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Integration Settings Drawer ─────────────────────────────
 
 function IntegrationSettingsDrawer({
@@ -130,32 +258,12 @@ function IntegrationSettingsDrawer({
         )}
 
         {isErp && (
-          <div className="p-4 rounded-[12px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3">
-            <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">ERP Configuration</h3>
-            <div>
-              <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-[0.06em]">API URL</p>
-              <p className="text-[13px] text-[var(--text-secondary)] mt-1 font-mono">{integration.config?.apiUrl || 'Not set'}</p>
-            </div>
-            <div>
-              <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-[0.06em]">API Key</p>
-              <p className="text-[13px] text-[var(--text-secondary)] mt-1 font-mono">
-                {integration.config?.apiKey ? '****' + integration.config.apiKey.slice(-4) : 'Not set'}
-              </p>
-            </div>
-            <button
-              onClick={handleTestConnection}
-              disabled={testing}
-              className="btn-ghost text-[13px] flex items-center gap-2"
-            >
-              <RefreshCw size={13} className={testing ? 'animate-spin' : ''} />
-              Test Connection
-            </button>
-            {testResult && (
-              <p className={`text-[12px] ${testResult.ok ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
-                {testResult.message}
-              </p>
-            )}
-          </div>
+          <ErpSettingsSection
+            integration={integration}
+            onTestConnection={handleTestConnection}
+            testing={testing}
+            testResult={testResult}
+          />
         )}
 
         {isOAuth && (
@@ -178,10 +286,26 @@ function IntegrationSettingsDrawer({
         <div>
           <h3 className="text-[14px] font-semibold text-[var(--text-primary)] mb-3">Incoming Data</h3>
           <div className="space-y-2">
-            {['Tasks', 'Calendar Events', 'Contacts', 'Messages'].map((item) => (
-              <div key={item} className="flex items-center justify-between p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
-                <span className="text-[13px] text-[var(--text-primary)]">{item}</span>
-                <span className="badge badge-healthy text-[10px]">Syncing</span>
+            {(isErp
+              ? [
+                  { name: 'Product Names & Details', status: 'Syncing' },
+                  { name: 'Product SKUs / UPCs', status: 'Syncing' },
+                  { name: 'CM Information', status: 'Syncing' },
+                  { name: 'Inventory Levels', status: 'Syncing' },
+                  { name: 'Purchase Orders', status: 'Syncing' },
+                  { name: 'Production Orders', status: 'Syncing' },
+                  { name: 'BOM (Bill of Materials)', status: 'Syncing' },
+                ]
+              : [
+                  { name: 'Tasks', status: 'Syncing' },
+                  { name: 'Calendar Events', status: 'Syncing' },
+                  { name: 'Contacts', status: 'Syncing' },
+                  { name: 'Messages', status: 'Syncing' },
+                ]
+            ).map((item) => (
+              <div key={item.name} className="flex items-center justify-between p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                <span className="text-[13px] text-[var(--text-primary)]">{item.name}</span>
+                <span className="badge badge-healthy text-[10px]">{item.status}</span>
               </div>
             ))}
           </div>
@@ -191,10 +315,23 @@ function IntegrationSettingsDrawer({
         <div>
           <h3 className="text-[14px] font-semibold text-[var(--text-primary)] mb-3">Outgoing Data</h3>
           <div className="space-y-2">
-            {['Task Updates', 'Status Changes', 'Activity Logs'].map((item) => (
-              <div key={item} className="flex items-center justify-between p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
-                <span className="text-[13px] text-[var(--text-primary)]">{item}</span>
-                <span className="badge badge-info text-[10px]">Enabled</span>
+            {(isErp
+              ? [
+                  { name: 'Inventory Updates', status: 'Enabled' },
+                  { name: 'PO Status Changes', status: 'Enabled' },
+                  { name: 'Production Updates', status: 'Enabled' },
+                  { name: 'SKU / Product Changes', status: 'Enabled' },
+                  { name: 'CM Assignment Changes', status: 'Enabled' },
+                ]
+              : [
+                  { name: 'Task Updates', status: 'Enabled' },
+                  { name: 'Status Changes', status: 'Enabled' },
+                  { name: 'Activity Logs', status: 'Enabled' },
+                ]
+            ).map((item) => (
+              <div key={item.name} className="flex items-center justify-between p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                <span className="text-[13px] text-[var(--text-primary)]">{item.name}</span>
+                <span className="badge badge-info text-[10px]">{item.status}</span>
               </div>
             ))}
           </div>
