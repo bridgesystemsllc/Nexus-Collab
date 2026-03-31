@@ -1205,8 +1205,7 @@ export function NPDProjectDetail({
 
       {/* Panel */}
       <div
-        className="relative z-10 flex flex-col bg-[var(--bg-elevated)] border-l border-[var(--border-default)] shadow-2xl w-full max-w-[880px] animate-slide-in-right"
-        style={{ height: '100vh' }}
+        className="relative z-10 flex flex-col min-h-0 bg-[var(--bg-elevated)] border-l border-[var(--border-default)] shadow-2xl w-full max-w-[960px] h-screen animate-slide-in-right"
       >
         {/* ─── Header ─── */}
         <div className="px-6 py-4 border-b border-[var(--border-subtle)] space-y-3 flex-shrink-0">
@@ -1377,7 +1376,7 @@ export function NPDProjectDetail({
         </div>
 
         {/* ─── Scrollable Body ─── */}
-        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 py-5">
+        <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
           {activeTab === 'checklist' && (
             <ChecklistTab
               project={project}
