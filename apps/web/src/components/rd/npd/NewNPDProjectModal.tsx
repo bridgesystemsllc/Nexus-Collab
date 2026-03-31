@@ -638,7 +638,7 @@ export function NewNPDProjectModal({ open, onClose, onSubmit, isSubmitting }: Pr
 
       {/* Slide-over panel */}
       <div
-        className="relative z-10 flex flex-col bg-[var(--bg-elevated)] border-l border-[var(--border-default)] shadow-2xl w-full max-w-[960px] h-screen animate-slide-in-right"
+        className="relative z-10 flex flex-col min-h-0 bg-[var(--bg-elevated)] border-l border-[var(--border-default)] shadow-2xl w-full max-w-[960px] h-screen animate-slide-in-right"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
@@ -681,7 +681,7 @@ export function NewNPDProjectModal({ open, onClose, onSubmit, isSubmitting }: Pr
         </div>
 
         {/* Scrollable form body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
           {step === 0 && <StepProjectSetup form={form} setForm={setForm} errors={errors} />}
           {step === 1 && <StepBusinessCommercial form={form} setForm={setForm} errors={errors} />}
           {step === 2 && <StepTeamAssignment form={form} setForm={setForm} errors={errors} />}

@@ -1273,7 +1273,7 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate }:
 
       {/* Panel */}
       <div
-        className="relative z-10 flex flex-col bg-[var(--bg-elevated)] border-l border-[var(--border-default)] shadow-2xl w-full max-w-[960px] h-screen animate-slide-in-right"
+        className="relative z-10 flex flex-col min-h-0 bg-[var(--bg-elevated)] border-l border-[var(--border-default)] shadow-2xl w-full max-w-[960px] h-screen animate-slide-in-right"
       >
         {/* ── Header ────────────────────────────────────────── */}
         <div className="px-6 py-4 border-b border-[var(--border-subtle)]">
@@ -1371,7 +1371,7 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate }:
         </div>
 
         {/* ── Body ──────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
           {renderTab()}
         </div>
       </div>
