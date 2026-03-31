@@ -167,6 +167,7 @@ model CoworkSpace {
   activities  Activity[]
   tasks       Task[]     @relation("CoworkTasks")
   documents   Document[] @relation("CoworkDocs")
+  emails      EmailLink[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 }
@@ -244,19 +245,22 @@ model Document {
 
 // ─── Email Link ─────────────────────────────────────────────
 model EmailLink {
-  id        String   @id @default(cuid())
-  messageId String
-  subject   String
-  fromAddr  String
-  toAddrs   String[]
-  date      DateTime
-  snippet   String?
-  taskId    String?
-  task      Task?    @relation(fields: [taskId], references: [id])
-  metadata  Json?
-  createdAt DateTime @default(now())
+  id             String       @id @default(cuid())
+  messageId      String
+  subject        String
+  fromAddr       String
+  toAddrs        String[]
+  date           DateTime
+  snippet        String?
+  taskId         String?
+  task           Task?        @relation(fields: [taskId], references: [id])
+  coworkSpaceId  String?
+  coworkSpace    CoworkSpace? @relation(fields: [coworkSpaceId], references: [id])
+  metadata       Json?
+  createdAt      DateTime     @default(now())
 
   @@index([taskId])
+  @@index([coworkSpaceId])
 }
 
 // ─── Note ───────────────────────────────────────────────────
