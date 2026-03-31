@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
+import { ProductionModule } from '@/components/ops/production/ProductionModule'
 
 // ─── Types ─────────────────────────────────────────────────
 type OpsTab = 'sku' | 'inventory' | 'production'
@@ -348,7 +349,7 @@ export function OpsPage() {
     return departments.find((d: any) => d.type === 'BUILTIN_OPS') || null
   }, [departments])
 
-  const { data: deptDetail, isLoading: detailLoading } = useDepartment(
+  const { data: deptDetail, isLoading: detailLoading, refetch: refetchDept } = useDepartment(
     opsDept?.id || ''
   )
 
@@ -357,16 +358,18 @@ export function OpsPage() {
   // Organize module items by type
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { sku: [], inventory: [], production: [] }
+      return { sku: [], inventory: [], production: [], productionModuleId: null }
     }
     const modules = deptDetail.modules as any[]
     const find = (type: string) =>
       modules.find((m: any) => m.type === type)?.items || []
+    const prodModule = modules.find((m: any) => m.type === 'PRODUCTION_TRACKING')
 
     return {
       sku: find('SKU_PIPELINE'),
       inventory: find('INVENTORY_HEALTH'),
       production: find('PRODUCTION_TRACKING'),
+      productionModuleId: prodModule?.id || null,
     }
   }, [deptDetail])
 
@@ -452,7 +455,11 @@ export function OpsPage() {
           ) : activeTab === 'inventory' ? (
             <InventoryHealthTab items={moduleData.inventory} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
           ) : (
-            <ProductionTab items={moduleData.production} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} />
+            <ProductionModule
+              items={moduleData.production}
+              moduleId={moduleData.productionModuleId}
+              onRefresh={() => refetchDept()}
+            />
           )}
         </div>
       </div>
