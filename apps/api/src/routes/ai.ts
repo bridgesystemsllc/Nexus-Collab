@@ -32,7 +32,7 @@ async function gatherContext() {
   ])
 
   return {
-    activeTasks: tasks.map(t => ({
+    activeTasks: tasks.map((t: any) => ({
       title: t.title,
       status: t.status,
       priority: t.priority,
@@ -40,12 +40,12 @@ async function gatherContext() {
       dept: t.department?.name,
       dueDate: t.dueDate,
     })),
-    inventoryAlerts: inventory.map(i => {
+    inventoryAlerts: inventory.map((i: any) => {
       const d = i.data as any
       return { sku: d.sku, name: d.name, onHand: d.onHand, status: i.status }
     }),
-    unreadPulses: pulses.map(p => ({ type: p.type, message: p.message })),
-    recentActivity: activities.map(a => ({
+    unreadPulses: pulses.map((p: any) => ({ type: p.type, message: p.message })),
+    recentActivity: activities.map((a: any) => ({
       type: a.type,
       content: a.content,
       author: a.author?.name,
@@ -64,16 +64,16 @@ aiRoutes.post('/chat', async (req: Request, res: Response) => {
 You have access to the following real-time data:
 
 ACTIVE TASKS (${context.activeTasks.length}):
-${context.activeTasks.map(t => `- [${t.priority}] ${t.title} (${t.status}) — ${t.owner || 'Unassigned'}, ${t.dept || 'No dept'}`).join('\n')}
+${context.activeTasks.map((t: any) => `- [${t.priority}] ${t.title} (${t.status}) — ${t.owner || 'Unassigned'}, ${t.dept || 'No dept'}`).join('\n')}
 
 INVENTORY ALERTS:
-${context.inventoryAlerts.map(i => `- ${i.sku} ${i.name}: ${i.onHand} on hand [${i.status}]`).join('\n')}
+${context.inventoryAlerts.map((i: any) => `- ${i.sku} ${i.name}: ${i.onHand} on hand [${i.status}]`).join('\n')}
 
 UNREAD NOTIFICATIONS (${context.unreadPulses.length}):
-${context.unreadPulses.map(p => `- [${p.type}] ${p.message}`).join('\n')}
+${context.unreadPulses.map((p: any) => `- [${p.type}] ${p.message}`).join('\n')}
 
 RECENT ACTIVITY:
-${context.recentActivity.slice(0, 5).map(a => `- ${a.author}: ${a.content}`).join('\n')}
+${context.recentActivity.slice(0, 5).map((a: any) => `- ${a.author}: ${a.content}`).join('\n')}
 
 Respond concisely and actionably. When suggesting actions, be specific about what needs to happen and who should do it. Use bold for emphasis.`
 
@@ -94,7 +94,7 @@ Respond concisely and actionably. When suggesting actions, be specific about wha
         messages,
       })
 
-      const textContent = response.content.find(c => c.type === 'text')
+      const textContent = response.content.find((c: any) => c.type === 'text') as { text?: string } | undefined
       return res.json({ response: textContent?.text || 'No response generated.' })
     }
 
@@ -126,7 +126,7 @@ aiRoutes.get('/briefing', async (_req: Request, res: Response) => {
         }],
       })
 
-      const textContent = response.content.find(c => c.type === 'text')
+      const textContent = response.content.find((c: any) => c.type === 'text') as { text?: string } | undefined
       return res.json({ briefing: textContent?.text || 'No briefing generated.' })
     }
 
@@ -165,7 +165,7 @@ aiRoutes.post('/actions/update-overdue', async (_req: Request, res: Response) =>
       })
     }
 
-    res.json({ updated: overdue.length, tasks: overdue.map(t => t.title) })
+    res.json({ updated: overdue.length, tasks: overdue.map((t: any) => t.title) })
   } catch (error) {
     console.error('[ai] POST /actions/update-overdue error:', error)
     res.status(500).json({ error: 'Failed to update overdue tasks' })
@@ -176,7 +176,7 @@ aiRoutes.post('/actions/update-overdue', async (_req: Request, res: Response) =>
 aiRoutes.post('/actions/generate-wosr', async (_req: Request, res: Response) => {
   try {
     const context = await gatherContext()
-    const wosr = `# Weekly Operations Status Report\n\n**Generated:** ${new Date().toLocaleDateString()}\n\n## Active Tasks: ${context.activeTasks.length}\n${context.activeTasks.map(t => `- [${t.priority}] ${t.title} — ${t.status}`).join('\n')}\n\n## Inventory Alerts: ${context.inventoryAlerts.filter(i => i.status === 'emergency' || i.status === 'critical').length}\n${context.inventoryAlerts.filter(i => i.status === 'emergency' || i.status === 'critical').map(i => `- ${i.name}: ${i.onHand} units [${i.status}]`).join('\n')}\n\n## Unread Notifications: ${context.unreadPulses.length}`
+    const wosr = `# Weekly Operations Status Report\n\n**Generated:** ${new Date().toLocaleDateString()}\n\n## Active Tasks: ${context.activeTasks.length}\n${context.activeTasks.map((t: any) => `- [${t.priority}] ${t.title} — ${t.status}`).join('\n')}\n\n## Inventory Alerts: ${context.inventoryAlerts.filter((i: any) => i.status === 'emergency' || i.status === 'critical').length}\n${context.inventoryAlerts.filter((i: any) => i.status === 'emergency' || i.status === 'critical').map((i: any) => `- ${i.name}: ${i.onHand} units [${i.status}]`).join('\n')}\n\n## Unread Notifications: ${context.unreadPulses.length}`
 
     res.json({ wosr })
   } catch (error) {

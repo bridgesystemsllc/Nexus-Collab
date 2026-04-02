@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   X,
   Plus,
@@ -472,7 +472,7 @@ function BoardView({
   onCowork: (item: any) => void
   onEdit: (item: any) => void
 }) {
-  const groups = useMemo(() => groupByCM(items), [items])
+  const groups = useMemo(() => groupByCM(items as any) as Record<string, any[]>, [items])
   const sortedCMs = Object.keys(groups).sort()
 
   if (items.length === 0) {
@@ -719,6 +719,10 @@ function NotesDrawer({
       const prefix = notePrefix()
       const note: ProductionNote = {
         id: crypto.randomUUID(),
+        noteDate: new Date().toISOString().slice(0, 10),
+        noteText: `${prefix} — ${newNote.trim()}`,
+        createdBy: 'User',
+        createdAt: new Date().toISOString(),
         date: new Date().toISOString().slice(0, 10),
         text: `${prefix} — ${newNote.trim()}`,
         author: 'User',
@@ -770,11 +774,11 @@ function NotesDrawer({
             <div key={note.id} className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-mono font-semibold text-[var(--accent)] bg-[var(--accent-subtle)] px-2 py-0.5 rounded-full">
-                  {formatDate(note.date)}
+                  {formatDate(note.noteDate ?? note.date ?? '')}
                 </span>
-                <span className="text-[11px] text-[var(--text-tertiary)]">{note.author}</span>
+                <span className="text-[11px] text-[var(--text-tertiary)]">{note.createdBy || note.author || 'User'}</span>
               </div>
-              <p className="text-[13px] text-[var(--text-secondary)] pl-1 leading-relaxed">{note.text}</p>
+              <p className="text-[13px] text-[var(--text-secondary)] pl-1 leading-relaxed">{note.noteText || note.text}</p>
             </div>
           ))}
         </div>
@@ -817,7 +821,7 @@ function CoworkModal({
   onClose: () => void
   onRefresh: () => void
 }) {
-  const [coworkType, setCoworkType] = useState<CoworkType>('Quality Issue')
+  const [coworkType, setCoworkType] = useState<CoworkType>('PO Revision')
   const [assignTo, setAssignTo] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<'Normal' | 'Urgent'>('Normal')
@@ -832,6 +836,10 @@ function CoworkModal({
     try {
       const systemNote: ProductionNote = {
         id: crypto.randomUUID(),
+        noteDate: new Date().toISOString().slice(0, 10),
+        noteText: `${notePrefix()} — CoWork created: ${coworkType}. Assigned to ${assignTo || 'Unassigned'}. ${description}`,
+        createdBy: 'System',
+        createdAt: new Date().toISOString(),
         date: new Date().toISOString().slice(0, 10),
         text: `${notePrefix()} — CoWork created: ${coworkType}. Assigned to ${assignTo || 'Unassigned'}. ${description}`,
         author: 'System',
@@ -863,6 +871,10 @@ function CoworkModal({
     try {
       const resNote: ProductionNote = {
         id: crypto.randomUUID(),
+        noteDate: new Date().toISOString().slice(0, 10),
+        noteText: `${notePrefix()} — CoWork resolved. ${description || ''}`.trim(),
+        createdBy: 'System',
+        createdAt: new Date().toISOString(),
         date: new Date().toISOString().slice(0, 10),
         text: `${notePrefix()} — CoWork resolved. ${description || ''}`.trim(),
         author: 'System',
@@ -1063,13 +1075,13 @@ function NewOrderModal({
 
   // Reset form when modal opens with different item
   const itemId = editItem?.id || null
-  useState(() => {
+  useEffect(() => {
     if (isEdit && editItem?.data) {
       setForm({ ...EMPTY_ORDER, ...editItem.data })
     } else {
       setForm({ ...EMPTY_ORDER })
     }
-  })
+  }, [isEdit, itemId, editItem])
 
   const updateField = useCallback(
     <K extends keyof Omit<ProductionOrder, 'id'>>(key: K, value: Omit<ProductionOrder, 'id'>[K]) => {
@@ -1293,10 +1305,10 @@ function NewOrderModal({
               </FormField>
               <FormField label="Lead Time">
                 <input
-                  type="text"
-                  value={form.leadTime}
-                  onChange={(e) => updateField('leadTime', e.target.value)}
-                  placeholder="e.g. 6 weeks"
+                  type="number"
+                  value={form.leadTime || ''}
+                  onChange={(e) => updateField('leadTime', Number(e.target.value) || 0)}
+                  placeholder="e.g. 42"
                   className={inputClass}
                 />
               </FormField>

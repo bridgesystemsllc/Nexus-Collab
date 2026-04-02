@@ -56,7 +56,9 @@ export interface ProductionOrder {
   coworkType: string
   coworkNote: string
   coworkAssignedTo: string
+  coworkPriority?: 'Normal' | 'Urgent'
   coworkResolved: boolean
+  coworkResolutionNote?: string
   isEmergency: boolean
   notes: ProductionNote[]
   components: ProductionComponent[]

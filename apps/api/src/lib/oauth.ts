@@ -1,5 +1,11 @@
 import crypto from 'crypto'
 
+interface OAuthTokenResponse {
+  access_token: string
+  refresh_token?: string
+  expires_in: number
+}
+
 // ─── State Parameter (CSRF protection) ────────────────────────
 const pendingStates = new Map<string, { provider: string; createdAt: number }>()
 
@@ -51,7 +57,11 @@ export async function exchangeMicrosoftToken(code: string): Promise<{
     const err = await response.text()
     throw new Error(`Microsoft token exchange failed: ${err}`)
   }
-  return response.json()
+  return (await response.json()) as OAuthTokenResponse as {
+    access_token: string
+    refresh_token: string
+    expires_in: number
+  }
 }
 
 export async function refreshMicrosoftToken(refreshToken: string): Promise<{
@@ -78,7 +88,11 @@ export async function refreshMicrosoftToken(refreshToken: string): Promise<{
     const err = await response.text()
     throw new Error(`Microsoft token refresh failed: ${err}`)
   }
-  return response.json()
+  return (await response.json()) as OAuthTokenResponse as {
+    access_token: string
+    refresh_token: string
+    expires_in: number
+  }
 }
 
 // ─── Google Token Exchange ────────────────────────────────────
@@ -102,7 +116,11 @@ export async function exchangeGoogleToken(code: string): Promise<{
     const err = await response.text()
     throw new Error(`Google token exchange failed: ${err}`)
   }
-  return response.json()
+  return (await response.json()) as OAuthTokenResponse as {
+    access_token: string
+    refresh_token: string
+    expires_in: number
+  }
 }
 
 export async function refreshGoogleToken(refreshToken: string): Promise<{
@@ -123,5 +141,8 @@ export async function refreshGoogleToken(refreshToken: string): Promise<{
     const err = await response.text()
     throw new Error(`Google token refresh failed: ${err}`)
   }
-  return response.json()
+  return (await response.json()) as OAuthTokenResponse as {
+    access_token: string
+    expires_in: number
+  }
 }

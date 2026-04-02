@@ -140,27 +140,27 @@ async function buildWorkspaceContext(senderEmail: string): Promise<WorkspaceCont
     })
 
     // NPD projects
-    const npdModule = modules.find((m) => m.type === 'NPD_PIPELINE')
+    const npdModule = modules.find((m: any) => m.type === 'NPD_PIPELINE')
     if (npdModule) {
-      npdProjects = npdModule.items.map((item) => {
+      npdProjects = npdModule.items.map((item: any) => {
         const d = item.data as any
         return { id: item.id, projectName: d.projectName || '', brand: d.brand || '' }
       })
     }
 
     // Active briefs
-    const briefsModule = modules.find((m) => m.type === 'BRIEFS')
+    const briefsModule = modules.find((m: any) => m.type === 'BRIEFS')
     if (briefsModule) {
-      activeBriefs = briefsModule.items.map((item) => {
+      activeBriefs = briefsModule.items.map((item: any) => {
         const d = item.data as any
         return { id: item.id, projectName: d.projectName || d.name || '', brand: d.brand || '' }
       })
     }
 
     // CMs
-    const cmModule = modules.find((m) => m.type === 'CM_PRODUCTIVITY')
+    const cmModule = modules.find((m: any) => m.type === 'CM_PRODUCTIVITY')
     if (cmModule) {
-      cms = cmModule.items.map((item) => {
+      cms = cmModule.items.map((item: any) => {
         const d = item.data as any
         return { id: item.id, name: d.name || '' }
       })

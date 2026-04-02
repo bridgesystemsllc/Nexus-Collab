@@ -55,7 +55,7 @@ export interface ArtworkProject {
   targetRetailers: string[]
   retailerComplianceNotes: string
   // OTC
-  activeIngredients?: { name: string; concentration: string; purpose: string }[]
+  activeIngredients?: { name: string; percentage: string }[]
   indications?: string
   warnings?: string
   directions?: string
@@ -223,6 +223,11 @@ export const DEFAULT_APPROVAL_CHAIN = [
   { sequence: 5, role: 'Head of Business', assignedName: 'Tauro', required: true },
 ]
 
+export type ArtworkFormData = typeof EMPTY_ARTWORK_FORM
+export type PantoneColor = ArtworkFormData['pantoneColors'][number]
+export type ActiveIngredient = ArtworkFormData['activeIngredients'][number]
+export type ApprovalChainRow = ArtworkFormData['approvalChain'][number]
+
 // ─── Default Compliance Checklist ─────────────────────────────────
 
 export const DEFAULT_COMPLIANCE_ITEMS: Omit<ComplianceItem, 'id'>[] = [
@@ -310,7 +315,7 @@ export const EMPTY_ARTWORK_FORM = {
   allergenDisclosure: '',
   targetRetailers: [] as string[],
   retailerComplianceNotes: '',
-  activeIngredients: [] as { name: string; concentration: string; purpose: string }[],
+  activeIngredients: [] as { name: string; percentage: string }[],
   indications: '',
   warnings: '',
   directions: '',
