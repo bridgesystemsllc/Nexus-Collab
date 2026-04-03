@@ -38,7 +38,7 @@ import { NewFormulationModal, type FormulationFormData } from '@/components/rd/N
 import { api } from '@/lib/api'
 import { NewComponentModal } from '@/components/rd/components/NewComponentModal'
 import { ComponentDetail } from '@/components/rd/components/ComponentDetail'
-import { COMPONENT_TYPE_COLORS, FEASIBILITY_STATUS_COLORS, getWorstCompatibility, getBestUnitCost, generatePartNumber, type Component as ComponentType } from '@/components/rd/components/componentData'
+import { COMPONENT_TYPE_COLORS, FEASIBILITY_STATUS_COLORS, getWorstCompatibility, getBestUnitCost, generatePartNumber, type Component as RDComponent } from '@/components/rd/components/componentData'
 import { NewNPDProjectModal, type NPDFormData } from '@/components/rd/npd/NewNPDProjectModal'
 import { NPDProjectDetail } from '@/components/rd/npd/NPDProjectDetail'
 import { STAGE_CONFIG, createDefaultTasks, getStageProgress, getOverallProgress, getCurrentStage, isStageUnlocked, type NPDTask } from '@/components/rd/npd/npdChecklist'
@@ -979,7 +979,7 @@ function TransfersTab({
         onSubmit={handleSubmit}
         initialData={editingTransfer}
         isSubmitting={isSubmitting}
-        briefs={briefs}
+        briefItems={briefs}
       />
     </div>
   )
@@ -1635,7 +1635,7 @@ function ComponentsTab({
               </tr>
             </thead>
             <tbody>
-              {components.map((comp: any) => {
+              {components.map((comp: RDComponent & { moduleId?: string }) => {
                 const typeColor = COMPONENT_TYPE_COLORS[comp.type] || '#6B7280'
                 const statusColor = FEASIBILITY_STATUS_COLORS[comp.status] || '#6B7280'
                 const primaryVendor = (comp.vendors || []).find((v: any) => v.vendorStatus === 'Primary') || (comp.vendors || [])[0]
@@ -1687,8 +1687,10 @@ function NPDSegmentedProgress({ tasks }: { tasks: NPDTask[] }) {
   return (
     <div className="flex items-center gap-0.5 w-full">
       {stages.map((stage) => {
-        const { completed, total } = getStageProgress(tasks, stage.key)
-        const pct = total > 0 ? Math.round((completed / total) * 100) : 0
+        const pct = getStageProgress(tasks, stage.key)
+        const stageTasks = tasks.filter((t) => t.stageKey === stage.key && t.status !== 'skipped')
+        const completed = stageTasks.filter((t) => t.status === 'complete').length
+        const total = stageTasks.length
         return (
           <div key={stage.key} className="flex-1 h-2 rounded-full overflow-hidden bg-[var(--bg-elevated)]" title={`${stage.name}: ${completed}/${total}`}>
             <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: stage.color }} />

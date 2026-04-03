@@ -31,7 +31,7 @@ const briefingWorker = new Worker('daily-briefing', async () => {
     where: { status: 'emergency', module: { type: 'INVENTORY_HEALTH' } },
   })
 
-  const critical = tasks.filter(t => t.priority === 'CRITICAL')
+  const critical = tasks.filter((t: any) => t.priority === 'CRITICAL')
 
   for (const leader of leaders) {
     await prisma.pulse.create({

@@ -2,6 +2,10 @@ import { Client } from '@microsoft/microsoft-graph-client'
 
 // Simple token cache for app-only auth
 let cachedToken: { token: string; expiresAt: number } | null = null
+interface GraphTokenResponse {
+  access_token: string
+  expires_in: number
+}
 
 async function getAccessToken(): Promise<string> {
   if (cachedToken && Date.now() < cachedToken.expiresAt - 60000) {
@@ -35,7 +39,7 @@ async function getAccessToken(): Promise<string> {
     throw new Error(`Graph token acquisition failed: ${err}`)
   }
 
-  const data = await response.json()
+  const data = (await response.json()) as GraphTokenResponse
   cachedToken = {
     token: data.access_token,
     expiresAt: Date.now() + data.expires_in * 1000,

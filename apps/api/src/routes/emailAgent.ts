@@ -135,9 +135,7 @@ emailAgentRoutes.post('/test', async (req: Request, res: Response) => {
       receivedAt: new Date().toISOString(),
     }
 
-    // Build workspace context
-    const { buildWorkspaceContext } = await import('../services/emailAgent/processor')
-    // We can't import buildWorkspaceContext directly since it's not exported — inline it
+    // Build workspace context inline for the test route
     const rdDept = await prisma.department.findFirst({ where: { type: 'BUILTIN_RD' } })
     const workspaceContext: any = {
       senderUser: null,
@@ -151,7 +149,7 @@ emailAgentRoutes.post('/test', async (req: Request, res: Response) => {
         where: { departmentId: rdDept.id },
         include: { items: true },
       })
-      const npdModule = modules.find((m) => m.type === 'NPD_PIPELINE')
+      const npdModule = modules.find((m: any) => m.type === 'NPD_PIPELINE')
       if (npdModule) {
         workspaceContext.npdProjects = npdModule.items.map((item: any) => ({
           id: item.id,
@@ -159,7 +157,7 @@ emailAgentRoutes.post('/test', async (req: Request, res: Response) => {
           brand: (item.data as any).brand || '',
         }))
       }
-      const briefsModule = modules.find((m) => m.type === 'BRIEFS')
+      const briefsModule = modules.find((m: any) => m.type === 'BRIEFS')
       if (briefsModule) {
         workspaceContext.activeBriefs = briefsModule.items.map((item: any) => ({
           id: item.id,
@@ -167,7 +165,7 @@ emailAgentRoutes.post('/test', async (req: Request, res: Response) => {
           brand: (item.data as any).brand || '',
         }))
       }
-      const cmModule = modules.find((m) => m.type === 'CM_PRODUCTIVITY')
+      const cmModule = modules.find((m: any) => m.type === 'CM_PRODUCTIVITY')
       if (cmModule) {
         workspaceContext.cms = cmModule.items.map((item: any) => ({
           id: item.id,
