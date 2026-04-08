@@ -3,6 +3,7 @@ import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { AIPanel } from '@/components/layout/AIPanel'
 import { OnboardingGuard } from '@/components/onboarding/OnboardingGuard'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { DashboardPage } from '@/app/routes/dashboard'
 import { EverythingPage } from '@/app/routes/everything'
 import { RDPage } from '@/app/routes/departments/rd'
@@ -65,7 +66,9 @@ export function App() {
           <TopBar />
           <main className="flex-1 overflow-y-auto">
             <MeetingBotBanner />
-            <PageContent />
+            <ErrorBoundary>
+              <PageContent />
+            </ErrorBoundary>
           </main>
         </div>
 
