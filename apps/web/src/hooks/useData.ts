@@ -225,6 +225,59 @@ export function useCheckSlug() {
   })
 }
 
+// ─── Products ──────────────────────────────────────────────
+export function useProducts(params?: Record<string, string>) {
+  const searchParams = new URLSearchParams(params || {}).toString()
+  return useQuery({
+    queryKey: ['products', params],
+    queryFn: () => api.get(`/products?${searchParams}`).then(r => r.data),
+  })
+}
+
+export function useProduct(id: string) {
+  return useQuery({
+    queryKey: ['product', id],
+    queryFn: () => api.get(`/products/${id}`).then(r => r.data),
+    enabled: !!id,
+  })
+}
+
+export function useCreateProduct() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: any) => api.post('/products', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
+  })
+}
+
+export function useUpdateProduct() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; [key: string]: any }) =>
+      api.patch(`/products/${id}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
+  })
+}
+
+export function useDeleteProduct() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/products/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
+  })
+}
+
+export function useSyncKareve() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post('/products/sync-kareve').then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['products'] })
+      qc.invalidateQueries({ queryKey: ['integrations'] })
+    },
+  })
+}
+
 // ─── Pulse ──────────────────────────────────────────────────
 export function usePulse(filters?: Record<string, string>) {
   const params = new URLSearchParams(filters || {}).toString()
