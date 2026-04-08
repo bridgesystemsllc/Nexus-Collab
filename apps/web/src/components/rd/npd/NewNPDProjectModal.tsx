@@ -677,16 +677,18 @@ function MemberSelect({
 
 // ─── Step 3: Team Assignment ───────────────────────────────
 function StepTeamAssignment({ form, setForm }: StepProps) {
-  const updateAssignee = (index: number, name: string) => {
+  const { data: members = [] } = useMembers()
+
+  const updateAssignee = (index: number, val: { memberId: string; assignedName: string }) => {
     const assignments = [...form.teamAssignments]
-    assignments[index] = { ...assignments[index], assignedName: name }
+    assignments[index] = { ...assignments[index], ...val }
     setForm({ ...form, teamAssignments: assignments })
   }
 
   return (
     <div className="space-y-4">
       <p className="text-[13px] text-[var(--text-tertiary)]">
-        Assign team members to each role. Defaults are pre-filled where applicable.
+        Assign team members to each role. Search for existing users or create new ones.
       </p>
 
       <div className="rounded-xl border border-[var(--border-default)] overflow-hidden">
@@ -704,18 +706,12 @@ function StepTeamAssignment({ form, setForm }: StepProps) {
               i < form.teamAssignments.length - 1 ? 'border-b border-[var(--border-subtle)]' : ''
             }`}
           >
-            <div>
-              <span className="text-[14px] text-[var(--text-primary)]">{assignment.role}</span>
-              {assignment.defaultName && (
-                <span className="block text-[11px] text-[var(--text-tertiary)] mt-0.5">
-                  Default: {assignment.defaultName}
-                </span>
-              )}
-            </div>
-            <TextInput
-              value={assignment.assignedName}
-              onChange={(v) => updateAssignee(i, v)}
-              placeholder="Enter name"
+            <span className="text-[14px] text-[var(--text-primary)]">{assignment.role}</span>
+            <MemberSelect
+              value={{ memberId: assignment.memberId, assignedName: assignment.assignedName }}
+              onChange={(val) => updateAssignee(i, val)}
+              members={members}
+              onMemberCreated={() => {}}
             />
           </div>
         ))}
