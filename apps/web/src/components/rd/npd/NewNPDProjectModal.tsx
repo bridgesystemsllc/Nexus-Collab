@@ -70,7 +70,7 @@ const DEFAULT_TEAM: { role: string }[] = [
   { role: 'Amazon/Operations' },
 ]
 
-export const EMPTY_NPD_FORM: NPDFormData = {
+const EMPTY_NPD_FORM: NPDFormData = {
   projectName: '',
   brand: '',
   subBrand: '',
