@@ -14,6 +14,7 @@ import { IntegrationsPage } from '@/app/routes/integrations'
 import { DeptManagerPage } from '@/app/routes/dept-manager'
 import { PulsePage } from '@/app/routes/pulse'
 import { AgentSettingsPage } from '@/app/routes/agent-settings'
+import { ProductCatalogPage } from '@/app/routes/product-catalog'
 
 function PageContent() {
   const currentPage = useAppStore((s) => s.currentPage)
@@ -41,6 +42,8 @@ function PageContent() {
       return <PulsePage />
     case 'agent-settings':
       return <AgentSettingsPage />
+    case 'product-catalog':
+      return <ProductCatalogPage />
     default:
       return (
         <div className="flex-1 flex items-center justify-center text-[var(--text-tertiary)]">

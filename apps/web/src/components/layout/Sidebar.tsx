@@ -11,6 +11,7 @@ import {
   Bot,
   ChevronLeft,
   ChevronRight,
+  Package,
 } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { useDepartments } from '@/hooks/useData'
@@ -44,6 +45,7 @@ const collaborationSection: NavSection = {
   items: [
     { id: 'cowork', label: 'Cowork Spaces', icon: Users },
     { id: 'docs', label: 'Documents', icon: FileText },
+    { id: 'product-catalog', label: 'Product Catalog', icon: Package },
   ],
 }
 
