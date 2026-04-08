@@ -57,7 +57,7 @@ export interface NPDProject {
   targetRetailers: string
   contractManufacturerId: string
   pipeQuantity: string
-  teamAssignments: { role: string; memberId?: string; assignedName: string }[]
+  teamAssignments: { role: string; memberId: string; assignedName: string }[]
   stageDates: Record<string, string>
   tasks: NPDTask[]
   gateApprovals: { gate: string; approvedBy: string; approvedAt: string; notes?: string }[]

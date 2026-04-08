@@ -473,12 +473,10 @@ function MemberSelect({
   value,
   onChange,
   members,
-  onMemberCreated,
 }: {
   value: { memberId: string; assignedName: string }
   onChange: (val: { memberId: string; assignedName: string }) => void
   members: Member[]
-  onMemberCreated: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -529,7 +527,6 @@ function MemberSelect({
         email: newEmail.trim(),
         role: 'MEMBER',
       })
-      onMemberCreated()
       onChange({ memberId: created.id, assignedName: created.name })
       setOpen(false)
       setCreating(false)
@@ -711,7 +708,6 @@ function StepTeamAssignment({ form, setForm }: StepProps) {
               value={{ memberId: assignment.memberId, assignedName: assignment.assignedName }}
               onChange={(val) => updateAssignee(i, val)}
               members={members}
-              onMemberCreated={() => {}}
             />
           </div>
         ))}
