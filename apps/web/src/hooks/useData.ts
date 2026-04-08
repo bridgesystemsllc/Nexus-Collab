@@ -230,7 +230,7 @@ export function useProducts(params?: Record<string, string>) {
   const searchParams = new URLSearchParams(params || {}).toString()
   return useQuery({
     queryKey: ['products', params],
-    queryFn: () => api.get(`/products?${searchParams}`).then(r => r.data),
+    queryFn: () => api.get(`/products?${searchParams}`).then(r => Array.isArray(r.data) ? r.data : []),
   })
 }
 

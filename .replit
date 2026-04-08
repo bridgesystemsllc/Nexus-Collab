@@ -51,7 +51,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "fuser -k 5000/tcp 2>/dev/null; DATABASE_URL=\"postgresql://postgres:${PGPASSWORD}@helium:5432/nexus\" /home/runner/workspace/apps/api/node_modules/.bin/tsx apps/api/src/index.ts & sleep 3 && cd /home/runner/workspace/apps/web && pnpm run dev"
+args = "fuser -k 3000/tcp 5000/tcp 2>/dev/null; DATABASE_URL=\"postgresql://postgres:${PGPASSWORD}@helium:5432/nexus\" /home/runner/workspace/apps/api/node_modules/.bin/tsx apps/api/src/index.ts & sleep 3 && cd /home/runner/workspace/apps/web && pnpm run dev"
 waitForPort = 5000
 
 [agent]
