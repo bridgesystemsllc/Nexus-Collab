@@ -96,11 +96,10 @@ export function Sidebar() {
     ? buildDeptItems(departments)
     : fallbackDeptItems
 
-  const sections: NavSection[] = [
+  const scrollSections: NavSection[] = [
     overviewSection,
     { label: 'DEPARTMENTS', items: deptItems },
     collaborationSection,
-    systemSection,
   ]
 
   return (
@@ -134,9 +133,9 @@ export function Sidebar() {
         </button>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation — scrollable */}
       <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-6">
-        {sections.map((section) => (
+        {scrollSections.map((section) => (
           <div key={section.label}>
             {!sidebarCollapsed && (
               <div
@@ -163,7 +162,6 @@ export function Sidebar() {
                 }
 
                 const Icon = item.icon
-                // Use deptId as key for custom depts to avoid duplicate 'custom-dept' keys
                 const key = isCustomDept ? `dept-${item.deptId}` : item.id
 
                 return (
@@ -188,6 +186,35 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
+
+      {/* System section — pinned, always visible */}
+      <div style={{ padding: '8px 8px 4px', borderTop: '1px solid var(--border-default)' }}>
+        {!sidebarCollapsed && (
+          <div
+            className="px-3 mb-2 text-[11px] font-semibold tracking-[0.06em] uppercase"
+            style={{ color: 'var(--text-tertiary)' }}
+          >
+            SYSTEM
+          </div>
+        )}
+        <div className="space-y-0.5">
+          {systemSection.items.map((item) => {
+            const isActive = currentPage === item.id
+            const Icon = item.icon
+            return (
+              <button
+                key={item.id}
+                onClick={() => setPage(item.id)}
+                className={`nav-item w-full ${isActive ? 'active' : ''} ${sidebarCollapsed ? 'justify-center px-0' : ''}`}
+                title={sidebarCollapsed ? item.label : undefined}
+              >
+                {Icon && <Icon size={18} />}
+                {!sidebarCollapsed && <span>{item.label}</span>}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {/* Bottom: AI Assistant */}
       <div style={{ padding: 8, borderTop: '1px solid var(--border-default)' }}>
