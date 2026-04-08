@@ -28,6 +28,7 @@ model Organization {
   projects           Project[]
   documents          Document[]
   integrations       Integration[]
+  products           Product[]
   invites            OrganizationInvite[]
 }
 
@@ -132,6 +133,34 @@ model Brand {
   org   Organization @relation(fields: [orgId], references: [id])
 
   @@index([orgId])
+}
+
+// ─── Product ────────────────────────────────────────────────
+model Product {
+  id           String   @id @default(cuid())
+  name         String
+  brand        String
+  category     String
+  sku          String?  @unique
+  upc          String?
+  description  String?
+  retailPrice  String?
+  cogs         String?
+  status       String   @default("ACTIVE") // ACTIVE, IN_DEVELOPMENT, DISCONTINUED
+  imageUrl     String?
+  weight       String?
+  dimensions   String?
+  ingredients  String?
+  manufacturer String?
+  variants     Json?
+  kareveId     String?  @unique
+  orgId        String
+  org          Organization @relation(fields: [orgId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([orgId])
+  @@index([status])
 }
 
 // ─── Project ────────────────────────────────────────────────
