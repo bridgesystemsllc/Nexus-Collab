@@ -116,3 +116,13 @@ process.on('SIGTERM', async () => {
   httpServer.close()
   process.exit(0)
 })
+
+// Prevent unhandled errors from crashing the process
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[NEXUS] Unhandled promise rejection:', reason)
+  console.error('[NEXUS] Promise:', promise)
+})
+
+process.on('uncaughtException', (error) => {
+  console.error('[NEXUS] Uncaught exception:', error)
+})
