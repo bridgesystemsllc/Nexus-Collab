@@ -57,7 +57,7 @@ export interface NPDProject {
   targetRetailers: string
   contractManufacturerId: string
   pipeQuantity: string
-  teamAssignments: { role: string; defaultName: string; assignedName: string }[]
+  teamAssignments: { role: string; memberId?: string; assignedName: string }[]
   stageDates: Record<string, string>
   tasks: NPDTask[]
   gateApprovals: { gate: string; approvedBy: string; approvedAt: string; notes?: string }[]
@@ -978,11 +978,11 @@ function OverviewTab({
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[var(--bg-base)] border border-[var(--border-subtle)]"
             >
               <div className="w-8 h-8 rounded-full bg-[var(--accent-secondary-light)] flex items-center justify-center text-[var(--accent-secondary)] text-[12px] font-semibold flex-shrink-0">
-                {(tm.assignedName || tm.defaultName || '?').charAt(0).toUpperCase()}
+                {(tm.assignedName || '?').charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
                 <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">
-                  {tm.assignedName || tm.defaultName || '--'}
+                  {tm.assignedName || '--'}
                 </p>
                 <p className="text-[11px] text-[var(--text-tertiary)]">{tm.role}</p>
               </div>
@@ -1245,10 +1245,10 @@ export function NPDProjectDetail({
             {launchManager && (
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-full bg-[var(--accent-light)] flex items-center justify-center text-[var(--accent)] text-[10px] font-semibold">
-                  {(launchManager.assignedName || launchManager.defaultName || '?').charAt(0).toUpperCase()}
+                  {(launchManager.assignedName || '?').charAt(0).toUpperCase()}
                 </div>
                 <span className="text-[13px] text-[var(--text-primary)] font-medium">
-                  {launchManager.assignedName || launchManager.defaultName}
+                  {launchManager.assignedName || '--'}
                 </span>
               </div>
             )}
