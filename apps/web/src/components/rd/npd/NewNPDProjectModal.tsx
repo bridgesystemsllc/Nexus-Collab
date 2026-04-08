@@ -31,7 +31,7 @@ export interface NPDFormData {
   targetRetailers: string
   contractManufacturerId: string
   pipeQuantity: string
-  teamAssignments: { role: string; defaultName: string; assignedName: string }[]
+  teamAssignments: { role: string; memberId: string; assignedName: string }[]
   stageDates: {
     stage0Target: string
     stage1Target: string
@@ -43,20 +43,20 @@ export interface NPDFormData {
   }
 }
 
-const DEFAULT_TEAM: { role: string; defaultName: string }[] = [
-  { role: 'Launch Manager', defaultName: '' },
-  { role: 'Product Development Lead', defaultName: 'Peter - PD' },
-  { role: 'R&D Director', defaultName: 'Jean Marc' },
-  { role: 'R&D Lead', defaultName: '' },
-  { role: 'Operations Director', defaultName: 'Steven - OD' },
-  { role: 'Operations Assistant', defaultName: 'Sonji' },
-  { role: 'Brand Manager', defaultName: '' },
-  { role: 'Head of Business', defaultName: 'Tauro' },
-  { role: 'Sales / Demand Planning', defaultName: '' },
-  { role: 'Finance Lead', defaultName: '' },
-  { role: 'BOM / Operations Lead', defaultName: 'Eric' },
-  { role: 'PO Manager', defaultName: 'Joe' },
-  { role: 'Amazon/Operations', defaultName: '' },
+const DEFAULT_TEAM: { role: string }[] = [
+  { role: 'Launch Manager' },
+  { role: 'Product Development Lead' },
+  { role: 'R&D Director' },
+  { role: 'R&D Lead' },
+  { role: 'Operations Director' },
+  { role: 'Operations Assistant' },
+  { role: 'Brand Manager' },
+  { role: 'Head of Business' },
+  { role: 'Sales / Demand Planning' },
+  { role: 'Finance Lead' },
+  { role: 'BOM / Operations Lead' },
+  { role: 'PO Manager' },
+  { role: 'Amazon/Operations' },
 ]
 
 export const EMPTY_NPD_FORM: NPDFormData = {
@@ -81,8 +81,8 @@ export const EMPTY_NPD_FORM: NPDFormData = {
   pipeQuantity: '',
   teamAssignments: DEFAULT_TEAM.map((t) => ({
     role: t.role,
-    defaultName: t.defaultName,
-    assignedName: t.defaultName,
+    memberId: '',
+    assignedName: '',
   })),
   stageDates: {
     stage0Target: '',
