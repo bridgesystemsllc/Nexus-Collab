@@ -15,14 +15,16 @@ import {
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 import { ProductionModule } from '@/components/ops/production/ProductionModule'
+import { BrandTransitionModule } from '@/components/ops/brand-transition/BrandTransitionModule'
 
 // ─── Types ─────────────────────────────────────────────────
-type OpsTab = 'sku' | 'inventory' | 'production'
+type OpsTab = 'sku' | 'inventory' | 'production' | 'brand-transition'
 
 const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'sku', label: 'SKU Pipeline', icon: Package },
   { key: 'inventory', label: 'Inventory Health', icon: Box },
   { key: 'production', label: 'Production Tracking', icon: Factory },
+  { key: 'brand-transition', label: 'Brand Transition', icon: TrendingUp },
 ]
 
 // ─── Skeleton ──────────────────────────────────────────────
@@ -454,6 +456,8 @@ export function OpsPage() {
             <SKUPipelineTab items={moduleData.sku} onSelect={(item) => setSelectedItem({ item, type: 'SKU_PIPELINE' })} />
           ) : activeTab === 'inventory' ? (
             <InventoryHealthTab items={moduleData.inventory} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
+          ) : activeTab === 'brand-transition' ? (
+            <BrandTransitionModule />
           ) : (
             <ProductionModule
               items={moduleData.production}

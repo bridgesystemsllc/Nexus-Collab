@@ -29,6 +29,7 @@ model Organization {
   documents          Document[]
   integrations       Integration[]
   products           Product[]
+  transitionSkus     TransitionSku[]
   invites            OrganizationInvite[]
 }
 
@@ -379,4 +380,107 @@ model EscalationRule {
   delayMinutes Int      @default(0)
   enabled      Boolean  @default(true)
   createdAt    DateTime @default(now())
+}
+
+// ─── Brand Transition SKU ───────────────────────────────────
+model TransitionSku {
+  id                    String    @id @default(cuid())
+  materialCode          String    @unique
+  description           String
+  brand                 String    @default("CarolsDaughter")
+  track                 String    // loreal_coman, full_buy, disco_decision
+  currentCm             String?
+  lorealEntity          String?
+  manufacturingProcess  String?
+  transitionDeadline    DateTime? @default(dbgenerated("'2025-04-29'::timestamp"))
+  newCm                 String?
+  cmStatus              String    @default("Not Started")
+  cmOutreachDate        DateTime?
+  cmAgreementDate       DateTime?
+  firstProductionDate   DateTime?
+  transitionOwner       String?
+  formulaTransferred    Boolean   @default(false)
+  formulaTransferDate   DateTime?
+  formulaOwner          String?
+  rawMaterialsConfirmed Boolean   @default(false)
+  rmNotes               String?
+  discoDecision         String    @default("Pending") // Pending, Discontinue, Find RM and Produce
+  discoDecisionDate     DateTime?
+  discoDecisionOwner    String?
+  rmDisengaged          String?
+  lastLorealBatches     Int       @default(0)
+  lastBatchEta          DateTime?
+  currentInventoryUnits Int       @default(0)
+  weeksOfSupply         Float?
+  avgWeeklyVelocity     Float?
+  overallStatus         String    @default("Needs Action") // Active, Needs Action, At Risk, Decision Required, Discontinued, Transition Complete
+  isFlagged             Boolean   @default(false)
+  priority              String    @default("Medium") // High, Medium, Low
+  isCowork              Boolean   @default(false)
+  coworkType            String?
+  coworkNote            String?
+  coworkAssignedTo      String?
+  coworkResolved        Boolean   @default(false)
+  notes                 String?
+  orgId                 String
+  org                   Organization @relation(fields: [orgId], references: [id])
+  transitionNotes       TransitionNote[]
+  milestones            TransitionMilestone[]
+  cmCandidates          CmCandidate[]
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([orgId])
+  @@index([track])
+  @@index([overallStatus])
+}
+
+// ─── Transition Note ────────────────────────────────────────
+model TransitionNote {
+  id        String   @id @default(cuid())
+  skuId     String
+  sku       TransitionSku @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  noteType  String   @default("Update") // Update, CM Outreach, Legal / Agreement, Formula Transfer, RM Update, Decision, CoWork, System
+  noteText  String
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([skuId])
+}
+
+// ─── Transition Milestone ───────────────────────────────────
+model TransitionMilestone {
+  id            String    @id @default(cuid())
+  skuId         String
+  sku           TransitionSku @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  milestoneName String
+  dueDate       DateTime?
+  completed     Boolean   @default(false)
+  completedDate DateTime?
+  completedBy   String?
+  notes         String?
+
+  @@index([skuId])
+}
+
+// ─── CM Candidate ───────────────────────────────────────────
+model CmCandidate {
+  id              String    @id @default(cuid())
+  skuId           String
+  sku             TransitionSku @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  cmName          String
+  cmContact       String?
+  cmEmail         String?
+  capability      String?
+  outreachDate    DateTime?
+  responseReceived Boolean  @default(false)
+  responseDate    DateTime?
+  quoteReceived   Boolean   @default(false)
+  quoteAmount     Float?
+  status          String    @default("Under Evaluation") // Under Evaluation, Qualified, Rejected, Selected
+  rejectionReason String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+
+  @@index([skuId])
 }

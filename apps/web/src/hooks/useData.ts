@@ -299,3 +299,64 @@ export function useMarkAllPulseRead() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pulse'] }),
   })
 }
+
+// ─── Brand Transition ──────────────────────────────────────
+export function useTransitionSkus(params?: Record<string, string>) {
+  const searchParams = new URLSearchParams(params || {}).toString()
+  return useQuery({
+    queryKey: ['transition-skus', params],
+    queryFn: () => api.get(`/brand-transition?${searchParams}`).then(r => r.data),
+  })
+}
+
+export function useTransitionSku(id: string) {
+  return useQuery({
+    queryKey: ['transition-sku', id],
+    queryFn: () => api.get(`/brand-transition/${id}`).then(r => r.data),
+    enabled: !!id,
+  })
+}
+
+export function useUpdateTransitionSku() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; [key: string]: any }) =>
+      api.patch(`/brand-transition/${id}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transition-skus'] }),
+  })
+}
+
+export function useCreateTransitionNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ skuId, ...data }: { skuId: string; noteType: string; noteText: string; createdBy?: string }) =>
+      api.post(`/brand-transition/${skuId}/notes`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transition-skus'] }),
+  })
+}
+
+export function useCreateTransitionMilestone() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ skuId, ...data }: { skuId: string; milestoneName: string; dueDate?: string; notes?: string }) =>
+      api.post(`/brand-transition/${skuId}/milestones`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transition-skus'] }),
+  })
+}
+
+export function useUpdateTransitionMilestone() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ milestoneId, ...data }: { milestoneId: string; [key: string]: any }) =>
+      api.patch(`/brand-transition/milestones/${milestoneId}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transition-skus'] }),
+  })
+}
+
+export function useSeedTransitionData() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post('/brand-transition/seed').then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transition-skus'] }),
+  })
+}
