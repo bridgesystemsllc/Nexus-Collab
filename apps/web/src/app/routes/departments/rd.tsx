@@ -32,8 +32,10 @@ import { generateBriefPDF } from '@/utils/generateBriefPDF'
 import { CMDetailModal } from '@/components/rd/CMDetailModal'
 import { NewCMModal, type CMFormData } from '@/components/rd/NewCMModal'
 import { TransferDetailModal } from '@/components/rd/TransferDetailModal'
+import { TechTransferDetailDrawer } from '@/components/rd/TechTransferDetailDrawer'
 import { NewTransferModal, type TransferFormData } from '@/components/rd/NewTransferModal'
 import { FormulationDetailModal } from '@/components/rd/FormulationDetailModal'
+import { FormulationDetailDrawer } from '@/components/rd/FormulationDetailDrawer'
 import { NewFormulationModal, type FormulationFormData } from '@/components/rd/NewFormulationModal'
 import { api } from '@/lib/api'
 import { NewComponentModal } from '@/components/rd/components/NewComponentModal'
@@ -1731,6 +1733,8 @@ function FormulationsTab({ items, onSelect }: { items: any[]; onSelect: (item: a
 export function RDPage() {
   const [activeTab, setActiveTab] = useState<RDTab>('briefs')
   const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
+  const [viewingTransfer, setViewingTransfer] = useState<any>(null)
+  const [viewingFormulation, setViewingFormulation] = useState<any>(null)
 
   const { data: departments, isLoading: deptsLoading } = useDepartments()
 
@@ -1822,9 +1826,9 @@ export function RDPage() {
           ) : activeTab === 'cm' ? (
             <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
           ) : activeTab === 'transfers' ? (
-            <TransfersTab items={tabContent.transfers} moduleId={moduleData.transfersModuleId} briefs={moduleData.briefs} onRefresh={() => refetchDept()} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
+            <TransfersTab items={tabContent.transfers} moduleId={moduleData.transfersModuleId} briefs={moduleData.briefs} onRefresh={() => refetchDept()} onSelect={(item) => setViewingTransfer(item)} />
           ) : activeTab === 'formulations' ? (
-            <FormulationsTab items={moduleData.formulations} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
+            <FormulationsTab items={moduleData.formulations} onSelect={(item) => setViewingFormulation(item)} />
           ) : activeTab === 'npd' ? (
             <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} />
           ) : activeTab === 'artwork' ? (
@@ -1838,6 +1842,36 @@ export function RDPage() {
           ) : null}
         </div>
       </div>
+
+      {/* Tech Transfer Detail Drawer */}
+      <TechTransferDetailDrawer
+        open={!!viewingTransfer}
+        transfer={viewingTransfer?.data || viewingTransfer}
+        onClose={() => setViewingTransfer(null)}
+        onUpdate={async (updates) => {
+          if (viewingTransfer?.id && viewingTransfer?.moduleId) {
+            await api.patch(`/departments/_/modules/${viewingTransfer.moduleId}/items/${viewingTransfer.id}`, {
+              data: { ...(viewingTransfer.data || viewingTransfer), ...updates },
+            })
+            refetchDept()
+          }
+        }}
+      />
+
+      {/* Formulation Detail Drawer */}
+      <FormulationDetailDrawer
+        open={!!viewingFormulation}
+        formulation={viewingFormulation?.data || viewingFormulation}
+        onClose={() => setViewingFormulation(null)}
+        onUpdate={async (updates) => {
+          if (viewingFormulation?.id && viewingFormulation?.moduleId) {
+            await api.patch(`/departments/_/modules/${viewingFormulation.moduleId}/items/${viewingFormulation.id}`, {
+              data: { ...(viewingFormulation.data || viewingFormulation), ...updates },
+            })
+            refetchDept()
+          }
+        }}
+      />
     </div>
   )
 }

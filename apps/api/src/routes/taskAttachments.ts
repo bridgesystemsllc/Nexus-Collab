@@ -10,10 +10,10 @@ taskAttachmentRoutes.get('/:taskId/attachments', async (req: Request, res: Respo
     const { taskId } = req.params
     const { module } = req.query as Record<string, string>
 
-    const where: any = { taskId, deletedAt: null }
+    const where: any = { attachableType: 'task', attachableId: taskId, deletedAt: null }
     if (module) where.module = module
 
-    const attachments = await prisma.taskAttachment.findMany({
+    const attachments = await prisma.attachment.findMany({
       where,
       orderBy: { createdAt: 'desc' },
     })
@@ -43,9 +43,10 @@ taskAttachmentRoutes.post('/:taskId/attachments/email', async (req: Request, res
     const { module, createdBy, ...payloadData } = req.body
     const payload = emailPayloadSchema.parse(payloadData)
 
-    const attachment = await prisma.taskAttachment.create({
+    const attachment = await prisma.attachment.create({
       data: {
-        taskId,
+        attachableType: 'task',
+        attachableId: taskId,
         module: module || 'npd',
         type: 'email',
         payload: payload as any,
@@ -76,9 +77,10 @@ taskAttachmentRoutes.post('/:taskId/attachments/file', async (req: Request, res:
     const { module, createdBy, ...payloadData } = req.body
     const payload = filePayloadSchema.parse(payloadData)
 
-    const attachment = await prisma.taskAttachment.create({
+    const attachment = await prisma.attachment.create({
       data: {
-        taskId,
+        attachableType: 'task',
+        attachableId: taskId,
         module: module || 'npd',
         type: 'file',
         payload: payload as any,
@@ -107,9 +109,10 @@ taskAttachmentRoutes.post('/:taskId/attachments/file/url', async (req: Request, 
       uploaded_via: 'url',
     }
 
-    const attachment = await prisma.taskAttachment.create({
+    const attachment = await prisma.attachment.create({
       data: {
-        taskId,
+        attachableType: 'task',
+        attachableId: taskId,
         module: module || 'npd',
         type: 'file',
         payload: payload as any,
@@ -138,9 +141,10 @@ taskAttachmentRoutes.post('/:taskId/attachments/comment', async (req: Request, r
     const { module, createdBy, ...payloadData } = req.body
     const payload = commentPayloadSchema.parse(payloadData)
 
-    const attachment = await prisma.taskAttachment.create({
+    const attachment = await prisma.attachment.create({
       data: {
-        taskId,
+        attachableType: 'task',
+        attachableId: taskId,
         module: module || 'npd',
         type: 'comment',
         payload: payload as any,
@@ -158,7 +162,7 @@ taskAttachmentRoutes.post('/:taskId/attachments/comment', async (req: Request, r
 // ─── Update attachment (edit comment body) ──────────────────
 taskAttachmentRoutes.patch('/attachments/:id', async (req: Request, res: Response) => {
   try {
-    const attachment = await prisma.taskAttachment.findUnique({ where: { id: req.params.id as string } })
+    const attachment = await prisma.attachment.findUnique({ where: { id: req.params.id as string } })
     if (!attachment || attachment.deletedAt) {
       return res.status(404).json({ error: 'Attachment not found' })
     }
@@ -168,7 +172,7 @@ taskAttachmentRoutes.patch('/attachments/:id', async (req: Request, res: Respons
     }
 
     const existingPayload = attachment.payload as any
-    const updated = await prisma.taskAttachment.update({
+    const updated = await prisma.attachment.update({
       where: { id: req.params.id as string },
       data: {
         payload: {
@@ -189,12 +193,12 @@ taskAttachmentRoutes.patch('/attachments/:id', async (req: Request, res: Respons
 // ─── Soft delete attachment ─────────────────────────────────
 taskAttachmentRoutes.delete('/attachments/:id', async (req: Request, res: Response) => {
   try {
-    const attachment = await prisma.taskAttachment.findUnique({ where: { id: req.params.id as string } })
+    const attachment = await prisma.attachment.findUnique({ where: { id: req.params.id as string } })
     if (!attachment || attachment.deletedAt) {
       return res.status(404).json({ error: 'Attachment not found' })
     }
 
-    await prisma.taskAttachment.update({
+    await prisma.attachment.update({
       where: { id: req.params.id as string },
       data: { deletedAt: new Date() },
     })

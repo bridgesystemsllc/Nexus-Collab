@@ -485,18 +485,91 @@ model CmCandidate {
   @@index([skuId])
 }
 
-// ─── Task Attachment ────────────────────────────────────────
-model TaskAttachment {
-  id        String    @id @default(cuid())
-  taskId    String    // module-level task ID (e.g., NPD task id, brief checklist id)
-  module    String    // npd, active_brief, cm_productivity, tech_transfer, formulation, artwork, component_sourcing
-  type      String    // email, file, comment
-  payload   Json      // type-specific data (see spec)
-  createdBy String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+// ─── Attachment (polymorphic) ────────────────────────────────
+model Attachment {
+  id             String    @id @default(cuid())
+  attachableType String    // task, formulation, tech_transfer, tech_transfer_stage, product, brief, component
+  attachableId   String    // ID of the parent entity
+  module         String?   // npd, active_brief, cm_productivity, etc. (for task-scoped attachments)
+  type           String    // email, file, comment
+  payload        Json      // type-specific data
+  createdBy      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
-  @@index([taskId, module])
+  @@index([attachableType, attachableId])
   @@index([createdAt(sort: Desc)])
+}
+
+// ─── Tech Transfer Stage ────────────────────────────────────
+model TechTransferStage {
+  id              String    @id @default(cuid())
+  techTransferId  String    // references ModuleItem ID for the tech transfer
+  stageOrder      Int
+  stageName       String
+  status          String    @default("pending") // pending, in_progress, complete, blocked, skipped
+  assigneeUserId  String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  notes           String?
+  tasks           TechTransferStageTask[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([techTransferId])
+  @@index([stageOrder])
+}
+
+// ─── Tech Transfer Stage Task ───────────────────────────────
+model TechTransferStageTask {
+  id          String    @id @default(cuid())
+  stageId     String
+  stage       TechTransferStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  taskName    String
+  description String?
+  status      String    @default("not_started") // not_started, in_progress, complete, blocked
+  assigneeUserId String?
+  dueDate     DateTime?
+  sortOrder   Int       @default(0)
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([stageId])
+}
+
+// ─── Formulation Ingredient ─────────────────────────────────
+model FormulationIngredient {
+  id              String  @id @default(cuid())
+  formulationId   String  // references ModuleItem ID for the formulation
+  phase           String  // A, B, C, D, E, Post-Add
+  sortOrder       Int     @default(0)
+  inciName        String
+  tradeName       String?
+  supplierId      String?
+  function        String? // emollient, surfactant, preservative, fragrance, active, chelator, etc.
+  percentage      Float   // % w/w, 4 decimals
+  costPerKg       Float?
+  isAllergen      Boolean @default(false)
+  isPreservative  Boolean @default(false)
+  isFragrance     Boolean @default(false)
+  notes           String?
+
+  @@index([formulationId])
+  @@index([phase])
+}
+
+// ─── Formulation Procedure Step ─────────────────────────────
+model FormulationProcedureStep {
+  id              String  @id @default(cuid())
+  formulationId   String  // references ModuleItem ID
+  stepNumber      Int
+  phaseReference  String? // which phase this step relates to
+  instruction     String
+  temperatureC    Float?
+  mixingSpeedRpm  Int?
+  durationMinutes Int?
+
+  @@index([formulationId])
 }
