@@ -1,4 +1,5 @@
 import { useState, useRef, useMemo, useCallback } from 'react'
+import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import {
   AlertTriangle,
   Check,
@@ -512,6 +513,9 @@ function TaskRow({
               </button>
             </div>
           </div>
+
+          {/* Task Attachments (email / file / comment) */}
+          <TaskAttachments taskId={task.id} module="npd" />
 
           {/* Completion info */}
           {task.completedAt && (

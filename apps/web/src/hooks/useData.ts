@@ -360,3 +360,73 @@ export function useSeedTransitionData() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['transition-skus'] }),
   })
 }
+
+// ─── Task Attachments ──────────────────────────────────────
+export function useTaskAttachments(taskId: string, module: string) {
+  return useQuery({
+    queryKey: ['task-attachments', taskId, module],
+    queryFn: () => api.get(`/tasks/${taskId}/attachments?module=${module}`).then(r => r.data),
+    enabled: !!taskId,
+  })
+}
+
+export function useCreateEmailAttachment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { taskId: string; module: string; subject: string; sender_name?: string; sender_email?: string; snippet?: string; createdBy?: string }) => {
+      const { taskId, ...body } = data
+      return api.post(`/tasks/${taskId}/attachments/email`, body).then(r => r.data)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+export function useCreateFileAttachment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { taskId: string; module: string; filename: string; size_bytes?: number; mime_type?: string; storage_url?: string; uploaded_via?: string; createdBy?: string }) => {
+      const { taskId, ...body } = data
+      return api.post(`/tasks/${taskId}/attachments/file`, body).then(r => r.data)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+export function useCreateFileFromUrl() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { taskId: string; module: string; url: string; filename?: string; createdBy?: string }) => {
+      const { taskId, ...body } = data
+      return api.post(`/tasks/${taskId}/attachments/file/url`, body).then(r => r.data)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+export function useCreateCommentAttachment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { taskId: string; module: string; body_plain: string; body_html?: string; mentions?: string[]; createdBy?: string }) => {
+      const { taskId, ...body } = data
+      return api.post(`/tasks/${taskId}/attachments/comment`, body).then(r => r.data)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+export function useUpdateAttachment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; body_plain?: string; body_html?: string }) =>
+      api.patch(`/tasks/attachments/${id}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+export function useDeleteAttachment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/tasks/attachments/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}

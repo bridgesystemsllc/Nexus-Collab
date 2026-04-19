@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import {
   X,
   Edit3,
@@ -634,6 +635,9 @@ export function FormulationDetailModal({
               currentUser={f.createdBy}
             />
           </SectionCard>
+
+          {/* ── Task Attachments ────────────────────────────── */}
+          <TaskAttachments taskId={f.id || 'unknown'} module="formulation" />
 
           {/* ── Documents & SDS Panel ──────────────────────── */}
           <SectionCard icon={FileText} label="Documents & SDS">

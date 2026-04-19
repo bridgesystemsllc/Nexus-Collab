@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from 'react'
+import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import {
   X,
   Edit3,
@@ -532,6 +533,9 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, briefItems 
             <SectionHeader icon={AlertTriangle} label="Issues" />
             <IssueLogger issues={issues} />
           </div>
+
+          {/* Task Attachments */}
+          <TaskAttachments taskId={cm?.id || data.id || 'unknown'} module="cm_productivity" />
 
           {/* Brands */}
           {data.brands && data.brands.length > 0 && (

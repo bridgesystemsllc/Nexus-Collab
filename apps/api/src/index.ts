@@ -22,6 +22,7 @@ import { memberRoutes } from './routes/members'
 import { emailAgentRoutes } from './routes/emailAgent'
 import { productRoutes } from './routes/products'
 import { brandTransitionRoutes } from './routes/brandTransition'
+import { taskAttachmentRoutes } from './routes/taskAttachments'
 
 export const prisma = new PrismaClient()
 
@@ -72,6 +73,7 @@ api.use('/members', memberRoutes)
 api.use('/email-agent', emailAgentRoutes)
 api.use('/products', productRoutes)
 api.use('/brand-transition', brandTransitionRoutes)
+api.use('/tasks', taskAttachmentRoutes)
 
 app.use('/api/v1', api)
 app.use('/api/v1/webhooks', webhookRoutes)
