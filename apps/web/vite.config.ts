@@ -18,7 +18,12 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5000,
     strictPort: true,
-    allowedHosts: true,
+    allowedHosts: 'all',
+    cors: true,
+    headers: {
+      'X-Frame-Options': 'ALLOWALL',
+      'Access-Control-Allow-Origin': '*',
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
