@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import {
   X,
   Edit3,
@@ -1373,6 +1374,9 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate }:
         {/* ── Body ──────────────────────────────────────────── */}
         <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
           {renderTab()}
+          <div className="mt-6">
+            <TaskAttachments taskId={component?.id || 'unknown'} module="component_sourcing" />
+          </div>
         </div>
       </div>
     </div>

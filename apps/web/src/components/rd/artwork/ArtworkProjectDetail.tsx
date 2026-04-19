@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
+import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import {
   X,
   Edit3,
@@ -1198,6 +1199,9 @@ export function ArtworkProjectDetail({ open, project, onClose, onProjectUpdate }
               })}
             </div>
           )}
+
+          {/* ═══ TASK ATTACHMENTS (all tabs) ═══ */}
+          <TaskAttachments taskId={project?.id || 'unknown'} module="artwork" />
 
           {/* ═══ TAB 6: ACTIVITY LOG ═══ */}
           {activeTab === 'activity' && (

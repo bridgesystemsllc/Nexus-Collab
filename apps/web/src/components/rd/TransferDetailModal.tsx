@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import {
   X,
   Edit3,
@@ -563,6 +564,9 @@ export function TransferDetailModal({
             <SectionHeader icon={Activity} label="Activity Log" />
             <ActivityLog log={transfer.activityLog || []} />
           </div>
+
+          {/* Task Attachments */}
+          <TaskAttachments taskId={transfer.id || 'unknown'} module="tech_transfer" />
 
         </div>
       </div>
