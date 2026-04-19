@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react'
 import type { BriefFormData } from './NewBriefModal'
+import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { generateBriefPDF } from '@/utils/generateBriefPDF'
 
 interface BriefDetailViewProps {
@@ -282,6 +283,9 @@ export function BriefDetailView({ open, brief, onClose, onEdit, onDelete }: Brie
               </div>
             </div>
           )}
+
+          {/* Task Attachments (email / file / comment) */}
+          <TaskAttachments taskId={brief.id} module="active_brief" />
 
           {/* Supporting Documents */}
           {brief.supportingDocs?.length > 0 && (
