@@ -430,3 +430,91 @@ export function useDeleteAttachment() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
   })
 }
+
+// ─── Tech Transfer Stages ──────────────────────────────────
+export function useTechTransferStages(transferId: string) {
+  return useQuery({
+    queryKey: ['tt-stages', transferId],
+    queryFn: () => api.get(`/tech-transfer-stages/${transferId}/stages`).then(r => r.data),
+    enabled: !!transferId,
+  })
+}
+
+export function useSeedTechTransferStages() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ transferId, transferType }: { transferId: string; transferType: string }) =>
+      api.post(`/tech-transfer-stages/${transferId}/stages/seed`, { transferType }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tt-stages'] }),
+  })
+}
+
+export function useUpdateTechTransferStage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ transferId, stageId, ...data }: { transferId: string; stageId: string; [key: string]: any }) =>
+      api.patch(`/tech-transfer-stages/${transferId}/stages/${stageId}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tt-stages'] }),
+  })
+}
+
+export function useAdvanceTechTransferStage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ transferId, stageId }: { transferId: string; stageId: string }) =>
+      api.post(`/tech-transfer-stages/${transferId}/stages/${stageId}/advance`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tt-stages'] }),
+  })
+}
+
+export function useCreateStageTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ transferId, stageId, ...data }: { transferId: string; stageId: string; taskName: string; [key: string]: any }) =>
+      api.post(`/tech-transfer-stages/${transferId}/stages/${stageId}/tasks`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tt-stages'] }),
+  })
+}
+
+// ─── Formulation Detail ────────────────────────────────────
+export function useFormulationIngredients(formulationId: string) {
+  return useQuery({
+    queryKey: ['formulation-ingredients', formulationId],
+    queryFn: () => api.get(`/formulation-detail/${formulationId}/ingredients`).then(r => r.data),
+    enabled: !!formulationId,
+  })
+}
+
+export function useCreateFormulationIngredient() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ formulationId, ...data }: { formulationId: string; [key: string]: any }) =>
+      api.post(`/formulation-detail/${formulationId}/ingredients`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['formulation-ingredients'] }),
+  })
+}
+
+export function useBulkUpdateIngredients() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ formulationId, ingredients }: { formulationId: string; ingredients: any[] }) =>
+      api.post(`/formulation-detail/${formulationId}/ingredients/bulk`, { ingredients }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['formulation-ingredients'] }),
+  })
+}
+
+export function useFormulationProcedure(formulationId: string) {
+  return useQuery({
+    queryKey: ['formulation-procedure', formulationId],
+    queryFn: () => api.get(`/formulation-detail/${formulationId}/procedure`).then(r => r.data),
+    enabled: !!formulationId,
+  })
+}
+
+export function useFormulationCostAnalysis(formulationId: string) {
+  return useQuery({
+    queryKey: ['formulation-cost', formulationId],
+    queryFn: () => api.get(`/formulation-detail/${formulationId}/cost-analysis`).then(r => r.data),
+    enabled: !!formulationId,
+  })
+}
