@@ -124,10 +124,10 @@ interface NewTransferModalProps {
 function validateStep(step: number, form: TransferFormData): Record<string, string> {
   const errors: Record<string, string> = {}
   if (step === 0) {
-    if (!form.product.trim()) errors.product = 'Product name is required'
+    if (!form.product?.trim()) errors.product = 'Product name is required'
   }
   if (step === 1) {
-    if (!form.transferGoal.trim()) errors.transferGoal = 'Transfer goal / objective is required'
+    if (!form.transferGoal?.trim()) errors.transferGoal = 'Transfer goal / objective is required'
   }
   return errors
 }
@@ -815,12 +815,12 @@ export function NewTransferModal({
   cmItems,
 }: NewTransferModalProps) {
   const [step, setStep] = useState(0)
-  const [form, setForm] = useState<TransferFormData>(initialData || EMPTY_FORM)
+  const [form, setForm] = useState<TransferFormData>({ ...EMPTY_FORM, ...(initialData || {}) })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (open) {
-      setForm(initialData || EMPTY_FORM)
+      setForm({ ...EMPTY_FORM, ...(initialData || {}) })
       setStep(0)
       setErrors({})
     }

@@ -1,13 +1,14 @@
 ---
-name: Merge-induced duplicate declarations in web app
-description: How bad merges surface in apps/web and how to catch them
+name: Bad merges leave latent runtime breakage in the web app
+description: Classes of merge damage that esbuild won't catch, and how to surface them
 ---
 
-When parallel feature branches merge into this repo, conflict resolution can leave **duplicate top-level declarations** (same `function X` twice) and **stale duplicate blocks** (e.g. old "FALLBACK_*" demo tabs alongside the real feature-rich ones) in large files like `apps/web/src/app/routes/departments/rd.tsx`.
+Conflict resolution when merging feature branches into this repo tends to leave breakage that does NOT show as a build error, because Vite/esbuild does not type-check:
+- duplicate top-level declarations (the only hard *parse* error — blanks the page immediately)
+- stale duplicate component blocks left beside the real feature-rich versions
+- dropped fields / prop-shape mismatches that throw only when that code path renders
+- undefined identifiers and missing imports
 
-**Why it bites:** Vite uses esbuild, which does NOT type-check — so undefined identifiers, prop mismatches, and missing imports run silently until that code path renders (then a runtime ReferenceError). Only a true duplicate `function` declaration is a hard babel *parse* error that blanks the page immediately.
+**Why it bites:** the app appears to start fine; the crash only surfaces when the affected screen or endpoint is exercised.
 
-**How to apply:**
-- After any merge, run `cd apps/web && npx tsc --noEmit` to surface the latent errors esbuild ignores (missing imports, undefined names, prop-shape mismatches).
-- For duplicated tab/component pairs, keep the **feature-rich** version (the one with create/delete/detail modals matching the non-duplicated siblings like BriefsTab/CMTab) and delete the simple/fallback duplicate.
-- The R&D page's `moduleData` memo must expose `*ModuleId` fields (via `findModuleId`) for every tab whose call site passes `moduleId`; a merge that drops them makes "Create new entry" silently no-op.
+**How to apply:** after any merge, run `tsc --noEmit` in the affected package (`apps/web`, `apps/api`) to surface the latent errors esbuild ignores, then click through the changed screens. When duplicate component versions exist, keep the feature-rich one (matching its non-duplicated siblings) and delete the simpler duplicate.

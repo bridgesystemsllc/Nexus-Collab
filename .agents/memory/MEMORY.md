@@ -1,1 +1,2 @@
 - [Merge-induced duplicate declarations](merge-conflict-duplicates.md) — bad merges leave dup funcs/stale blocks in apps/web; esbuild ignores it, run `tsc --noEmit` to catch.
+- [Prisma client drift](prisma-client-drift.md) — prisma.<model> undefined at runtime means stale generated client; startup now runs prisma generate.
