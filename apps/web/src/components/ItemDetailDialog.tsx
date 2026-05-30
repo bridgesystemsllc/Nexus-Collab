@@ -8,7 +8,9 @@ import {
   Factory,
   FlaskConical,
   Package,
+  Palette,
   Repeat2,
+  Rocket,
   Users,
 } from 'lucide-react'
 import { Dialog } from './Dialog'
@@ -188,6 +190,20 @@ function ProductionDetail({ d }: { d: any }) {
   )
 }
 
+function GenericModuleDetail({ d }: { d: any }) {
+  return (
+    <div className="grid grid-cols-2 gap-4">
+      {Object.entries(d || {}).slice(0, 8).map(([key, value]) => (
+        <Field
+          key={key}
+          label={key.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())}
+          value={Array.isArray(value) ? value.join(', ') : String(value ?? '--')}
+        />
+      ))}
+    </div>
+  )
+}
+
 // ─── Shared Components ────────────────────────────────────
 function Field({ label, value, badge, mono, children }: { label: string; value?: any; badge?: boolean; mono?: boolean; children?: React.ReactNode }) {
   return (
@@ -289,6 +305,10 @@ const MODULE_CONFIG: Record<string, { title: string; icon: React.ElementType }> 
   SKU_PIPELINE: { title: 'SKU Pipeline', icon: Package },
   INVENTORY_HEALTH: { title: 'Inventory', icon: Box },
   PRODUCTION_TRACKING: { title: 'Production Order', icon: Factory },
+  NPD_PIPELINE: { title: 'NPD Pipeline', icon: Rocket },
+  ARTWORK: { title: 'Artwork', icon: Palette },
+  COMPONENTS: { title: 'Component', icon: Package },
+  BRAND_TRANSITION: { title: 'Brand Transition', icon: Repeat2 },
 }
 
 // ─── Main Component ───────────────────────────────────────
@@ -297,7 +317,7 @@ export function ItemDetailDialog({ item, moduleType, onClose }: ItemDetailDialog
 
   const d = item.data
   const config = MODULE_CONFIG[moduleType]
-  const itemName = d?.name || d?.product || d?.poNumber || config?.title || 'Item'
+  const itemName = d?.name || d?.product || d?.component || d?.poNumber || config?.title || 'Item'
 
   return (
     <Dialog
@@ -314,6 +334,9 @@ export function ItemDetailDialog({ item, moduleType, onClose }: ItemDetailDialog
       {moduleType === 'SKU_PIPELINE' && <SKUDetail d={d} />}
       {moduleType === 'INVENTORY_HEALTH' && <InventoryDetail d={d} />}
       {moduleType === 'PRODUCTION_TRACKING' && <ProductionDetail d={d} />}
+      {['NPD_PIPELINE', 'ARTWORK', 'COMPONENTS', 'BRAND_TRANSITION'].includes(moduleType) && (
+        <GenericModuleDetail d={d} />
+      )}
     </Dialog>
   )
 }
