@@ -1,5 +1,6 @@
 run = "npm run start"
 entrypoint = "apps/api/src/index.ts"
+modules = ["python-3.11", "nodejs-20"]
 
 [nix]
 channel = "stable-24_05"

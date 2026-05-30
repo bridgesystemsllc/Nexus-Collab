@@ -40,64 +40,69 @@ type NavItem =
       id: StaticPage
       label: string
       icon: ElementType
+      emoji?: never
       deptId?: never
     }
   | {
       id: 'custom-dept'
       label: string
-      icon: ElementType
+      icon?: ElementType
+      emoji?: string
       deptId: string
     }
 
-const navSections = [
-  {
-    label: 'OVERVIEW',
-    items: [
-      { id: 'dashboard' as const, label: 'Command Center', icon: LayoutDashboard },
-      { id: 'everything' as const, label: 'Everything', icon: Database },
-    ],
-  },
-  {
-    label: 'DEPARTMENTS',
-    items: [
-      { id: 'rd' as const, label: 'R&D', icon: FlaskConical },
-      { id: 'ops' as const, label: 'Operations', icon: Settings2 },
-      { id: 'custom-dept' as const, label: 'Vendor Mgmt', icon: Truck, deptId: 'vendor-mgmt' },
-      { id: 'custom-dept' as const, label: 'Finance', icon: BarChart3, deptId: 'finance' },
-      { id: 'custom-dept' as const, label: 'Sales', icon: TrendingUp, deptId: 'sales' },
-      { id: 'custom-dept' as const, label: 'Marketing', icon: Megaphone, deptId: 'marketing' },
-    ],
-  },
-  {
-    label: 'COLLABORATION',
-    items: [
-      { id: 'cowork' as const, label: 'Cowork Spaces', icon: Users },
-      { id: 'docs' as const, label: 'Documents', icon: FileText },
-      { id: 'product-catalog' as const, label: 'Product Catalog', icon: Package },
-    ],
-  },
-  {
-    label: 'SYSTEM',
-    items: [
-      { id: 'integrations' as const, label: 'Integrations', icon: Plug },
-      { id: 'email-agent' as const, label: 'Email Agent', icon: Bot },
-      { id: 'dept-manager' as const, label: 'Dept Manager', icon: Boxes },
-      { id: 'pulse' as const, label: 'Pulse', icon: Bell },
-    ],
-  },
+type NavSection = {
+  label: string
+  items: NavItem[]
+}
+
+const overviewSection: NavSection = {
+  label: 'OVERVIEW',
+  items: [
+    { id: 'dashboard', label: 'Command Center', icon: LayoutDashboard },
+    { id: 'everything', label: 'Everything', icon: Database },
+  ],
+}
+
+const fallbackDeptItems: NavItem[] = [
+  { id: 'rd', label: 'R&D', icon: FlaskConical },
+  { id: 'ops', label: 'Operations', icon: Settings2 },
+  { id: 'custom-dept', label: 'Vendor Mgmt', icon: Truck, deptId: 'vendor-mgmt' },
+  { id: 'custom-dept', label: 'Finance', icon: BarChart3, deptId: 'finance' },
+  { id: 'custom-dept', label: 'Sales', icon: TrendingUp, deptId: 'sales' },
+  { id: 'custom-dept', label: 'Marketing', icon: Megaphone, deptId: 'marketing' },
 ]
 
+const collaborationSection: NavSection = {
+  label: 'COLLABORATION',
+  items: [
+    { id: 'cowork', label: 'Cowork Spaces', icon: Users },
+    { id: 'docs', label: 'Documents', icon: FileText },
+    { id: 'product-catalog', label: 'Product Catalog', icon: Package },
+  ],
+}
+
+const systemSection: NavSection = {
+  label: 'SYSTEM',
+  items: [
+    { id: 'integrations', label: 'Integrations', icon: Plug },
+    { id: 'email-agent', label: 'Email Agent', icon: Bot },
+    { id: 'dept-manager', label: 'Dept Manager', icon: Boxes },
+    { id: 'pulse', label: 'Pulse', icon: Bell },
+  ],
+}
+
 function buildDeptItems(departments: any[]): NavItem[] {
-  return departments.map((dept) => {
+  return departments.map((dept): NavItem => {
     if (dept.type === 'BUILTIN_RD') {
-      return { id: 'rd' as Page, label: dept.name, icon: FlaskConical, deptId: dept.id }
+      return { id: 'rd', label: dept.name, icon: FlaskConical }
     }
     if (dept.type === 'BUILTIN_OPS') {
-      return { id: 'ops' as Page, label: dept.name, icon: Settings2, deptId: dept.id }
+      return { id: 'ops', label: dept.name, icon: Settings2 }
     }
     // Custom department — use emoji icon from DB
     return {
-      id: 'custom-dept' as Page,
+      id: 'custom-dept',
       label: dept.name,
       emoji: dept.icon || '📁',
       deptId: dept.id,

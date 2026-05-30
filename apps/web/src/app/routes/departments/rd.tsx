@@ -12,8 +12,10 @@ import {
   FileText,
   FlaskConical,
   Loader2,
+  MoreHorizontal,
   Package,
   Palette,
+  Plus,
   Repeat2,
   Rocket,
   Sparkles,
@@ -157,7 +159,7 @@ function StatusBadge({ status }: { status: string }) {
     'MOQ Pending': 'badge-critical',
     'Quoted': 'badge-info',
   }
-  return <span className={`badge ${style?.className || 'badge-accent'}`}>{status}</span>
+  return <span className={`badge ${map[status] || 'badge-accent'}`}>{status}</span>
 }
 
 // ─── Actions Menu (generic) ────────────────────────────────
@@ -1711,171 +1713,6 @@ function FormulationsTab({ items, onSelect }: { items: any[]; onSelect: (item: a
   )
 }
 
-const FALLBACK_NPD = [
-  {
-    id: 'npd-1',
-    data: {
-      name: 'Lisa Kitchen Serum',
-      brand: 'Haircare',
-      owner: 'Steven',
-      cm: 'ACT',
-      launch: 'Jun 19, 2026',
-      status: 'Active',
-      progress: 12,
-      tasksComplete: 4,
-      tasksTotal: 34,
-      links: ['Brief', 'Formulation', 'CM: ACT'],
-    },
-    status: 'Active',
-  },
-  {
-    id: 'npd-2',
-    data: {
-      name: 'Scalp & Edge Treatment Mist',
-      brand: "Carol's Daughter",
-      owner: 'R&D Lead',
-      cm: 'ACT',
-      launch: 'Jul 10, 2026',
-      status: 'Planning',
-      progress: 24,
-      tasksComplete: 7,
-      tasksTotal: 29,
-      links: ['Brief', 'Artwork', 'Components'],
-    },
-    status: 'Planning',
-  },
-]
-
-const FALLBACK_ARTWORK = [
-  { id: 'art-1', data: { product: 'CD Scalp Detox Shampoo 8oz', owner: 'Sarah K.', status: 'Awaiting Artwork', due: 'Apr 02', files: 3 } },
-  { id: 'art-2', data: { product: 'CD Scalp Cleansing Oil 6oz', owner: 'Marketing', status: 'In Review', due: 'Apr 05', files: 5 } },
-  { id: 'art-3', data: { product: 'Ambi Oil-Free Cleanser Reformulation', owner: 'R&D', status: 'Draft', due: 'Apr 08', files: 2 } },
-]
-
-const FALLBACK_COMPONENTS = [
-  { id: 'cmp-1', data: { component: 'TricorBraun bottle', product: 'CD Scalp Cleansing Oil 6oz', vendor: 'TricorBraun', status: 'MOQ Pending', risk: 'High' } },
-  { id: 'cmp-2', data: { component: 'Jansy tube', product: 'Scalp & Edge Balm 2oz', vendor: 'Jansy', status: 'Quoted', risk: 'Low' } },
-  { id: 'cmp-3', data: { component: 'Label stock', product: 'CD Scalp Detox Shampoo 8oz', vendor: 'ACT Labs', status: 'Approved', risk: 'Low' } },
-]
-
-function NPDTab({ items }: { items: any[] }) {
-  const records = items.length > 0 ? items : FALLBACK_NPD
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      {records.map((item: any) => {
-        const d = item.data
-        return (
-          <div key={item.id} className="data-cell space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="font-medium text-[var(--text-primary)]">{d.name}</h3>
-                <p className="text-xs text-[var(--text-tertiary)] mt-1">
-                  {d.brand} / CM: {d.cm} / Launch: {d.launch}
-                </p>
-              </div>
-              <StatusBadge status={d.status} />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-7 h-7 rounded-full bg-[var(--accent-subtle)] text-[var(--accent)] text-xs font-semibold flex items-center justify-center">
-                {(d.owner || 'N').slice(0, 1)}
-              </span>
-              <span className="text-sm text-[var(--text-secondary)]">{d.owner}</span>
-            </div>
-            <div>
-              <div className="flex items-center justify-between text-xs mb-1.5">
-                <span className="text-[var(--text-tertiary)]">Overall Progress</span>
-                <span className="tabular-nums text-[var(--text-secondary)]">
-                  {d.tasksComplete} / {d.tasksTotal} tasks ({d.progress}%)
-                </span>
-              </div>
-              <div className="h-2 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
-                <div className="h-full rounded-full bg-[var(--success)]" style={{ width: `${d.progress}%` }} />
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-1.5 pt-2 border-t border-[var(--border-subtle)]">
-              {(d.links || []).map((link: string) => (
-                <span key={link} className="badge badge-accent">{link}</span>
-              ))}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-function ArtworkTab({ items }: { items: any[] }) {
-  const records = items.length > 0 ? items : FALLBACK_ARTWORK
-
-  return (
-    <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
-      <table className="nexus-table">
-        <thead>
-          <tr>
-            <th>Product</th>
-            <th>Owner</th>
-            <th>Status</th>
-            <th>Due</th>
-            <th>Files</th>
-          </tr>
-        </thead>
-        <tbody>
-          {records.map((item: any) => {
-            const d = item.data
-            return (
-              <tr key={item.id} className="clickable-row">
-                <td className="font-medium text-[var(--text-primary)]">{d.product}</td>
-                <td className="text-[var(--text-secondary)]">{d.owner}</td>
-                <td><StatusBadge status={d.status} /></td>
-                <td className="text-[var(--text-tertiary)]">{d.due}</td>
-                <td className="text-[var(--accent)] tabular-nums">{d.files} files</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function ComponentsTab({ items }: { items: any[] }) {
-  const records = items.length > 0 ? items : FALLBACK_COMPONENTS
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {records.map((item: any) => {
-        const d = item.data
-        const isRisk = d.risk === 'High'
-        return (
-          <div key={item.id} className="data-cell space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-medium text-sm text-[var(--text-primary)]">{d.component}</h3>
-                <p className="text-xs text-[var(--text-tertiary)] mt-1">{d.product}</p>
-              </div>
-              <Package size={16} className="text-[var(--accent)] flex-shrink-0" />
-            </div>
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <p className="text-[var(--text-tertiary)]">Vendor</p>
-                <p className="text-[var(--text-secondary)] mt-1">{d.vendor}</p>
-              </div>
-              <div>
-                <p className="text-[var(--text-tertiary)]">Risk</p>
-                <p className="font-medium mt-1" style={{ color: isRisk ? 'var(--danger)' : 'var(--success)' }}>
-                  {d.risk}
-                </p>
-              </div>
-            </div>
-            <StatusBadge status={d.status} />
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 // ─── Main Page ─────────────────────────────────────────────
 export function RDPage() {
   const [activeTab, setActiveTab] = useState<RDTab>('briefs')
@@ -1896,7 +1733,11 @@ export function RDPage() {
 
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { briefs: [], cm: [], transfers: [], formulations: [], npd: [], artwork: [], components: [] }
+      return {
+        briefs: [], cm: [], transfers: [], formulations: [], npd: [], artwork: [], components: [],
+        briefsModuleId: null, cmModuleId: null, transfersModuleId: null,
+        npdModuleId: null, artworkModuleId: null, componentsModuleId: null,
+      }
     }
     const modules = deptDetail.modules as any[]
     const find = (type: string) =>
@@ -1912,6 +1753,12 @@ export function RDPage() {
       npd: find('NPD_PIPELINE'),
       artwork: find('ARTWORK'),
       components: find('COMPONENTS'),
+      briefsModuleId: findModuleId('BRIEFS'),
+      cmModuleId: findModuleId('CM_PRODUCTIVITY'),
+      transfersModuleId: findModuleId('TECH_TRANSFERS'),
+      npdModuleId: findModuleId('NPD_PIPELINE'),
+      artworkModuleId: findModuleId('ARTWORK'),
+      componentsModuleId: findModuleId('COMPONENTS'),
     }
   }, [deptDetail])
 
@@ -1974,15 +1821,15 @@ export function RDPage() {
           ) : activeTab === 'cm' ? (
             <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
           ) : activeTab === 'transfers' ? (
-            <TransfersTab items={tabContent.transfers} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
+            <TransfersTab items={moduleData.transfers} moduleId={moduleData.transfersModuleId} briefs={moduleData.briefs} onRefresh={() => refetchDept()} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
           ) : activeTab === 'formulations' ? (
             <FormulationsTab items={tabContent.formulations} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
           ) : activeTab === 'npd' ? (
-            <NPDTab items={tabContent.npd} />
+            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} />
           ) : activeTab === 'artwork' ? (
-            <ArtworkTab items={tabContent.artwork} />
+            <ArtworkTab items={moduleData.artwork} moduleId={moduleData.artworkModuleId} briefs={moduleData.briefs} onRefresh={() => refetchDept()} />
           ) : (
-            <ComponentsTab items={tabContent.components} />
+            <ComponentsTab items={moduleData.components} moduleId={moduleData.componentsModuleId} onRefresh={() => refetchDept()} />
           )}
         </div>
       </div>

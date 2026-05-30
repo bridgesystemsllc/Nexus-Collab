@@ -1,0 +1,1 @@
+- [Merge-induced duplicate declarations](merge-conflict-duplicates.md) — bad merges leave dup funcs/stale blocks in apps/web; esbuild ignores it, run `tsc --noEmit` to catch.
