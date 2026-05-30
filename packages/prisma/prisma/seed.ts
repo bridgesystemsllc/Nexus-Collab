@@ -26,17 +26,23 @@ async function main() {
   const wh = await prisma.department.create({ data: { name: 'Warehouse', description: 'Receiving, shipping, inventory', icon: '📦', color: '#32D74B', type: 'CUSTOM', orgId: org.id } })
   const vm = await prisma.department.create({ data: { name: 'Vendor Mgmt', description: 'Vendor relationships, MOQ, PO management', icon: '🤝', color: '#E8948A', type: 'CUSTOM', orgId: org.id } })
   const fin = await prisma.department.create({ data: { name: 'Finance', description: 'COGS, margins, budgets', icon: '📊', color: '#00C7FF', type: 'CUSTOM', orgId: org.id } })
-  console.log('✅ Departments: 5')
+  const sales = await prisma.department.create({ data: { name: 'Sales', description: 'Customer demand, account signals, revenue follow-up', icon: '📈', color: '#32D74B', type: 'CUSTOM', orgId: org.id } })
+  const marketing = await prisma.department.create({ data: { name: 'Marketing', description: 'Launch assets, retail stories, campaign readiness', icon: '📣', color: '#BF5AF2', type: 'CUSTOM', orgId: org.id } })
+  console.log('✅ Departments: 7')
 
   // ─── Modules
   const briefsMod = await prisma.departmentModule.create({ data: { name: 'Active Briefs', type: 'BRIEFS', departmentId: rd.id, sortOrder: 0 } })
   const cmMod = await prisma.departmentModule.create({ data: { name: 'CM Productivity', type: 'CM_PRODUCTIVITY', departmentId: rd.id, sortOrder: 1 } })
   const ttMod = await prisma.departmentModule.create({ data: { name: 'Tech Transfers', type: 'TECH_TRANSFERS', departmentId: rd.id, sortOrder: 2 } })
   const frmMod = await prisma.departmentModule.create({ data: { name: 'Formulations', type: 'FORMULATIONS', departmentId: rd.id, sortOrder: 3 } })
+  const npdMod = await prisma.departmentModule.create({ data: { name: 'NPD Pipeline', type: 'NPD_PIPELINE', departmentId: rd.id, sortOrder: 4 } })
+  const artworkMod = await prisma.departmentModule.create({ data: { name: 'Artwork', type: 'ARTWORK', departmentId: rd.id, sortOrder: 5 } })
+  const componentsMod = await prisma.departmentModule.create({ data: { name: 'Components', type: 'COMPONENTS', departmentId: rd.id, sortOrder: 6 } })
   const skuMod = await prisma.departmentModule.create({ data: { name: 'SKU Pipeline', type: 'SKU_PIPELINE', departmentId: ops.id, sortOrder: 0 } })
   const invMod = await prisma.departmentModule.create({ data: { name: 'Inventory Health', type: 'INVENTORY_HEALTH', departmentId: ops.id, sortOrder: 1 } })
   const prodMod = await prisma.departmentModule.create({ data: { name: 'Production Tracking', type: 'PRODUCTION_TRACKING', departmentId: ops.id, sortOrder: 2 } })
-  console.log('✅ Modules: 7')
+  const brandMod = await prisma.departmentModule.create({ data: { name: 'Brand Transition', type: 'BRAND_TRANSITION', departmentId: ops.id, sortOrder: 3 } })
+  console.log('✅ Modules: 11')
 
   // ─── Members
   const m = await Promise.all([
@@ -50,8 +56,10 @@ async function main() {
     prisma.member.create({ data: { clerkUserId: 'user_david', email: 'david@kareve.com', name: 'David P.', avatar: 'DP', role: 'DEPT_LEAD', departmentId: fin.id, orgId: org.id } }),
     prisma.member.create({ data: { clerkUserId: 'user_lisa', email: 'lisa@kareve.com', name: 'Lisa C.', avatar: 'LC', role: 'MEMBER', status: 'OOO', departmentId: vm.id, orgId: org.id } }),
     prisma.member.create({ data: { clerkUserId: 'user_mike', email: 'mike@kareve.com', name: 'Mike T.', avatar: 'MT', role: 'DEPT_LEAD', departmentId: rd.id, orgId: org.id } }),
+    prisma.member.create({ data: { clerkUserId: 'user_steven', email: 'steven@kareve.com', name: 'Steven R.', avatar: 'SR', role: 'MEMBER', departmentId: sales.id, orgId: org.id } }),
+    prisma.member.create({ data: { clerkUserId: 'user_maya', email: 'maya@kareve.com', name: 'Maya L.', avatar: 'ML', role: 'MEMBER', departmentId: marketing.id, orgId: org.id } }),
   ])
-  console.log('✅ Members: 10')
+  console.log('✅ Members: 12')
 
   // ─── R&D Briefs
   for (const b of [
@@ -89,6 +97,23 @@ async function main() {
   ]) await prisma.moduleItem.create({ data: { moduleId: frmMod.id, data: f, status: f.status } })
   console.log('✅ Formulations: 3')
 
+  // ─── NPD Pipeline, Artwork, Components
+  for (const n of [
+    { name: 'Lisa Kitchen Serum', brand: 'Haircare', owner: 'Steven', cm: 'ACT', launch: 'Jun 19, 2026', status: 'Active', progress: 12, tasksComplete: 4, tasksTotal: 34, links: ['Brief', 'Formulation', 'CM: ACT'] },
+    { name: 'Scalp & Edge Treatment Mist', brand: "Carol's Daughter", owner: 'R&D Lead', cm: 'ACT', launch: 'Jul 10, 2026', status: 'Planning', progress: 24, tasksComplete: 7, tasksTotal: 29, links: ['Brief', 'Artwork', 'Components'] },
+  ]) await prisma.moduleItem.create({ data: { moduleId: npdMod.id, data: n, status: n.status } })
+  for (const a of [
+    { product: 'CD Scalp Detox Shampoo 8oz', owner: 'Sarah K.', status: 'Awaiting Artwork', due: 'Apr 02', files: 3 },
+    { product: 'CD Scalp Cleansing Oil 6oz', owner: 'Marketing', status: 'In Review', due: 'Apr 05', files: 5 },
+    { product: 'Ambi Oil-Free Cleanser Reformulation', owner: 'R&D', status: 'Draft', due: 'Apr 08', files: 2 },
+  ]) await prisma.moduleItem.create({ data: { moduleId: artworkMod.id, data: a, status: a.status } })
+  for (const c of [
+    { component: 'TricorBraun bottle', product: 'CD Scalp Cleansing Oil 6oz', vendor: 'TricorBraun', status: 'MOQ Pending', risk: 'High' },
+    { component: 'Jansy tube', product: 'Scalp & Edge Balm 2oz', vendor: 'Jansy', status: 'Quoted', risk: 'Low' },
+    { component: 'Label stock', product: 'CD Scalp Detox Shampoo 8oz', vendor: 'ACT Labs', status: 'Approved', risk: 'Low' },
+  ]) await prisma.moduleItem.create({ data: { moduleId: componentsMod.id, data: c, status: c.status } })
+  console.log('✅ NPD modules: 8')
+
   // ─── SKU Pipeline
   for (const s of [
     { name: 'CD Scalp Detox Shampoo 8oz', sku: 'K6001100', upc: '0885221006011', status: 'Awaiting Artwork', brand: 'cd', step: 3, totalSteps: 6, owner: 'Operations', blocker: null },
@@ -110,12 +135,19 @@ async function main() {
 
   // ─── Production Orders
   for (const p of [
-    { poNumber: 'PO-2026-041', product: 'GS Shampoo 11oz', cm: 'ACT Labs', qty: 50000, status: 'Awaiting Materials', eta: '2026-05-15', brand: 'cd', progress: 15 },
-    { poNumber: 'PO-2026-038', product: 'Scalp Detox Shampoo 8oz', cm: 'ACT Labs', qty: 30000, status: 'Production Scheduled', eta: '2026-05-01', brand: 'cd', progress: 25 },
-    { poNumber: 'PO-2026-035', product: 'Ambi Even Tone Cream 2oz', cm: 'Paklab', qty: 20000, status: 'In Production', eta: '2026-04-10', brand: 'ambi', progress: 60 },
-    { poNumber: 'PO-2026-033', product: 'AF Sensitive Cleanser 6oz', cm: 'Paklab', qty: 15000, status: 'QC Review', eta: '2026-03-30', brand: 'af', progress: 85 },
+    { poNumber: 'PO-2026-041', product: 'GS Shampoo 11oz', cm: 'ACT Labs', qty: 50000, value: 0, status: 'Awaiting Materials', eta: '2026-05-15', brand: "Carol's Daughter", progress: 15, priority: 'emergency', coworkPending: true },
+    { poNumber: 'PO-2026-038', product: 'Scalp Detox Shampoo 8oz', cm: 'ACT Labs', qty: 30000, value: 0, status: 'Production Scheduled', eta: '2026-05-01', brand: "Carol's Daughter", progress: 25 },
+    { poNumber: 'PO-2026-035', product: 'Ambi Even Tone Cream 2oz', cm: 'Paklab', qty: 20000, value: 0, status: 'In Production', eta: '2026-04-10', brand: 'Ambi', progress: 60 },
+    { poNumber: 'PO-2026-033', product: 'AF Sensitive Cleanser 6oz', cm: 'Paklab', qty: 15000, value: 0, status: 'QC Review', eta: '2026-03-30', brand: 'AcneFree', progress: 85 },
   ]) await prisma.moduleItem.create({ data: { moduleId: prodMod.id, data: p, status: p.status } })
   console.log('✅ Production: 4')
+
+  for (const b of [
+    { product: 'CD Scalp Detox Shampoo 8oz', from: "L'Oreal Legacy", to: 'Kareve SKU Master', owner: 'Operations', progress: 50, status: 'Awaiting Artwork', blocker: null },
+    { product: 'CD Scalp Cleansing Oil 6oz', from: 'Formula Lock', to: 'Component Sourcing', owner: 'Vendor Mgmt', progress: 33, status: 'Component Sourcing', blocker: 'TricorBraun MOQ pending' },
+    { product: 'CD Scalp Renew Serum 2oz', from: 'R&D Brief', to: 'Formula Approval', owner: 'R&D', progress: 16, status: 'Formula Pending', blocker: 'Stability testing' },
+  ]) await prisma.moduleItem.create({ data: { moduleId: brandMod.id, data: b, status: b.status } })
+  console.log('✅ Brand Transition: 3')
 
   // ─── Projects
   const projects = await Promise.all([

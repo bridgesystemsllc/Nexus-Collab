@@ -13,6 +13,8 @@ import {
   Repeat2,
   FlaskConical,
   Users,
+  Palette,
+  Rocket,
 } from 'lucide-react'
 import { useEverything } from '@/hooks/useData'
 import { TaskDetailDialog } from '@/components/TaskDetailDialog'
@@ -35,6 +37,9 @@ const TYPE_FILTERS: {
   { key: 'TECH_TRANSFERS', label: 'Transfers', icon: Repeat2, color: '#FF453A' },
   { key: 'FORMULATIONS', label: 'Formulations', icon: FlaskConical, color: '#00C7FF' },
   { key: 'SKU_PIPELINE', label: 'SKU Pipeline', icon: Package, color: '#7C3AED' },
+  { key: 'NPD_PIPELINE', label: 'NPD Pipeline', icon: Rocket, color: '#30D158' },
+  { key: 'ARTWORK', label: 'Artwork', icon: Palette, color: '#BF5AF2' },
+  { key: 'COMPONENTS', label: 'Components', icon: Package, color: '#FF9F0A' },
 ]
 
 // ─── Skeleton ──────────────────────────────────────────────
@@ -101,6 +106,9 @@ function StatusDisplay({ status }: { status: string | null }) {
     Planning: 'badge-critical',
     active: 'badge-healthy',
     attention: 'badge-critical',
+    Active: 'badge-healthy',
+    'MOQ Pending': 'badge-critical',
+    Quoted: 'badge-info',
   }
 
   return (
@@ -314,7 +322,7 @@ export function EverythingPage() {
                       if (record.type === 'TASK') {
                         setSelectedTaskId(record.sourceId ?? record.id)
                       } else {
-                        setSelectedItem({ item: { id: record.id, data: record.raw ?? record }, type: record.type })
+                        setSelectedItem({ item: { id: record.id, data: record.data ?? record }, type: record.type })
                       }
                     }}
                   >

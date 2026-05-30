@@ -10,9 +10,12 @@ import { OpsPage } from '@/app/routes/departments/ops'
 import { CoworkPage } from '@/app/routes/cowork'
 import { CoworkDetailPage } from '@/app/routes/cowork-detail'
 import { DocsPage } from '@/app/routes/docs'
+import { ProductCatalogPage } from '@/app/routes/product-catalog'
 import { IntegrationsPage } from '@/app/routes/integrations'
+import { EmailAgentPage } from '@/app/routes/email-agent'
 import { DeptManagerPage } from '@/app/routes/dept-manager'
 import { PulsePage } from '@/app/routes/pulse'
+import { CustomDeptPage } from '@/app/routes/custom-dept'
 
 function PageContent() {
   const currentPage = useAppStore((s) => s.currentPage)
@@ -32,12 +35,18 @@ function PageContent() {
       return <CoworkDetailPage />
     case 'docs':
       return <DocsPage />
+    case 'product-catalog':
+      return <ProductCatalogPage />
     case 'integrations':
       return <IntegrationsPage />
+    case 'email-agent':
+      return <EmailAgentPage />
     case 'dept-manager':
       return <DeptManagerPage />
     case 'pulse':
       return <PulsePage />
+    case 'custom-dept':
+      return <CustomDeptPage />
     default:
       return (
         <div className="flex-1 flex items-center justify-center text-[var(--text-tertiary)]">

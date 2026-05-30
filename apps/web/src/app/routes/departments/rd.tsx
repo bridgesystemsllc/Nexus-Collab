@@ -2,12 +2,16 @@ import { useState, useMemo } from 'react'
 import {
   ArrowRight,
   Beaker,
+  Boxes,
   CheckCircle2,
   Clock,
   FileText,
   FlaskConical,
   Loader2,
+  Package,
+  Palette,
   Repeat2,
+  Rocket,
   Sparkles,
   Users,
 } from 'lucide-react'
@@ -15,13 +19,16 @@ import { useDepartments, useDepartment } from '@/hooks/useData'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 
 // ─── Types ─────────────────────────────────────────────────
-type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations'
+type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd' | 'artwork' | 'components'
 
 const TABS: { key: RDTab; label: string; icon: React.ElementType }[] = [
   { key: 'briefs', label: 'Active Briefs', icon: FileText },
   { key: 'cm', label: 'CM Productivity', icon: Users },
   { key: 'transfers', label: 'Tech Transfers', icon: Repeat2 },
   { key: 'formulations', label: 'Formulations', icon: FlaskConical },
+  { key: 'npd', label: 'NPD Pipeline', icon: Rocket },
+  { key: 'artwork', label: 'Artwork', icon: Palette },
+  { key: 'components', label: 'Components', icon: Boxes },
 ]
 
 // ─── Skeleton ──────────────────────────────────────────────
@@ -95,6 +102,12 @@ function StatusBadge({ status }: { status: string }) {
     'Pass': 'badge-healthy',
     'Testing': 'badge-critical',
     'Pending': 'badge-accent',
+    'Active': 'badge-healthy',
+    'Awaiting Artwork': 'badge-info',
+    'Component Sourcing': 'badge-info',
+    'Formula Pending': 'badge-critical',
+    'MOQ Pending': 'badge-critical',
+    'Quoted': 'badge-info',
   }
 
   return (
@@ -464,6 +477,171 @@ function FormulationsTab({ items, onSelect }: { items: any[]; onSelect: (item: a
   )
 }
 
+const FALLBACK_NPD = [
+  {
+    id: 'npd-1',
+    data: {
+      name: 'Lisa Kitchen Serum',
+      brand: 'Haircare',
+      owner: 'Steven',
+      cm: 'ACT',
+      launch: 'Jun 19, 2026',
+      status: 'Active',
+      progress: 12,
+      tasksComplete: 4,
+      tasksTotal: 34,
+      links: ['Brief', 'Formulation', 'CM: ACT'],
+    },
+    status: 'Active',
+  },
+  {
+    id: 'npd-2',
+    data: {
+      name: 'Scalp & Edge Treatment Mist',
+      brand: "Carol's Daughter",
+      owner: 'R&D Lead',
+      cm: 'ACT',
+      launch: 'Jul 10, 2026',
+      status: 'Planning',
+      progress: 24,
+      tasksComplete: 7,
+      tasksTotal: 29,
+      links: ['Brief', 'Artwork', 'Components'],
+    },
+    status: 'Planning',
+  },
+]
+
+const FALLBACK_ARTWORK = [
+  { id: 'art-1', data: { product: 'CD Scalp Detox Shampoo 8oz', owner: 'Sarah K.', status: 'Awaiting Artwork', due: 'Apr 02', files: 3 } },
+  { id: 'art-2', data: { product: 'CD Scalp Cleansing Oil 6oz', owner: 'Marketing', status: 'In Review', due: 'Apr 05', files: 5 } },
+  { id: 'art-3', data: { product: 'Ambi Oil-Free Cleanser Reformulation', owner: 'R&D', status: 'Draft', due: 'Apr 08', files: 2 } },
+]
+
+const FALLBACK_COMPONENTS = [
+  { id: 'cmp-1', data: { component: 'TricorBraun bottle', product: 'CD Scalp Cleansing Oil 6oz', vendor: 'TricorBraun', status: 'MOQ Pending', risk: 'High' } },
+  { id: 'cmp-2', data: { component: 'Jansy tube', product: 'Scalp & Edge Balm 2oz', vendor: 'Jansy', status: 'Quoted', risk: 'Low' } },
+  { id: 'cmp-3', data: { component: 'Label stock', product: 'CD Scalp Detox Shampoo 8oz', vendor: 'ACT Labs', status: 'Approved', risk: 'Low' } },
+]
+
+function NPDTab({ items }: { items: any[] }) {
+  const records = items.length > 0 ? items : FALLBACK_NPD
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {records.map((item: any) => {
+        const d = item.data
+        return (
+          <div key={item.id} className="data-cell space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="font-medium text-[var(--text-primary)]">{d.name}</h3>
+                <p className="text-xs text-[var(--text-tertiary)] mt-1">
+                  {d.brand} / CM: {d.cm} / Launch: {d.launch}
+                </p>
+              </div>
+              <StatusBadge status={d.status} />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-full bg-[var(--accent-subtle)] text-[var(--accent)] text-xs font-semibold flex items-center justify-center">
+                {(d.owner || 'N').slice(0, 1)}
+              </span>
+              <span className="text-sm text-[var(--text-secondary)]">{d.owner}</span>
+            </div>
+            <div>
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <span className="text-[var(--text-tertiary)]">Overall Progress</span>
+                <span className="tabular-nums text-[var(--text-secondary)]">
+                  {d.tasksComplete} / {d.tasksTotal} tasks ({d.progress}%)
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+                <div className="h-full rounded-full bg-[var(--success)]" style={{ width: `${d.progress}%` }} />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5 pt-2 border-t border-[var(--border-subtle)]">
+              {(d.links || []).map((link: string) => (
+                <span key={link} className="badge badge-accent">{link}</span>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function ArtworkTab({ items }: { items: any[] }) {
+  const records = items.length > 0 ? items : FALLBACK_ARTWORK
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+      <table className="nexus-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Owner</th>
+            <th>Status</th>
+            <th>Due</th>
+            <th>Files</th>
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((item: any) => {
+            const d = item.data
+            return (
+              <tr key={item.id} className="clickable-row">
+                <td className="font-medium text-[var(--text-primary)]">{d.product}</td>
+                <td className="text-[var(--text-secondary)]">{d.owner}</td>
+                <td><StatusBadge status={d.status} /></td>
+                <td className="text-[var(--text-tertiary)]">{d.due}</td>
+                <td className="text-[var(--accent)] tabular-nums">{d.files} files</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ComponentsTab({ items }: { items: any[] }) {
+  const records = items.length > 0 ? items : FALLBACK_COMPONENTS
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {records.map((item: any) => {
+        const d = item.data
+        const isRisk = d.risk === 'High'
+        return (
+          <div key={item.id} className="data-cell space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-medium text-sm text-[var(--text-primary)]">{d.component}</h3>
+                <p className="text-xs text-[var(--text-tertiary)] mt-1">{d.product}</p>
+              </div>
+              <Package size={16} className="text-[var(--accent)] flex-shrink-0" />
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <p className="text-[var(--text-tertiary)]">Vendor</p>
+                <p className="text-[var(--text-secondary)] mt-1">{d.vendor}</p>
+              </div>
+              <div>
+                <p className="text-[var(--text-tertiary)]">Risk</p>
+                <p className="font-medium mt-1" style={{ color: isRisk ? 'var(--danger)' : 'var(--success)' }}>
+                  {d.risk}
+                </p>
+              </div>
+            </div>
+            <StatusBadge status={d.status} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Main Page ─────────────────────────────────────────────
 export function RDPage() {
   const [activeTab, setActiveTab] = useState<RDTab>('briefs')
@@ -486,7 +664,7 @@ export function RDPage() {
   // Organize module items by type
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { briefs: [], cm: [], transfers: [], formulations: [] }
+      return { briefs: [], cm: [], transfers: [], formulations: [], npd: [], artwork: [], components: [] }
     }
     const modules = deptDetail.modules as any[]
     const find = (type: string) =>
@@ -497,6 +675,9 @@ export function RDPage() {
       cm: find('CM_PRODUCTIVITY'),
       transfers: find('TECH_TRANSFERS'),
       formulations: find('FORMULATIONS'),
+      npd: find('NPD_PIPELINE'),
+      artwork: find('ARTWORK'),
+      components: find('COMPONENTS'),
     }
   }, [deptDetail])
 
@@ -505,6 +686,9 @@ export function RDPage() {
     cm: moduleData.cm,
     transfers: moduleData.transfers,
     formulations: moduleData.formulations,
+    npd: moduleData.npd,
+    artwork: moduleData.artwork,
+    components: moduleData.components,
   }
 
   return (
@@ -522,13 +706,13 @@ export function RDPage() {
             R&D Department
           </h1>
           <p className="text-sm text-[var(--text-tertiary)]">
-            Formulations, briefs, tech transfers, CM coordination
+            Formulations, briefs, tech transfers, CM coordination, NPD pipeline
           </p>
         </div>
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit">
+      <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit max-w-full overflow-x-auto">
         {TABS.map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.key
@@ -536,7 +720,7 @@ export function RDPage() {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
                 isActive
                   ? 'bg-[var(--accent)] text-white shadow-md'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
@@ -564,8 +748,14 @@ export function RDPage() {
             <CMTab items={tabContent.cm} onSelect={(item) => setSelectedItem({ item, type: 'CM_PRODUCTIVITY' })} />
           ) : activeTab === 'transfers' ? (
             <TransfersTab items={tabContent.transfers} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
-          ) : (
+          ) : activeTab === 'formulations' ? (
             <FormulationsTab items={tabContent.formulations} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
+          ) : activeTab === 'npd' ? (
+            <NPDTab items={tabContent.npd} />
+          ) : activeTab === 'artwork' ? (
+            <ArtworkTab items={tabContent.artwork} />
+          ) : (
+            <ComponentsTab items={tabContent.components} />
           )}
         </div>
       </div>

@@ -9,10 +9,43 @@ import {
   Bell,
   Boxes,
   Bot,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
+  Megaphone,
+  Package,
+  TrendingUp,
+  Truck,
 } from 'lucide-react'
+import type { ElementType } from 'react'
 import { useAppStore } from '@/stores/appStore'
+
+type StaticPage =
+  | 'dashboard'
+  | 'everything'
+  | 'rd'
+  | 'ops'
+  | 'cowork'
+  | 'docs'
+  | 'product-catalog'
+  | 'integrations'
+  | 'email-agent'
+  | 'dept-manager'
+  | 'pulse'
+
+type NavItem =
+  | {
+      id: StaticPage
+      label: string
+      icon: ElementType
+      deptId?: never
+    }
+  | {
+      id: 'custom-dept'
+      label: string
+      icon: ElementType
+      deptId: string
+    }
 
 const navSections = [
   {
@@ -27,6 +60,10 @@ const navSections = [
     items: [
       { id: 'rd' as const, label: 'R&D', icon: FlaskConical },
       { id: 'ops' as const, label: 'Operations', icon: Settings2 },
+      { id: 'custom-dept' as const, label: 'Vendor Mgmt', icon: Truck, deptId: 'vendor-mgmt' },
+      { id: 'custom-dept' as const, label: 'Finance', icon: BarChart3, deptId: 'finance' },
+      { id: 'custom-dept' as const, label: 'Sales', icon: TrendingUp, deptId: 'sales' },
+      { id: 'custom-dept' as const, label: 'Marketing', icon: Megaphone, deptId: 'marketing' },
     ],
   },
   {
@@ -34,12 +71,14 @@ const navSections = [
     items: [
       { id: 'cowork' as const, label: 'Cowork Spaces', icon: Users },
       { id: 'docs' as const, label: 'Documents', icon: FileText },
+      { id: 'product-catalog' as const, label: 'Product Catalog', icon: Package },
     ],
   },
   {
     label: 'SYSTEM',
     items: [
       { id: 'integrations' as const, label: 'Integrations', icon: Plug },
+      { id: 'email-agent' as const, label: 'Email Agent', icon: Bot },
       { id: 'dept-manager' as const, label: 'Dept Manager', icon: Boxes },
       { id: 'pulse' as const, label: 'Pulse', icon: Bell },
     ],
@@ -48,7 +87,9 @@ const navSections = [
 
 export function Sidebar() {
   const currentPage = useAppStore((s) => s.currentPage)
+  const selectedDeptId = useAppStore((s) => s.selectedDeptId)
   const setPage = useAppStore((s) => s.setPage)
+  const setSelectedDept = useAppStore((s) => s.setSelectedDept)
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed)
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const toggleAIPanel = useAppStore((s) => s.toggleAIPanel)
@@ -83,15 +124,24 @@ export function Sidebar() {
               </div>
             )}
             <div className="space-y-0.5">
-              {section.items.map((item) => {
+              {(section.items as NavItem[]).map((item) => {
                 const Icon = item.icon
                 const isActive =
                   currentPage === item.id ||
+                  (item.id === 'custom-dept' &&
+                    currentPage === 'custom-dept' &&
+                    selectedDeptId === item.deptId) ||
                   (item.id === 'cowork' && currentPage === 'cowork-detail')
                 return (
                   <button
-                    key={item.id}
-                    onClick={() => setPage(item.id)}
+                    key={item.deptId ?? item.id}
+                    onClick={() => {
+                      if (item.id === 'custom-dept') {
+                        setSelectedDept(item.deptId)
+                        return
+                      }
+                      setPage(item.id)
+                    }}
                     className={`nav-item w-full ${isActive ? 'active' : ''} ${sidebarCollapsed ? 'justify-center px-0' : ''}`}
                     title={sidebarCollapsed ? item.label : undefined}
                   >
