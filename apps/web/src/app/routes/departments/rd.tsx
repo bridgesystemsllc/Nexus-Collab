@@ -12,10 +12,8 @@ import {
   FileText,
   FlaskConical,
   Loader2,
-  Lock,
-  MoreHorizontal,
+  Package,
   Palette,
-  Plus,
   Repeat2,
   Rocket,
   Sparkles,
@@ -138,42 +136,26 @@ function PhaseBar({ phase, total }: { phase: number; total: number }) {
 
 // ─── Status Badge ──────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { className: string; color?: string }> = {
-    'Formula Approved': { className: 'badge-healthy' },
-    'In Formulation': { className: 'badge-critical' },
-    'Stability Testing': { className: '', color: '#EF4444' },
-    'Brief Submitted': { className: 'badge-info' },
-    'Draft': { className: '', color: '#6B7280' },
-    'Approved': { className: 'badge-healthy' },
-    'In Review': { className: 'badge-info' },
-    'Complete': { className: 'badge-healthy' },
-    'In Progress': { className: 'badge-info' },
-    'Planning': { className: 'badge-critical' },
-    'Pass': { className: 'badge-healthy' },
-    'Fail': { className: '', color: '#EF4444' },
-    'Testing': { className: 'badge-critical' },
-    'Pending': { className: 'badge-accent' },
-    'Ongoing': { className: 'badge-info' },
-    'Active': { className: 'badge-healthy' },
-    'On Hold': { className: '', color: '#EF4444' },
-    'Terminated': { className: '', color: '#EF4444' },
-    'Pending Onboarding': { className: 'badge-info' },
-    'Cleared': { className: 'badge-healthy' },
-    'Not Required': { className: '', color: '#6B7280' },
-    'Compliant': { className: 'badge-healthy' },
-    'Under Review': { className: 'badge-critical' },
-    'Non-Compliant': { className: '', color: '#EF4444' },
-    'Rejected': { className: '', color: '#EF4444' },
-    'Archived': { className: '', color: '#6B7280' },
-    'Critical': { className: '', color: '#EF4444' },
-    'High': { className: '', color: '#F59E0B' },
-    'Standard': { className: '', color: '#6B7280' },
-    'Formula Shared': { className: 'badge-accent' },
-    'Scale Up': { className: 'badge-critical' },
-  }
-  const style = map[status]
-  if (style?.color) {
-    return <span className="badge" style={{ background: `${style.color}18`, color: style.color }}>{status}</span>
+  const map: Record<string, string> = {
+    'Formula Approved': 'badge-healthy',
+    'In Formulation': 'badge-info',
+    'Stability Testing': 'badge-critical',
+    'Brief Submitted': 'badge-accent',
+    'Approved': 'badge-healthy',
+    'In Review': 'badge-info',
+    'Draft': 'badge-accent',
+    'Complete': 'badge-healthy',
+    'In Progress': 'badge-info',
+    'Planning': 'badge-critical',
+    'Pass': 'badge-healthy',
+    'Testing': 'badge-critical',
+    'Pending': 'badge-accent',
+    'Active': 'badge-healthy',
+    'Awaiting Artwork': 'badge-info',
+    'Component Sourcing': 'badge-info',
+    'Formula Pending': 'badge-critical',
+    'MOQ Pending': 'badge-critical',
+    'Quoted': 'badge-info',
   }
   return <span className={`badge ${style?.className || 'badge-accent'}`}>{status}</span>
 }
@@ -1729,6 +1711,171 @@ function FormulationsTab({ items, onSelect }: { items: any[]; onSelect: (item: a
   )
 }
 
+const FALLBACK_NPD = [
+  {
+    id: 'npd-1',
+    data: {
+      name: 'Lisa Kitchen Serum',
+      brand: 'Haircare',
+      owner: 'Steven',
+      cm: 'ACT',
+      launch: 'Jun 19, 2026',
+      status: 'Active',
+      progress: 12,
+      tasksComplete: 4,
+      tasksTotal: 34,
+      links: ['Brief', 'Formulation', 'CM: ACT'],
+    },
+    status: 'Active',
+  },
+  {
+    id: 'npd-2',
+    data: {
+      name: 'Scalp & Edge Treatment Mist',
+      brand: "Carol's Daughter",
+      owner: 'R&D Lead',
+      cm: 'ACT',
+      launch: 'Jul 10, 2026',
+      status: 'Planning',
+      progress: 24,
+      tasksComplete: 7,
+      tasksTotal: 29,
+      links: ['Brief', 'Artwork', 'Components'],
+    },
+    status: 'Planning',
+  },
+]
+
+const FALLBACK_ARTWORK = [
+  { id: 'art-1', data: { product: 'CD Scalp Detox Shampoo 8oz', owner: 'Sarah K.', status: 'Awaiting Artwork', due: 'Apr 02', files: 3 } },
+  { id: 'art-2', data: { product: 'CD Scalp Cleansing Oil 6oz', owner: 'Marketing', status: 'In Review', due: 'Apr 05', files: 5 } },
+  { id: 'art-3', data: { product: 'Ambi Oil-Free Cleanser Reformulation', owner: 'R&D', status: 'Draft', due: 'Apr 08', files: 2 } },
+]
+
+const FALLBACK_COMPONENTS = [
+  { id: 'cmp-1', data: { component: 'TricorBraun bottle', product: 'CD Scalp Cleansing Oil 6oz', vendor: 'TricorBraun', status: 'MOQ Pending', risk: 'High' } },
+  { id: 'cmp-2', data: { component: 'Jansy tube', product: 'Scalp & Edge Balm 2oz', vendor: 'Jansy', status: 'Quoted', risk: 'Low' } },
+  { id: 'cmp-3', data: { component: 'Label stock', product: 'CD Scalp Detox Shampoo 8oz', vendor: 'ACT Labs', status: 'Approved', risk: 'Low' } },
+]
+
+function NPDTab({ items }: { items: any[] }) {
+  const records = items.length > 0 ? items : FALLBACK_NPD
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {records.map((item: any) => {
+        const d = item.data
+        return (
+          <div key={item.id} className="data-cell space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="font-medium text-[var(--text-primary)]">{d.name}</h3>
+                <p className="text-xs text-[var(--text-tertiary)] mt-1">
+                  {d.brand} / CM: {d.cm} / Launch: {d.launch}
+                </p>
+              </div>
+              <StatusBadge status={d.status} />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-full bg-[var(--accent-subtle)] text-[var(--accent)] text-xs font-semibold flex items-center justify-center">
+                {(d.owner || 'N').slice(0, 1)}
+              </span>
+              <span className="text-sm text-[var(--text-secondary)]">{d.owner}</span>
+            </div>
+            <div>
+              <div className="flex items-center justify-between text-xs mb-1.5">
+                <span className="text-[var(--text-tertiary)]">Overall Progress</span>
+                <span className="tabular-nums text-[var(--text-secondary)]">
+                  {d.tasksComplete} / {d.tasksTotal} tasks ({d.progress}%)
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+                <div className="h-full rounded-full bg-[var(--success)]" style={{ width: `${d.progress}%` }} />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5 pt-2 border-t border-[var(--border-subtle)]">
+              {(d.links || []).map((link: string) => (
+                <span key={link} className="badge badge-accent">{link}</span>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function ArtworkTab({ items }: { items: any[] }) {
+  const records = items.length > 0 ? items : FALLBACK_ARTWORK
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+      <table className="nexus-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Owner</th>
+            <th>Status</th>
+            <th>Due</th>
+            <th>Files</th>
+          </tr>
+        </thead>
+        <tbody>
+          {records.map((item: any) => {
+            const d = item.data
+            return (
+              <tr key={item.id} className="clickable-row">
+                <td className="font-medium text-[var(--text-primary)]">{d.product}</td>
+                <td className="text-[var(--text-secondary)]">{d.owner}</td>
+                <td><StatusBadge status={d.status} /></td>
+                <td className="text-[var(--text-tertiary)]">{d.due}</td>
+                <td className="text-[var(--accent)] tabular-nums">{d.files} files</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ComponentsTab({ items }: { items: any[] }) {
+  const records = items.length > 0 ? items : FALLBACK_COMPONENTS
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {records.map((item: any) => {
+        const d = item.data
+        const isRisk = d.risk === 'High'
+        return (
+          <div key={item.id} className="data-cell space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-medium text-sm text-[var(--text-primary)]">{d.component}</h3>
+                <p className="text-xs text-[var(--text-tertiary)] mt-1">{d.product}</p>
+              </div>
+              <Package size={16} className="text-[var(--accent)] flex-shrink-0" />
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <p className="text-[var(--text-tertiary)]">Vendor</p>
+                <p className="text-[var(--text-secondary)] mt-1">{d.vendor}</p>
+              </div>
+              <div>
+                <p className="text-[var(--text-tertiary)]">Risk</p>
+                <p className="font-medium mt-1" style={{ color: isRisk ? 'var(--danger)' : 'var(--success)' }}>
+                  {d.risk}
+                </p>
+              </div>
+            </div>
+            <StatusBadge status={d.status} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Main Page ─────────────────────────────────────────────
 export function RDPage() {
   const [activeTab, setActiveTab] = useState<RDTab>('briefs')
@@ -1749,7 +1896,7 @@ export function RDPage() {
 
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
-      return { briefs: [], cm: [], transfers: [], formulations: [], npd: [], artwork: [], components: [], briefsModuleId: null, cmModuleId: null, transfersModuleId: null, formulationsModuleId: null, npdModuleId: null, artworkModuleId: null, componentsModuleId: null }
+      return { briefs: [], cm: [], transfers: [], formulations: [], npd: [], artwork: [], components: [] }
     }
     const modules = deptDetail.modules as any[]
     const find = (type: string) =>
@@ -1764,14 +1911,7 @@ export function RDPage() {
       formulations: find('FORMULATIONS'),
       npd: find('NPD_PIPELINE'),
       artwork: find('ARTWORK'),
-      components: find('COMPONENT_LIBRARY'),
-      briefsModuleId: findModuleId('BRIEFS'),
-      cmModuleId: findModuleId('CM_PRODUCTIVITY'),
-      transfersModuleId: findModuleId('TECH_TRANSFERS'),
-      formulationsModuleId: findModuleId('FORMULATIONS'),
-      npdModuleId: findModuleId('NPD_PIPELINE'),
-      artworkModuleId: findModuleId('ARTWORK'),
-      componentsModuleId: findModuleId('COMPONENT_LIBRARY'),
+      components: find('COMPONENTS'),
     }
   }, [deptDetail])
 
@@ -1803,12 +1943,20 @@ export function RDPage() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex items-center gap-0.5 p-1 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-default)] w-fit">
+      <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit max-w-full overflow-x-auto">
         {TABS.map((tab) => {
           const Icon = tab.icon
           const isActive = activeTab === tab.key
           return (
-            <button key={tab.key} onClick={() => setActiveTab(tab.key)} className="flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-all" style={{ background: isActive ? 'var(--bg-elevated)' : 'transparent', color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)', boxShadow: isActive ? 'var(--shadow-xs)' : 'none', fontWeight: isActive ? 550 : 500 }}>
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                isActive
+                  ? 'bg-[var(--accent)] text-white shadow-md'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
+              }`}
+            >
               <Icon size={15} />
               {tab.label}
             </button>
@@ -1826,20 +1974,16 @@ export function RDPage() {
           ) : activeTab === 'cm' ? (
             <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
           ) : activeTab === 'transfers' ? (
-            <TransfersTab items={tabContent.transfers} moduleId={moduleData.transfersModuleId} briefs={moduleData.briefs} onRefresh={() => refetchDept()} onSelect={(item) => setViewingTransfer(item)} />
+            <TransfersTab items={tabContent.transfers} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
           ) : activeTab === 'formulations' ? (
-            <FormulationsTab items={moduleData.formulations} onSelect={(item) => setViewingFormulation(item)} />
+            <FormulationsTab items={tabContent.formulations} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
           ) : activeTab === 'npd' ? (
-            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} />
+            <NPDTab items={tabContent.npd} />
           ) : activeTab === 'artwork' ? (
-            <ArtworkTab items={moduleData.artwork} moduleId={moduleData.artworkModuleId} briefs={moduleData.briefs} onRefresh={() => refetchDept()} />
-          ) : activeTab === 'components' ? (
-            <ComponentsTab
-              items={tabContent.components}
-              moduleId={moduleData.componentsModuleId}
-              onRefresh={() => refetchDept()}
-            />
-          ) : null}
+            <ArtworkTab items={tabContent.artwork} />
+          ) : (
+            <ComponentsTab items={tabContent.components} />
+          )}
         </div>
       </div>
 

@@ -36,7 +36,12 @@ everythingRoutes.get('/', async (req: Request, res: Response) => {
         id: item.id,
         type: item.module.type,
         typeName: item.module.name,
-        title: (item.data as any)?.name || (item.data as any)?.product || (item.data as any)?.sku || 'Untitled',
+        title:
+          (item.data as any)?.name ||
+          (item.data as any)?.product ||
+          (item.data as any)?.component ||
+          (item.data as any)?.sku ||
+          'Untitled',
         status: item.status,
         department: item.module.department,
         data: item.data,

@@ -9,60 +9,82 @@ import {
   Bell,
   Boxes,
   Bot,
+  BarChart3,
   ChevronLeft,
   ChevronRight,
+  Megaphone,
   Package,
+  TrendingUp,
+  Truck,
 } from 'lucide-react'
+import type { ElementType } from 'react'
 import { useAppStore } from '@/stores/appStore'
 import { useDepartments } from '@/hooks/useData'
 import type { LucideIcon } from 'lucide-react'
 
-type Page = Parameters<ReturnType<typeof useAppStore.getState>['setPage']>[0]
+type StaticPage =
+  | 'dashboard'
+  | 'everything'
+  | 'rd'
+  | 'ops'
+  | 'cowork'
+  | 'docs'
+  | 'product-catalog'
+  | 'integrations'
+  | 'email-agent'
+  | 'dept-manager'
+  | 'pulse'
 
-interface NavItem {
-  id: Page
-  label: string
-  icon?: LucideIcon
-  emoji?: string
-  deptId?: string
-}
+type NavItem =
+  | {
+      id: StaticPage
+      label: string
+      icon: ElementType
+      deptId?: never
+    }
+  | {
+      id: 'custom-dept'
+      label: string
+      icon: ElementType
+      deptId: string
+    }
 
-interface NavSection {
-  label: string
-  items: NavItem[]
-}
-
-const overviewSection: NavSection = {
-  label: 'OVERVIEW',
-  items: [
-    { id: 'dashboard', label: 'Command Center', icon: LayoutDashboard },
-    { id: 'everything', label: 'Everything', icon: Database },
-  ],
-}
-
-const collaborationSection: NavSection = {
-  label: 'COLLABORATION',
-  items: [
-    { id: 'cowork', label: 'Cowork Spaces', icon: Users },
-    { id: 'docs', label: 'Documents', icon: FileText },
-    { id: 'product-catalog', label: 'Product Catalog', icon: Package },
-  ],
-}
-
-const systemSection: NavSection = {
-  label: 'SYSTEM',
-  items: [
-    { id: 'integrations', label: 'Integrations', icon: Plug },
-    { id: 'agent-settings', label: 'Email Agent', icon: Bot },
-    { id: 'dept-manager', label: 'Dept Manager', icon: Boxes },
-    { id: 'pulse', label: 'Pulse', icon: Bell },
-  ],
-}
-
-// Fallback departments shown while API is loading
-const fallbackDeptItems: NavItem[] = [
-  { id: 'rd', label: 'R&D', icon: FlaskConical },
-  { id: 'ops', label: 'Operations', icon: Settings2 },
+const navSections = [
+  {
+    label: 'OVERVIEW',
+    items: [
+      { id: 'dashboard' as const, label: 'Command Center', icon: LayoutDashboard },
+      { id: 'everything' as const, label: 'Everything', icon: Database },
+    ],
+  },
+  {
+    label: 'DEPARTMENTS',
+    items: [
+      { id: 'rd' as const, label: 'R&D', icon: FlaskConical },
+      { id: 'ops' as const, label: 'Operations', icon: Settings2 },
+      { id: 'custom-dept' as const, label: 'Vendor Mgmt', icon: Truck, deptId: 'vendor-mgmt' },
+      { id: 'custom-dept' as const, label: 'Finance', icon: BarChart3, deptId: 'finance' },
+      { id: 'custom-dept' as const, label: 'Sales', icon: TrendingUp, deptId: 'sales' },
+      { id: 'custom-dept' as const, label: 'Marketing', icon: Megaphone, deptId: 'marketing' },
+    ],
+  },
+  {
+    label: 'COLLABORATION',
+    items: [
+      { id: 'cowork' as const, label: 'Cowork Spaces', icon: Users },
+      { id: 'docs' as const, label: 'Documents', icon: FileText },
+      { id: 'product-catalog' as const, label: 'Product Catalog', icon: Package },
+    ],
+  },
+  {
+    label: 'SYSTEM',
+    items: [
+      { id: 'integrations' as const, label: 'Integrations', icon: Plug },
+      { id: 'email-agent' as const, label: 'Email Agent', icon: Bot },
+      { id: 'dept-manager' as const, label: 'Dept Manager', icon: Boxes },
+      { id: 'pulse' as const, label: 'Pulse', icon: Bell },
+    ],
+  },
 ]
 
 function buildDeptItems(departments: any[]): NavItem[] {
@@ -148,28 +170,24 @@ export function Sidebar() {
               </div>
             )}
             <div className="space-y-0.5">
-              {section.items.map((item) => {
-                const isCustomDept = item.id === 'custom-dept' && !!item.deptId
-                const isActive = isCustomDept
-                  ? currentPage === 'custom-dept' && selectedDeptId === item.deptId
-                  : currentPage === item.id ||
-                    (item.id === 'cowork' && currentPage === 'cowork-detail')
-
-                const handleClick = () => {
-                  if (isCustomDept) {
-                    setSelectedDept(item.deptId!)
-                  } else {
-                    setPage(item.id)
-                  }
-                }
-
+              {(section.items as NavItem[]).map((item) => {
                 const Icon = item.icon
-                const key = isCustomDept ? `dept-${item.deptId}` : item.id
-
+                const isActive =
+                  currentPage === item.id ||
+                  (item.id === 'custom-dept' &&
+                    currentPage === 'custom-dept' &&
+                    selectedDeptId === item.deptId) ||
+                  (item.id === 'cowork' && currentPage === 'cowork-detail')
                 return (
                   <button
-                    key={key}
-                    onClick={handleClick}
+                    key={item.deptId ?? item.id}
+                    onClick={() => {
+                      if (item.id === 'custom-dept') {
+                        setSelectedDept(item.deptId)
+                        return
+                      }
+                      setPage(item.id)
+                    }}
                     className={`nav-item w-full ${isActive ? 'active' : ''} ${sidebarCollapsed ? 'justify-center px-0' : ''}`}
                     title={sidebarCollapsed ? item.label : undefined}
                   >
