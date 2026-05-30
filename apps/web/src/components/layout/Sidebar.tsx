@@ -19,6 +19,8 @@ import {
 } from 'lucide-react'
 import type { ElementType } from 'react'
 import { useAppStore } from '@/stores/appStore'
+import { useDepartments } from '@/hooks/useData'
+import type { LucideIcon } from 'lucide-react'
 
 type StaticPage =
   | 'dashboard'
@@ -85,6 +87,24 @@ const navSections = [
   },
 ]
 
+function buildDeptItems(departments: any[]): NavItem[] {
+  return departments.map((dept) => {
+    if (dept.type === 'BUILTIN_RD') {
+      return { id: 'rd' as Page, label: dept.name, icon: FlaskConical, deptId: dept.id }
+    }
+    if (dept.type === 'BUILTIN_OPS') {
+      return { id: 'ops' as Page, label: dept.name, icon: Settings2, deptId: dept.id }
+    }
+    // Custom department — use emoji icon from DB
+    return {
+      id: 'custom-dept' as Page,
+      label: dept.name,
+      emoji: dept.icon || '📁',
+      deptId: dept.id,
+    }
+  })
+}
+
 export function Sidebar() {
   const currentPage = useAppStore((s) => s.currentPage)
   const selectedDeptId = useAppStore((s) => s.selectedDeptId)
@@ -93,6 +113,18 @@ export function Sidebar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed)
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const toggleAIPanel = useAppStore((s) => s.toggleAIPanel)
+
+  const { data: departments, isLoading } = useDepartments()
+
+  const deptItems = !isLoading && Array.isArray(departments)
+    ? buildDeptItems(departments)
+    : fallbackDeptItems
+
+  const scrollSections: NavSection[] = [
+    overviewSection,
+    { label: 'DEPARTMENTS', items: deptItems },
+    collaborationSection,
+  ]
 
   return (
     <aside
@@ -125,9 +157,9 @@ export function Sidebar() {
         </button>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation — scrollable */}
       <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-6">
-        {navSections.map((section) => (
+        {scrollSections.map((section) => (
           <div key={section.label}>
             {!sidebarCollapsed && (
               <div
@@ -159,7 +191,13 @@ export function Sidebar() {
                     className={`nav-item w-full ${isActive ? 'active' : ''} ${sidebarCollapsed ? 'justify-center px-0' : ''}`}
                     title={sidebarCollapsed ? item.label : undefined}
                   >
-                    <Icon size={18} />
+                    {Icon ? (
+                      <Icon size={18} />
+                    ) : (
+                      <span className="text-base leading-none" style={{ width: 18, textAlign: 'center' }}>
+                        {item.emoji}
+                      </span>
+                    )}
                     {!sidebarCollapsed && <span>{item.label}</span>}
                   </button>
                 )
@@ -168,6 +206,35 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
+
+      {/* System section — pinned, always visible */}
+      <div style={{ padding: '8px 8px 4px', borderTop: '1px solid var(--border-default)' }}>
+        {!sidebarCollapsed && (
+          <div
+            className="px-3 mb-2 text-[11px] font-semibold tracking-[0.06em] uppercase"
+            style={{ color: 'var(--text-tertiary)' }}
+          >
+            SYSTEM
+          </div>
+        )}
+        <div className="space-y-0.5">
+          {systemSection.items.map((item) => {
+            const isActive = currentPage === item.id
+            const Icon = item.icon
+            return (
+              <button
+                key={item.id}
+                onClick={() => setPage(item.id)}
+                className={`nav-item w-full ${isActive ? 'active' : ''} ${sidebarCollapsed ? 'justify-center px-0' : ''}`}
+                title={sidebarCollapsed ? item.label : undefined}
+              >
+                {Icon && <Icon size={18} />}
+                {!sidebarCollapsed && <span>{item.label}</span>}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {/* Bottom: AI Assistant */}
       <div style={{ padding: 8, borderTop: '1px solid var(--border-default)' }}>

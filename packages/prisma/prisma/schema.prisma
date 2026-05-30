@@ -28,6 +28,8 @@ model Organization {
   projects           Project[]
   documents          Document[]
   integrations       Integration[]
+  products           Product[]
+  transitionSkus     TransitionSku[]
   invites            OrganizationInvite[]
 }
 
@@ -134,6 +136,34 @@ model Brand {
   @@index([orgId])
 }
 
+// ─── Product ────────────────────────────────────────────────
+model Product {
+  id           String   @id @default(cuid())
+  name         String
+  brand        String
+  category     String
+  sku          String?  @unique
+  upc          String?
+  description  String?
+  retailPrice  String?
+  cogs         String?
+  status       String   @default("ACTIVE") // ACTIVE, IN_DEVELOPMENT, DISCONTINUED
+  imageUrl     String?
+  weight       String?
+  dimensions   String?
+  ingredients  String?
+  manufacturer String?
+  variants     Json?
+  kareveId     String?  @unique
+  orgId        String
+  org          Organization @relation(fields: [orgId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([orgId])
+  @@index([status])
+}
+
 // ─── Project ────────────────────────────────────────────────
 model Project {
   id          String       @id @default(cuid())
@@ -167,6 +197,7 @@ model CoworkSpace {
   activities  Activity[]
   tasks       Task[]     @relation("CoworkTasks")
   documents   Document[] @relation("CoworkDocs")
+  emails      EmailLink[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 }
@@ -244,19 +275,22 @@ model Document {
 
 // ─── Email Link ─────────────────────────────────────────────
 model EmailLink {
-  id        String   @id @default(cuid())
-  messageId String
-  subject   String
-  fromAddr  String
-  toAddrs   String[]
-  date      DateTime
-  snippet   String?
-  taskId    String?
-  task      Task?    @relation(fields: [taskId], references: [id])
-  metadata  Json?
-  createdAt DateTime @default(now())
+  id             String       @id @default(cuid())
+  messageId      String
+  subject        String
+  fromAddr       String
+  toAddrs        String[]
+  date           DateTime
+  snippet        String?
+  taskId         String?
+  task           Task?        @relation(fields: [taskId], references: [id])
+  coworkSpaceId  String?
+  coworkSpace    CoworkSpace? @relation(fields: [coworkSpaceId], references: [id])
+  metadata       Json?
+  createdAt      DateTime     @default(now())
 
   @@index([taskId])
+  @@index([coworkSpaceId])
 }
 
 // ─── Note ───────────────────────────────────────────────────
@@ -320,6 +354,23 @@ model Pulse {
   @@index([read])
 }
 
+// ─── Email Agent Log ────────────────────────────────────────
+model EmailAgentLog {
+  id               String   @id @default(cuid())
+  messageId        String   @unique
+  senderEmail      String
+  subject          String
+  status           String   @default("processing") // processing, complete, partial, parse_error, awaiting_clarification
+  parsedPlan       Json?
+  executionResults Json?
+  error            String?
+  receivedAt       DateTime?
+  createdAt        DateTime @default(now())
+
+  @@index([senderEmail])
+  @@index([status])
+}
+
 // ─── Escalation Rule ────────────────────────────────────────
 model EscalationRule {
   id           String   @id @default(cuid())
@@ -329,4 +380,196 @@ model EscalationRule {
   delayMinutes Int      @default(0)
   enabled      Boolean  @default(true)
   createdAt    DateTime @default(now())
+}
+
+// ─── Brand Transition SKU ───────────────────────────────────
+model TransitionSku {
+  id                    String    @id @default(cuid())
+  materialCode          String    @unique
+  description           String
+  brand                 String    @default("CarolsDaughter")
+  track                 String    // loreal_coman, full_buy, disco_decision
+  currentCm             String?
+  lorealEntity          String?
+  manufacturingProcess  String?
+  transitionDeadline    DateTime? @default(dbgenerated("'2025-04-29'::timestamp"))
+  newCm                 String?
+  cmStatus              String    @default("Not Started")
+  cmOutreachDate        DateTime?
+  cmAgreementDate       DateTime?
+  firstProductionDate   DateTime?
+  transitionOwner       String?
+  formulaTransferred    Boolean   @default(false)
+  formulaTransferDate   DateTime?
+  formulaOwner          String?
+  rawMaterialsConfirmed Boolean   @default(false)
+  rmNotes               String?
+  discoDecision         String    @default("Pending") // Pending, Discontinue, Find RM and Produce
+  discoDecisionDate     DateTime?
+  discoDecisionOwner    String?
+  rmDisengaged          String?
+  lastLorealBatches     Int       @default(0)
+  lastBatchEta          DateTime?
+  currentInventoryUnits Int       @default(0)
+  weeksOfSupply         Float?
+  avgWeeklyVelocity     Float?
+  overallStatus         String    @default("Needs Action") // Active, Needs Action, At Risk, Decision Required, Discontinued, Transition Complete
+  isFlagged             Boolean   @default(false)
+  priority              String    @default("Medium") // High, Medium, Low
+  isCowork              Boolean   @default(false)
+  coworkType            String?
+  coworkNote            String?
+  coworkAssignedTo      String?
+  coworkResolved        Boolean   @default(false)
+  notes                 String?
+  orgId                 String
+  org                   Organization @relation(fields: [orgId], references: [id])
+  transitionNotes       TransitionNote[]
+  milestones            TransitionMilestone[]
+  cmCandidates          CmCandidate[]
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([orgId])
+  @@index([track])
+  @@index([overallStatus])
+}
+
+// ─── Transition Note ────────────────────────────────────────
+model TransitionNote {
+  id        String   @id @default(cuid())
+  skuId     String
+  sku       TransitionSku @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  noteType  String   @default("Update") // Update, CM Outreach, Legal / Agreement, Formula Transfer, RM Update, Decision, CoWork, System
+  noteText  String
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([skuId])
+}
+
+// ─── Transition Milestone ───────────────────────────────────
+model TransitionMilestone {
+  id            String    @id @default(cuid())
+  skuId         String
+  sku           TransitionSku @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  milestoneName String
+  dueDate       DateTime?
+  completed     Boolean   @default(false)
+  completedDate DateTime?
+  completedBy   String?
+  notes         String?
+
+  @@index([skuId])
+}
+
+// ─── CM Candidate ───────────────────────────────────────────
+model CmCandidate {
+  id              String    @id @default(cuid())
+  skuId           String
+  sku             TransitionSku @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  cmName          String
+  cmContact       String?
+  cmEmail         String?
+  capability      String?
+  outreachDate    DateTime?
+  responseReceived Boolean  @default(false)
+  responseDate    DateTime?
+  quoteReceived   Boolean   @default(false)
+  quoteAmount     Float?
+  status          String    @default("Under Evaluation") // Under Evaluation, Qualified, Rejected, Selected
+  rejectionReason String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+
+  @@index([skuId])
+}
+
+// ─── Attachment (polymorphic) ────────────────────────────────
+model Attachment {
+  id             String    @id @default(cuid())
+  attachableType String    // task, formulation, tech_transfer, tech_transfer_stage, product, brief, component
+  attachableId   String    // ID of the parent entity
+  module         String?   // npd, active_brief, cm_productivity, etc. (for task-scoped attachments)
+  type           String    // email, file, comment
+  payload        Json      // type-specific data
+  createdBy      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  @@index([attachableType, attachableId])
+  @@index([createdAt(sort: Desc)])
+}
+
+// ─── Tech Transfer Stage ────────────────────────────────────
+model TechTransferStage {
+  id              String    @id @default(cuid())
+  techTransferId  String    // references ModuleItem ID for the tech transfer
+  stageOrder      Int
+  stageName       String
+  status          String    @default("pending") // pending, in_progress, complete, blocked, skipped
+  assigneeUserId  String?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  notes           String?
+  tasks           TechTransferStageTask[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([techTransferId])
+  @@index([stageOrder])
+}
+
+// ─── Tech Transfer Stage Task ───────────────────────────────
+model TechTransferStageTask {
+  id          String    @id @default(cuid())
+  stageId     String
+  stage       TechTransferStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  taskName    String
+  description String?
+  status      String    @default("not_started") // not_started, in_progress, complete, blocked
+  assigneeUserId String?
+  dueDate     DateTime?
+  sortOrder   Int       @default(0)
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([stageId])
+}
+
+// ─── Formulation Ingredient ─────────────────────────────────
+model FormulationIngredient {
+  id              String  @id @default(cuid())
+  formulationId   String  // references ModuleItem ID for the formulation
+  phase           String  // A, B, C, D, E, Post-Add
+  sortOrder       Int     @default(0)
+  inciName        String
+  tradeName       String?
+  supplierId      String?
+  function        String? // emollient, surfactant, preservative, fragrance, active, chelator, etc.
+  percentage      Float   // % w/w, 4 decimals
+  costPerKg       Float?
+  isAllergen      Boolean @default(false)
+  isPreservative  Boolean @default(false)
+  isFragrance     Boolean @default(false)
+  notes           String?
+
+  @@index([formulationId])
+  @@index([phase])
+}
+
+// ─── Formulation Procedure Step ─────────────────────────────
+model FormulationProcedureStep {
+  id              String  @id @default(cuid())
+  formulationId   String  // references ModuleItem ID
+  stepNumber      Int
+  phaseReference  String? // which phase this step relates to
+  instruction     String
+  temperatureC    Float?
+  mixingSpeedRpm  Int?
+  durationMinutes Int?
+
+  @@index([formulationId])
 }

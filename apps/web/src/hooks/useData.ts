@@ -18,6 +18,76 @@ export function useCreateDepartment() {
   })
 }
 
+// ─── Members ───────────────────────────────────────────────
+export function useMembers() {
+  return useQuery({ queryKey: ['members'], queryFn: () => api.get('/members').then(r => r.data) })
+}
+
+export function useCreateMember() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: any) => api.post('/members', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['members'] }),
+  })
+}
+
+export function useUpdateMember() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: any) => api.patch(`/members/${id}`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+    },
+  })
+}
+
+export function useDeleteMember() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/members/${id}`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+    },
+  })
+}
+
+export function useInviteMember() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: any) => api.post('/members/invite', data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['invites'] })
+    },
+  })
+}
+
+export function useInvites() {
+  return useQuery({ queryKey: ['invites'], queryFn: () => api.get('/members/invites').then(r => r.data) })
+}
+
+export function useRevokeInvite() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/members/invites/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['invites'] }),
+  })
+}
+
+export function useAssignDepartment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ memberId, departmentId }: { memberId: string; departmentId: string }) =>
+      api.post(`/members/${memberId}/assign-department`, { departmentId }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['members'] })
+      qc.invalidateQueries({ queryKey: ['departments'] })
+    },
+  })
+}
+
 // ─── Tasks ──────────────────────────────────────────────────
 export function useTasks(filters?: Record<string, string>) {
   const params = new URLSearchParams(filters || {}).toString()
@@ -63,6 +133,25 @@ export function useCoworkSpaces() {
 
 export function useCoworkSpace(id: string) {
   return useQuery({ queryKey: ['cowork', id], queryFn: () => api.get(`/cowork/${id}`).then(r => r.data), enabled: !!id })
+}
+
+export function useCreateCoworkSpace() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: any) => api.post('/cowork', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cowork'] }),
+  })
+}
+
+export function useCreateCoworkTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ spaceId, ...data }: any) => api.post(`/cowork/${spaceId}/tasks`, data).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['cowork', vars.spaceId] })
+      qc.invalidateQueries({ queryKey: ['cowork'] })
+    },
+  })
 }
 
 export function usePostActivity() {
@@ -136,6 +225,59 @@ export function useCheckSlug() {
   })
 }
 
+// ─── Products ──────────────────────────────────────────────
+export function useProducts(params?: Record<string, string>) {
+  const searchParams = new URLSearchParams(params || {}).toString()
+  return useQuery({
+    queryKey: ['products', params],
+    queryFn: () => api.get(`/products?${searchParams}`).then(r => Array.isArray(r.data) ? r.data : []),
+  })
+}
+
+export function useProduct(id: string) {
+  return useQuery({
+    queryKey: ['product', id],
+    queryFn: () => api.get(`/products/${id}`).then(r => r.data),
+    enabled: !!id,
+  })
+}
+
+export function useCreateProduct() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: any) => api.post('/products', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
+  })
+}
+
+export function useUpdateProduct() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; [key: string]: any }) =>
+      api.patch(`/products/${id}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
+  })
+}
+
+export function useDeleteProduct() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/products/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
+  })
+}
+
+export function useSyncKareve() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post('/products/sync-kareve').then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['products'] })
+      qc.invalidateQueries({ queryKey: ['integrations'] })
+    },
+  })
+}
+
 // ─── Pulse ──────────────────────────────────────────────────
 export function usePulse(filters?: Record<string, string>) {
   const params = new URLSearchParams(filters || {}).toString()
@@ -155,5 +297,224 @@ export function useMarkAllPulseRead() {
   return useMutation({
     mutationFn: () => api.post('/pulse/read-all').then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pulse'] }),
+  })
+}
+
+// ─── Brand Transition ──────────────────────────────────────
+export function useTransitionSkus(params?: Record<string, string>) {
+  const searchParams = new URLSearchParams(params || {}).toString()
+  return useQuery({
+    queryKey: ['transition-skus', params],
+    queryFn: () => api.get(`/brand-transition?${searchParams}`).then(r => r.data),
+  })
+}
+
+export function useTransitionSku(id: string) {
+  return useQuery({
+    queryKey: ['transition-sku', id],
+    queryFn: () => api.get(`/brand-transition/${id}`).then(r => r.data),
+    enabled: !!id,
+  })
+}
+
+export function useUpdateTransitionSku() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; [key: string]: any }) =>
+      api.patch(`/brand-transition/${id}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transition-skus'] }),
+  })
+}
+
+export function useCreateTransitionNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ skuId, ...data }: { skuId: string; noteType: string; noteText: string; createdBy?: string }) =>
+      api.post(`/brand-transition/${skuId}/notes`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transition-skus'] }),
+  })
+}
+
+export function useCreateTransitionMilestone() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ skuId, ...data }: { skuId: string; milestoneName: string; dueDate?: string; notes?: string }) =>
+      api.post(`/brand-transition/${skuId}/milestones`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transition-skus'] }),
+  })
+}
+
+export function useUpdateTransitionMilestone() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ milestoneId, ...data }: { milestoneId: string; [key: string]: any }) =>
+      api.patch(`/brand-transition/milestones/${milestoneId}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transition-skus'] }),
+  })
+}
+
+export function useSeedTransitionData() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post('/brand-transition/seed').then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['transition-skus'] }),
+  })
+}
+
+// ─── Task Attachments ──────────────────────────────────────
+export function useTaskAttachments(taskId: string, module: string) {
+  return useQuery({
+    queryKey: ['task-attachments', taskId, module],
+    queryFn: () => api.get(`/tasks/${taskId}/attachments?module=${module}`).then(r => r.data),
+    enabled: !!taskId,
+  })
+}
+
+export function useCreateEmailAttachment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { taskId: string; module: string; subject: string; sender_name?: string; sender_email?: string; snippet?: string; createdBy?: string }) => {
+      const { taskId, ...body } = data
+      return api.post(`/tasks/${taskId}/attachments/email`, body).then(r => r.data)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+export function useCreateFileAttachment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { taskId: string; module: string; filename: string; size_bytes?: number; mime_type?: string; storage_url?: string; uploaded_via?: string; createdBy?: string }) => {
+      const { taskId, ...body } = data
+      return api.post(`/tasks/${taskId}/attachments/file`, body).then(r => r.data)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+export function useCreateFileFromUrl() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { taskId: string; module: string; url: string; filename?: string; createdBy?: string }) => {
+      const { taskId, ...body } = data
+      return api.post(`/tasks/${taskId}/attachments/file/url`, body).then(r => r.data)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+export function useCreateCommentAttachment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { taskId: string; module: string; body_plain: string; body_html?: string; mentions?: string[]; createdBy?: string }) => {
+      const { taskId, ...body } = data
+      return api.post(`/tasks/${taskId}/attachments/comment`, body).then(r => r.data)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+export function useUpdateAttachment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; body_plain?: string; body_html?: string }) =>
+      api.patch(`/tasks/attachments/${id}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+export function useDeleteAttachment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/tasks/attachments/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+// ─── Tech Transfer Stages ──────────────────────────────────
+export function useTechTransferStages(transferId: string) {
+  return useQuery({
+    queryKey: ['tt-stages', transferId],
+    queryFn: () => api.get(`/tech-transfer-stages/${transferId}/stages`).then(r => r.data),
+    enabled: !!transferId,
+  })
+}
+
+export function useSeedTechTransferStages() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ transferId, transferType }: { transferId: string; transferType: string }) =>
+      api.post(`/tech-transfer-stages/${transferId}/stages/seed`, { transferType }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tt-stages'] }),
+  })
+}
+
+export function useUpdateTechTransferStage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ transferId, stageId, ...data }: { transferId: string; stageId: string; [key: string]: any }) =>
+      api.patch(`/tech-transfer-stages/${transferId}/stages/${stageId}`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tt-stages'] }),
+  })
+}
+
+export function useAdvanceTechTransferStage() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ transferId, stageId }: { transferId: string; stageId: string }) =>
+      api.post(`/tech-transfer-stages/${transferId}/stages/${stageId}/advance`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tt-stages'] }),
+  })
+}
+
+export function useCreateStageTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ transferId, stageId, ...data }: { transferId: string; stageId: string; taskName: string; [key: string]: any }) =>
+      api.post(`/tech-transfer-stages/${transferId}/stages/${stageId}/tasks`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tt-stages'] }),
+  })
+}
+
+// ─── Formulation Detail ────────────────────────────────────
+export function useFormulationIngredients(formulationId: string) {
+  return useQuery({
+    queryKey: ['formulation-ingredients', formulationId],
+    queryFn: () => api.get(`/formulation-detail/${formulationId}/ingredients`).then(r => r.data),
+    enabled: !!formulationId,
+  })
+}
+
+export function useCreateFormulationIngredient() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ formulationId, ...data }: { formulationId: string; [key: string]: any }) =>
+      api.post(`/formulation-detail/${formulationId}/ingredients`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['formulation-ingredients'] }),
+  })
+}
+
+export function useBulkUpdateIngredients() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ formulationId, ingredients }: { formulationId: string; ingredients: any[] }) =>
+      api.post(`/formulation-detail/${formulationId}/ingredients/bulk`, { ingredients }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['formulation-ingredients'] }),
+  })
+}
+
+export function useFormulationProcedure(formulationId: string) {
+  return useQuery({
+    queryKey: ['formulation-procedure', formulationId],
+    queryFn: () => api.get(`/formulation-detail/${formulationId}/procedure`).then(r => r.data),
+    enabled: !!formulationId,
+  })
+}
+
+export function useFormulationCostAnalysis(formulationId: string) {
+  return useQuery({
+    queryKey: ['formulation-cost', formulationId],
+    queryFn: () => api.get(`/formulation-detail/${formulationId}/cost-analysis`).then(r => r.data),
+    enabled: !!formulationId,
   })
 }

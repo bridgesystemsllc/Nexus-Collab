@@ -6,6 +6,7 @@ import {
   Box,
   BrainCircuit,
   Calendar,
+  Check,
   CheckSquare,
   ChevronDown,
   ChevronRight,
@@ -22,6 +23,7 @@ import {
 import {
   useDepartments,
   useTasks,
+  useUpdateTask,
   useCoworkSpaces,
   useAIBriefing,
   usePulse,
@@ -178,7 +180,96 @@ function DeptHealthCard({
   )
 }
 
-// ─── AI Briefing Reformatted (Edit 2) ─────────────────────
+// ─── Briefing Task Item (interactive checklist row) ───────
+function BriefingTaskItem({
+  task,
+  accentColor,
+  onToggle,
+  onNavigate,
+}: {
+  task: any
+  accentColor: string
+  onToggle: (id: string) => void
+  onNavigate: (task: any) => void
+}) {
+  const isComplete = task.status === 'COMPLETE'
+  const isOverdue = task.dueDate && new Date(task.dueDate) < new Date() && !isComplete
+  const dueLabel = task.dueDate
+    ? new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : null
+
+  const priorityColors: Record<string, string> = {
+    CRITICAL: 'var(--danger)',
+    HIGH: 'var(--warning)',
+    MEDIUM: 'var(--accent)',
+    LOW: 'var(--text-tertiary)',
+  }
+
+  return (
+    <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-[var(--bg-hover)] transition-colors group">
+      {/* Checkbox */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggle(task.id) }}
+        className="flex-shrink-0 w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center transition-all"
+        style={{
+          borderColor: isComplete ? accentColor : 'var(--border-strong)',
+          background: isComplete ? accentColor : 'transparent',
+        }}
+      >
+        {isComplete && <Check size={10} className="text-white" strokeWidth={3} />}
+      </button>
+
+      {/* Task info — clickable to navigate */}
+      <button
+        onClick={() => onNavigate(task)}
+        className="flex-1 min-w-0 text-left"
+      >
+        <span
+          className={`text-[13px] font-medium block truncate ${
+            isComplete
+              ? 'line-through text-[var(--text-tertiary)]'
+              : 'text-[var(--text-primary)]'
+          }`}
+        >
+          {task.title}
+        </span>
+        <div className="flex items-center gap-2 mt-0.5">
+          {task.priority && (
+            <span
+              className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+              style={{ background: priorityColors[task.priority] || 'var(--accent)' }}
+            />
+          )}
+          {task.owner?.name && (
+            <span className="text-[11px] text-[var(--text-tertiary)] truncate">{task.owner.name}</span>
+          )}
+          {task.department?.name && (
+            <span className="text-[11px] text-[var(--text-tertiary)] truncate">{task.department.name}</span>
+          )}
+        </div>
+      </button>
+
+      {/* Due date */}
+      {dueLabel && (
+        <span
+          className={`text-[11px] tabular-nums flex-shrink-0 font-medium ${
+            isOverdue ? 'text-[var(--danger)]' : 'text-[var(--text-tertiary)]'
+          }`}
+        >
+          {isOverdue && '⚠ '}{dueLabel}
+        </span>
+      )}
+
+      {/* Navigate arrow on hover */}
+      <ChevronRight
+        size={12}
+        className="text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+      />
+    </div>
+  )
+}
+
+// ─── AI Briefing — Interactive Checklists ─────────────────
 function AIBriefingCard({
   briefing,
   isLoading,
@@ -186,6 +277,9 @@ function AIBriefingCard({
   taskCount,
   criticalCount,
   overdueCount,
+  allTasks,
+  onTaskToggle,
+  onTaskNavigate,
 }: {
   briefing: any
   isLoading: boolean
@@ -193,12 +287,39 @@ function AIBriefingCard({
   taskCount: number
   criticalCount: number
   overdueCount: number
+  allTasks: any[]
+  onTaskToggle: (id: string) => void
+  onTaskNavigate: (task: any) => void
 }) {
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({ priorities: true })
 
   const toggle = (key: string) => {
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))
   }
+
+  const now = new Date()
+  const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+
+  // Build real task lists for each section
+  const priorityTasks = allTasks
+    .filter((t: any) => t.status !== 'COMPLETE')
+    .sort((a: any, b: any) => {
+      const order: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
+      return (order[a.priority] ?? 2) - (order[b.priority] ?? 2)
+    })
+    .slice(0, 8)
+
+  const criticalTasks = allTasks
+    .filter((t: any) => (t.priority === 'CRITICAL' || t.status === 'BLOCKED') && t.status !== 'COMPLETE')
+
+  const overdueTasks = allTasks
+    .filter((t: any) => t.dueDate && new Date(t.dueDate) < now && t.status !== 'COMPLETE')
+    .sort((a: any, b: any) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+
+  const upcomingTasks = allTasks
+    .filter((t: any) => t.dueDate && new Date(t.dueDate) >= now && new Date(t.dueDate) <= sevenDaysFromNow && t.status !== 'COMPLETE')
+    .sort((a: any, b: any) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+    .slice(0, 8)
 
   const sections = [
     {
@@ -206,36 +327,46 @@ function AIBriefingCard({
       title: "Today's Priorities",
       icon: CheckSquare,
       color: 'var(--accent)',
-      count: taskCount,
+      count: priorityTasks.length,
       summary: `${taskCount} active task${taskCount !== 1 ? 's' : ''} across your departments`,
+      tasks: priorityTasks,
+      emptyMessage: 'No active tasks — you\'re all caught up!',
     },
     {
       key: 'alerts',
       title: 'Critical Alerts',
       icon: AlertTriangle,
       color: 'var(--danger)',
-      count: criticalCount,
-      summary: criticalCount > 0
-        ? `${criticalCount} critical item${criticalCount !== 1 ? 's' : ''} requiring immediate action`
+      count: criticalTasks.length,
+      summary: criticalTasks.length > 0
+        ? `${criticalTasks.length} critical item${criticalTasks.length !== 1 ? 's' : ''} requiring immediate action`
         : 'No critical alerts at this time',
+      tasks: criticalTasks,
+      emptyMessage: 'No critical alerts — all clear.',
     },
     {
       key: 'overdue',
       title: 'Overdue Items',
       icon: Clock,
       color: 'var(--warning)',
-      count: overdueCount,
-      summary: overdueCount > 0
-        ? `${overdueCount} item${overdueCount !== 1 ? 's' : ''} past due date`
+      count: overdueTasks.length,
+      summary: overdueTasks.length > 0
+        ? `${overdueTasks.length} item${overdueTasks.length !== 1 ? 's' : ''} past due date`
         : 'All items are on schedule',
+      tasks: overdueTasks,
+      emptyMessage: 'No overdue items — everything is on track.',
     },
     {
       key: 'deadlines',
       title: 'Upcoming Deadlines',
       icon: Calendar,
       color: 'var(--info)',
-      count: 0,
-      summary: 'Review upcoming deadlines in your task list',
+      count: upcomingTasks.length,
+      summary: upcomingTasks.length > 0
+        ? `${upcomingTasks.length} deadline${upcomingTasks.length !== 1 ? 's' : ''} in the next 7 days`
+        : 'No upcoming deadlines this week',
+      tasks: upcomingTasks,
+      emptyMessage: 'No deadlines in the next 7 days.',
     },
   ]
 
@@ -260,12 +391,12 @@ function AIBriefingCard({
           <div className="skeleton h-3 w-3/4" />
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {sections.map((section) => {
             const Icon = section.icon
             const isExpanded = expanded[section.key]
             return (
-              <div key={section.key}>
+              <div key={section.key} className="rounded-xl overflow-hidden">
                 <button
                   onClick={() => toggle(section.key)}
                   className="w-full flex items-center gap-3 p-3 rounded-[10px] hover:bg-[var(--bg-elevated)] transition-colors text-left"
@@ -299,9 +430,27 @@ function AIBriefingCard({
                     className={`text-[var(--text-tertiary)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                   />
                 </button>
-                {isExpanded && briefing?.briefing && (
-                  <div className="pl-12 pr-3 pb-2 text-[14px] text-[var(--text-primary)] leading-relaxed">
-                    {briefing.briefing}
+
+                {/* Expanded: real task checklist */}
+                {isExpanded && (
+                  <div className="pb-2 animate-fade-in">
+                    {section.tasks.length > 0 ? (
+                      <div className="ml-4 border-l-2 border-[var(--border-subtle)] pl-2">
+                        {section.tasks.map((task: any) => (
+                          <BriefingTaskItem
+                            key={task.id}
+                            task={task}
+                            accentColor={section.color}
+                            onToggle={onTaskToggle}
+                            onNavigate={onTaskNavigate}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="ml-12 text-[13px] text-[var(--text-tertiary)] py-2">
+                        {section.emptyMessage}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -445,6 +594,7 @@ export function DashboardPage() {
   const { data: departments, isLoading: deptsLoading } = useDepartments()
   const { data: tasks, isLoading: tasksLoading } = useTasks()
   const { data: briefing, isLoading: briefingLoading } = useAIBriefing()
+  const updateTask = useUpdateTask()
 
   // ─── Compute KPIs (scoped to current user — Edit 1)
   const { kpis, allTasks } = useMemo(() => {
@@ -474,6 +624,23 @@ export function DashboardPage() {
   }, [tasks])
 
   const isLoading = deptsLoading || tasksLoading
+
+  // ─── Task checklist handlers
+  function handleTaskToggle(taskId: string) {
+    const task = allTasks.find((t: any) => t.id === taskId)
+    if (!task) return
+    const newStatus = task.status === 'COMPLETE' ? 'IN_PROGRESS' : 'COMPLETE'
+    updateTask.mutate({
+      id: taskId,
+      status: newStatus,
+      completedAt: newStatus === 'COMPLETE' ? new Date().toISOString() : null,
+    })
+  }
+
+  function handleTaskNavigate(task: any) {
+    // Navigate to the Everything page where tasks are visible
+    setPage('everything')
+  }
 
   // ─── Navigation helpers
   function handleDeptClick(dept: any) {
@@ -561,6 +728,9 @@ export function DashboardPage() {
             taskCount={kpis.activeTasks}
             criticalCount={kpis.criticalItems}
             overdueCount={kpis.overdueItems}
+            allTasks={allTasks}
+            onTaskToggle={handleTaskToggle}
+            onTaskNavigate={handleTaskNavigate}
           />
           <CoworkerSpacesWidget />
         </div>

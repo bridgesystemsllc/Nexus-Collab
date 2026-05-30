@@ -13,10 +13,18 @@ import { taskRoutes } from './routes/tasks'
 import { coworkRoutes } from './routes/cowork'
 import { documentRoutes } from './routes/documents'
 import { everythingRoutes } from './routes/everything'
-import { integrationRoutes } from './routes/integrations'
+import { integrationRoutes, webhookRoutes } from './routes/integrations'
 import { aiRoutes } from './routes/ai'
 import { pulseRoutes } from './routes/pulse'
 import { onboardingRoutes } from './routes/onboarding'
+import { briefRoutes } from './routes/briefs'
+import { memberRoutes } from './routes/members'
+import { emailAgentRoutes } from './routes/emailAgent'
+import { productRoutes } from './routes/products'
+import { brandTransitionRoutes } from './routes/brandTransition'
+import { taskAttachmentRoutes } from './routes/taskAttachments'
+import { techTransferStageRoutes } from './routes/techTransferStages'
+import { formulationDetailRoutes } from './routes/formulationDetail'
 
 export const prisma = new PrismaClient()
 
@@ -34,7 +42,13 @@ export const io = new SocketServer(httpServer, {
 })
 
 // ─── Middleware ──────────────────────────────────────────────
-app.use(helmet({ contentSecurityPolicy: false }))
+app.use(helmet({
+  contentSecurityPolicy: false,
+  frameguard: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginResourcePolicy: false,
+  crossOriginEmbedderPolicy: false,
+}))
 app.use(cors({ origin: isReplit ? '*' : frontendUrl, credentials: !isReplit }))
 app.use(compression())
 app.use(morgan('dev'))
@@ -56,8 +70,17 @@ api.use('/integrations', integrationRoutes)
 api.use('/ai', aiRoutes)
 api.use('/pulse', pulseRoutes)
 api.use('/onboarding', onboardingRoutes)
+api.use('/briefs', briefRoutes)
+api.use('/members', memberRoutes)
+api.use('/email-agent', emailAgentRoutes)
+api.use('/products', productRoutes)
+api.use('/brand-transition', brandTransitionRoutes)
+api.use('/tasks', taskAttachmentRoutes)
+api.use('/tech-transfer-stages', techTransferStageRoutes)
+api.use('/formulation-detail', formulationDetailRoutes)
 
 app.use('/api/v1', api)
+app.use('/api/v1/webhooks', webhookRoutes)
 
 // ─── Serve Frontend (Replit / Production) ───────────────────
 if (isReplit || process.env.NODE_ENV === 'production') {
@@ -100,4 +123,14 @@ process.on('SIGTERM', async () => {
   await prisma.$disconnect()
   httpServer.close()
   process.exit(0)
+})
+
+// Prevent unhandled errors from crashing the process
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[NEXUS] Unhandled promise rejection:', reason)
+  console.error('[NEXUS] Promise:', promise)
+})
+
+process.on('uncaughtException', (error) => {
+  console.error('[NEXUS] Uncaught exception:', error)
 })

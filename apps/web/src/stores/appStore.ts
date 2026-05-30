@@ -15,6 +15,8 @@ type Page =
   | 'dept-manager'
   | 'pulse'
   | 'custom-dept'
+  | 'agent-settings'
+  | 'product-catalog'
 
 type Theme = 'light'
 

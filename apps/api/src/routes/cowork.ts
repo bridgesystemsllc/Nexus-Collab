@@ -39,6 +39,7 @@ coworkRoutes.get('/:id', async (req: Request, res: Response) => {
           orderBy: [{ priority: 'asc' }, { dueDate: 'asc' }],
         },
         documents: { orderBy: { createdAt: 'desc' } },
+        emails: { orderBy: { date: 'desc' } },
       },
     })
     if (!space) return res.status(404).json({ error: 'Cowork space not found' })
@@ -166,6 +167,58 @@ coworkRoutes.post('/:id/tasks', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[cowork] POST /:id/tasks error:', error)
     res.status(500).json({ error: 'Failed to create task' })
+  }
+})
+
+// ─── Get linked emails ──────────────────────────────────────
+coworkRoutes.get('/:id/emails', async (req: Request, res: Response) => {
+  try {
+    const emails = await prisma.emailLink.findMany({
+      where: { coworkSpaceId: req.params.id as string },
+      orderBy: { date: 'desc' },
+    })
+    res.json(emails)
+  } catch (error) {
+    console.error('[cowork] GET /:id/emails error:', error)
+    res.status(500).json({ error: 'Failed to fetch emails' })
+  }
+})
+
+// ─── Attach email to space ──────────────────────────────────
+coworkRoutes.post('/:id/emails', async (req: Request, res: Response) => {
+  try {
+    const { subject, fromAddr, toAddrs, date, snippet, messageId, metadata } = req.body
+    if (!subject) return res.status(400).json({ error: 'Subject is required' })
+
+    const email = await prisma.emailLink.create({
+      data: {
+        messageId: messageId || `manual-${Date.now()}`,
+        subject,
+        fromAddr: fromAddr || '',
+        toAddrs: toAddrs || [],
+        date: date ? new Date(date) : new Date(),
+        snippet: snippet || '',
+        coworkSpaceId: req.params.id as string,
+        metadata: metadata || null,
+      },
+    })
+
+    io.to(`space:${req.params.id as string}`).emit('email_linked', { spaceId: req.params.id, email })
+    res.status(201).json(email)
+  } catch (error) {
+    console.error('[cowork] POST /:id/emails error:', error)
+    res.status(500).json({ error: 'Failed to attach email' })
+  }
+})
+
+// ─── Remove email from space ────────────────────────────────
+coworkRoutes.delete('/:id/emails/:emailId', async (req: Request, res: Response) => {
+  try {
+    await prisma.emailLink.delete({ where: { id: req.params.emailId as string } })
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[cowork] DELETE /:id/emails/:emailId error:', error)
+    res.status(500).json({ error: 'Failed to remove email' })
   }
 })
 

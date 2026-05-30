@@ -162,3 +162,16 @@ departmentRoutes.patch('/:id/modules/:mid/items/:iid', async (req: Request, res:
     res.status(500).json({ error: 'Failed to update module item' })
   }
 })
+
+// ─── Delete module item ─────────────────────────────────────
+departmentRoutes.delete('/:id/modules/:mid/items/:iid', async (req: Request, res: Response) => {
+  try {
+    await prisma.moduleItem.delete({
+      where: { id: req.params.iid as string },
+    })
+    res.json({ success: true })
+  } catch (error) {
+    console.error('[departments] DELETE module item error:', error)
+    res.status(500).json({ error: 'Failed to delete module item' })
+  }
+})

@@ -20,6 +20,8 @@ import {
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
+import { ProductionModule } from '@/components/ops/production/ProductionModule'
+import { BrandTransitionModule } from '@/components/ops/brand-transition/BrandTransitionModule'
 
 // ─── Types ─────────────────────────────────────────────────
 type OpsTab = 'sku' | 'inventory' | 'production' | 'brand'
@@ -513,7 +515,7 @@ export function OpsPage() {
     return departments.find((d: any) => d.type === 'BUILTIN_OPS') || null
   }, [departments])
 
-  const { data: deptDetail, isLoading: detailLoading } = useDepartment(
+  const { data: deptDetail, isLoading: detailLoading, refetch: refetchDept } = useDepartment(
     opsDept?.id || ''
   )
 
@@ -527,6 +529,7 @@ export function OpsPage() {
     const modules = deptDetail.modules as any[]
     const find = (type: string) =>
       modules.find((m: any) => m.type === type)?.items || []
+    const prodModule = modules.find((m: any) => m.type === 'PRODUCTION_TRACKING')
 
     return {
       sku: find('SKU_PIPELINE'),
