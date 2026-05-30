@@ -36,12 +36,12 @@ export function Dialog({ open, onClose, title, subtitle, children, wide }: Dialo
       onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" />
 
       {/* Panel */}
       <div
         ref={panelRef}
-        className={`relative z-10 flex flex-col bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl animate-dialog-in ${
+        className={`relative z-10 flex flex-col bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl shadow-2xl animate-dialog-in ${
           wide ? 'w-full max-w-3xl' : 'w-full max-w-xl'
         }`}
         style={{ maxHeight: 'calc(100vh - 4rem)' }}

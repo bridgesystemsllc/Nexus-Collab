@@ -27,10 +27,10 @@ const TYPE_CONFIG: Record<
   string,
   { icon: typeof AlertTriangle; color: string }
 > = {
-  ALERT: { icon: AlertTriangle, color: '#FF453A' },
-  SIGNAL: { icon: Radio, color: '#FF9F0A' },
-  HEARTBEAT: { icon: Heart, color: '#32D74B' },
-  BROADCAST: { icon: Megaphone, color: '#64D2FF' },
+  ALERT: { icon: AlertTriangle, color: '#EB5757' },
+  SIGNAL: { icon: Radio, color: '#D97706' },
+  HEARTBEAT: { icon: Heart, color: '#0F7B6C' },
+  BROADCAST: { icon: Megaphone, color: '#7C3AED' },
 }
 
 export function PulsePage() {

@@ -49,7 +49,7 @@ export function DocsPage() {
   }, [documents, search, activeType])
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 max-w-[1400px] mx-auto space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
@@ -85,9 +85,11 @@ export function DocsPage() {
             onClick={() => setActiveType(type)}
             className="px-3.5 py-1.5 rounded-full text-sm font-medium transition-all"
             style={{
-              background: activeType === type ? 'var(--accent)' : 'var(--bg-surface)',
-              color: activeType === type ? '#fff' : 'var(--text-secondary)',
-              border: `1px solid ${activeType === type ? 'var(--accent)' : 'var(--border-subtle)'}`,
+              background: activeType === type ? 'var(--bg-elevated)' : 'var(--bg-surface)',
+              color: activeType === type ? 'var(--text-primary)' : 'var(--text-secondary)',
+              border: `1px solid ${activeType === type ? 'var(--border-strong)' : 'var(--border-default)'}`,
+              boxShadow: activeType === type ? 'var(--shadow-xs)' : 'none',
+              fontWeight: activeType === type ? 550 : 500,
             }}
           >
             {type}
