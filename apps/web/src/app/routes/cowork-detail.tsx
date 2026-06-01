@@ -24,7 +24,8 @@ import {
 import { formatDistanceToNow } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
 import { validateUpload } from '@nexus/shared'
-import { useCoworkSpace, useMembers, useCreateCoworkTask, usePostActivity, useUpdateCoworkSpace, useAttachCoworkFile, useUpdateTask } from '@/hooks/useData'
+import { useCoworkSpace, useMembers, useCreateCoworkTask, usePostActivity, useUpdateCoworkSpace, useAttachCoworkFile, useUpdateTask, type OneDriveItem } from '@/hooks/useData'
+import { OneDrivePicker } from '@/components/shared/OneDrivePicker'
 import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/appStore'
 
@@ -768,6 +769,31 @@ function FilesTab({ documents, spaceId, onRefresh }: { documents: any[]; spaceId
   const [url, setUrl] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [showOneDrive, setShowOneDrive] = useState(false)
+  const [pickingId, setPickingId] = useState<string | null>(null)
+
+  // Attach a OneDrive file as a link reference (opens in OneDrive; no bytes copied).
+  const handleOneDrivePick = (item: OneDriveItem) => {
+    if (pickingId) return
+    setPickingId(item.id)
+    attachFile.mutate(
+      {
+        spaceId,
+        name: item.name,
+        storageUrl: item.web_url || undefined,
+        mimeType: item.mime_type || undefined,
+        size: item.size || undefined,
+        type: 'OTHER',
+      },
+      {
+        onSuccess: () => {
+          setShowOneDrive(false)
+          onRefresh()
+        },
+        onSettled: () => setPickingId(null),
+      },
+    )
+  }
 
   const handleAttach = () => {
     if (!name.trim()) return
@@ -862,6 +888,12 @@ function FilesTab({ documents, spaceId, onRefresh }: { documents: any[]; spaceId
             <Link2 size={14} /> Add Link
           </button>
           <button
+            onClick={() => setShowOneDrive(true)}
+            className="flex items-center gap-1.5 btn-ghost px-3 py-2 rounded-lg text-[13px]"
+          >
+            <FileText size={14} /> Add from OneDrive
+          </button>
+          <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
             className="flex items-center gap-1.5 btn-primary px-3 py-2 rounded-lg text-[13px] disabled:opacity-40"
@@ -870,6 +902,14 @@ function FilesTab({ documents, spaceId, onRefresh }: { documents: any[]; spaceId
           </button>
         </div>
       </div>
+
+      {showOneDrive && (
+        <OneDrivePicker
+          onClose={() => setShowOneDrive(false)}
+          onPick={handleOneDrivePick}
+          busyId={pickingId}
+        />
+      )}
 
       {uploadError && (
         <div className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--danger)' }}>

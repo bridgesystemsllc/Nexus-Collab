@@ -6,6 +6,8 @@ import {
   useMicrosoftStatus, useMailSearch, type MailSearchResult,
 } from '@/hooks/useData'
 import { ConnectMicrosoft } from '@/components/shared/ConnectMicrosoft'
+import { OneDriveBrowser } from '@/components/shared/OneDrivePicker'
+import type { OneDriveItem } from '@/hooks/useData'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
@@ -163,9 +165,9 @@ function AttachmentRow({ att, onDelete }: { att: Attachment; onDelete: () => voi
             target="_blank"
             rel="noopener noreferrer"
             className="w-6 h-6 flex items-center justify-center rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
-            title="Download"
+            title={att.uploaded_via === 'onedrive' ? 'Open in OneDrive' : 'Download'}
           >
-            <Download size={13} />
+            {att.uploaded_via === 'onedrive' ? <ExternalLink size={13} /> : <Download size={13} />}
           </a>
         )}
         {hovered && (
@@ -334,15 +336,35 @@ function AttachEmailModal({ taskId, module, onClose }: { taskId: string; module:
 // ─── Attach File Modal ─────────────────────────────────────
 
 function AttachFileModal({ taskId, module, onClose }: { taskId: string; module: string; onClose: () => void }) {
-  const [tab, setTab] = useState<'upload' | 'url'>('upload')
+  const [tab, setTab] = useState<'upload' | 'url' | 'onedrive'>('upload')
   const [url, setUrl] = useState('')
   const [urlFilename, setUrlFilename] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [pickingId, setPickingId] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const createFile = useCreateFileAttachment()
   const createFromUrl = useCreateFileFromUrl()
+
+  // Attach a OneDrive file as a link reference (no bytes copied into storage).
+  const handleOneDrivePick = (item: OneDriveItem) => {
+    if (pickingId) return
+    setPickingId(item.id)
+    createFile.mutate(
+      {
+        taskId,
+        module,
+        filename: item.name,
+        size_bytes: item.size || undefined,
+        mime_type: item.mime_type || undefined,
+        storage_url: item.web_url || undefined,
+        onedrive_item_id: item.id,
+        uploaded_via: 'onedrive',
+      },
+      { onSuccess: () => onClose(), onSettled: () => setPickingId(null) },
+    )
+  }
 
   const handleFileSelect = async (file: File) => {
     setUploading(true)
@@ -419,7 +441,19 @@ function AttachFileModal({ taskId, module, onClose }: { taskId: string; module: 
         >
           From URL
         </button>
+        <button
+          onClick={() => setTab('onedrive')}
+          className={`flex-1 py-1.5 rounded-md text-[12px] font-medium transition-colors ${
+            tab === 'onedrive' ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+          }`}
+        >
+          OneDrive
+        </button>
       </div>
+
+      {tab === 'onedrive' && (
+        <OneDriveBrowser onPick={handleOneDrivePick} busyId={pickingId} />
+      )}
 
       {tab === 'upload' && (
         <div

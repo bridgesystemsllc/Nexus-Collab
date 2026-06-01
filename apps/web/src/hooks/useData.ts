@@ -464,11 +464,49 @@ export function useMailSearch(query: string, enabled: boolean) {
   })
 }
 
+// ─── OneDrive (browse + search the signed-in member's own drive) ──
+// Both hooks are enabled only when connected. A 412 from the API means the
+// connection lapsed — the caller surfaces the connect prompt.
+export interface OneDriveItem {
+  id: string
+  name: string
+  is_folder: boolean
+  child_count: number
+  size: number
+  mime_type: string | null
+  web_url: string | null
+  last_modified: string | null
+}
+
+export function useOneDriveChildren(folderId: string | null, enabled: boolean) {
+  return useQuery<{ items: OneDriveItem[] }>({
+    queryKey: ['microsoft', 'onedrive', 'children', folderId ?? 'root'],
+    queryFn: () =>
+      api
+        .get(`/integrations/microsoft/onedrive/children${folderId ? `?folderId=${encodeURIComponent(folderId)}` : ''}`)
+        .then((r) => r.data),
+    enabled,
+    retry: false,
+    staleTime: 30_000,
+  })
+}
+
+export function useOneDriveSearch(query: string, enabled: boolean) {
+  const q = query.trim()
+  return useQuery<{ items: OneDriveItem[] }>({
+    queryKey: ['microsoft', 'onedrive', 'search', q],
+    queryFn: () => api.get(`/integrations/microsoft/onedrive/search?q=${encodeURIComponent(q)}`).then((r) => r.data),
+    enabled: enabled && q.length >= 2,
+    retry: false,
+    staleTime: 30_000,
+  })
+}
+
 export function useCreateFileAttachment() {
   const qc = useQueryClient()
   const actorId = useUserStore((s) => s.currentUser?.id)
   return useMutation({
-    mutationFn: (data: { taskId: string; module: string; filename: string; size_bytes?: number; mime_type?: string; storage_url?: string; objectPath?: string; uploaded_via?: string; createdBy?: string }) => {
+    mutationFn: (data: { taskId: string; module: string; filename: string; size_bytes?: number; mime_type?: string; storage_url?: string; objectPath?: string; onedrive_item_id?: string; uploaded_via?: string; createdBy?: string }) => {
       const { taskId, ...body } = data
       return api.post(`/tasks/${taskId}/attachments/file`, { createdBy: actorId, ...body }).then(r => r.data)
     },

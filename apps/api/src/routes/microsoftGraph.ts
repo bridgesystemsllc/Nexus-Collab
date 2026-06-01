@@ -180,6 +180,80 @@ microsoftGraphRoutes.get('/mail/search', async (req: Request, res: Response) => 
   }
 })
 
+// ─── OneDrive ────────────────────────────────────────────────
+// Browse and search the acting member's OWN OneDrive via Graph so they can
+// attach a file reference (a link to the file in OneDrive — we never copy the
+// bytes). Both endpoints return 412 when the member hasn't connected so the UI
+// can show the "connect Microsoft" prompt instead of crashing.
+
+const ONEDRIVE_SELECT = 'id,name,size,webUrl,folder,file,lastModifiedDateTime'
+
+// Trim a Graph driveItem down to the fields the picker needs.
+function mapDriveItem(it: any) {
+  return {
+    id: it.id,
+    name: it.name ?? '(unnamed)',
+    is_folder: !!it.folder,
+    child_count: it.folder?.childCount ?? 0,
+    size: it.size ?? 0,
+    mime_type: it.file?.mimeType ?? null,
+    web_url: it.webUrl ?? null,
+    last_modified: it.lastModifiedDateTime ?? null,
+  }
+}
+
+function handleOneDriveError(err: unknown, res: Response, action: string) {
+  if (err instanceof MicrosoftNotConnectedError) {
+    return res.status(412).json({
+      error: 'microsoft_not_connected',
+      message: 'Connect your Microsoft account to browse OneDrive.',
+    })
+  }
+  console.error(`[microsoft] onedrive ${action} error:`, err)
+  res.status(500).json({ error: `Failed to ${action} OneDrive` })
+}
+
+// List a folder's children. No folderId → the drive root.
+microsoftGraphRoutes.get('/onedrive/children', async (req: Request, res: Response) => {
+  const memberId = memberIdOrUnauthorized(req, res)
+  if (!memberId) return
+
+  const folderId = String(req.query.folderId ?? '').trim()
+  const select = encodeURIComponent(ONEDRIVE_SELECT)
+  const base = folderId
+    ? `/me/drive/items/${encodeURIComponent(folderId)}/children`
+    : '/me/drive/root/children'
+
+  try {
+    const data = await graphGet<{ value: any[] }>(memberId, `${base}?$select=${select}&$top=100`)
+    res.json({ items: (data.value ?? []).map(mapDriveItem) })
+  } catch (err) {
+    handleOneDriveError(err, res, 'browse')
+  }
+})
+
+// Search the member's whole drive by name/content.
+microsoftGraphRoutes.get('/onedrive/search', async (req: Request, res: Response) => {
+  const memberId = memberIdOrUnauthorized(req, res)
+  if (!memberId) return
+
+  const q = String(req.query.q ?? '').trim()
+  if (!q) return res.json({ items: [] })
+
+  try {
+    // Escape single quotes for the OData function literal (q='...').
+    const term = encodeURIComponent(q.replace(/'/g, "''"))
+    const select = encodeURIComponent(ONEDRIVE_SELECT)
+    const data = await graphGet<{ value: any[] }>(
+      memberId,
+      `/me/drive/root/search(q='${term}')?$select=${select}&$top=50`,
+    )
+    res.json({ items: (data.value ?? []).map(mapDriveItem) })
+  } catch (err) {
+    handleOneDriveError(err, res, 'search')
+  }
+})
+
 // ─── Disconnect ──────────────────────────────────────────────
 microsoftGraphRoutes.post('/disconnect', async (req: Request, res: Response) => {
   const memberId = memberIdOrUnauthorized(req, res)
