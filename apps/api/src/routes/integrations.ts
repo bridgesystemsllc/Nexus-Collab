@@ -8,6 +8,7 @@ import {
   exchangeMicrosoftToken,
   exchangeGoogleToken,
 } from '../lib/oauth'
+import { syncErpInventory } from '../lib/erpSync'
 
 export const integrationRoutes: ReturnType<typeof Router> = Router()
 export const webhookRoutes: ReturnType<typeof Router> = Router()
@@ -306,20 +307,38 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
       data: { status: 'SYNCING' },
     })
 
-    // Simulate sync completion (in production, this triggers the actual adapter)
+    // Run the adapter. The ERP integration pulls inventory into the
+    // Inventory Health module; other integrations remain simulated.
     setTimeout(async () => {
-      await prisma.syncLog.update({
-        where: { id: syncLog.id },
-        data: { status: 'COMPLETE', completedAt: new Date(), recordsProcessed: Math.floor(Math.random() * 100) },
-      })
-      await prisma.integration.update({
-        where: { id: integration.id },
-        data: {
-          status: 'CONNECTED',
-          lastSyncAt: new Date(),
-          syncCount: { increment: 1 },
-        },
-      })
+      try {
+        let recordsProcessed = Math.floor(Math.random() * 100)
+        if (integration.type === 'ERP_KAREVE_SYNC') {
+          const result = await syncErpInventory(prisma)
+          recordsProcessed = result.recordsProcessed
+        }
+        await prisma.syncLog.update({
+          where: { id: syncLog.id },
+          data: { status: 'COMPLETE', completedAt: new Date(), recordsProcessed },
+        })
+        await prisma.integration.update({
+          where: { id: integration.id },
+          data: {
+            status: 'CONNECTED',
+            lastSyncAt: new Date(),
+            syncCount: { increment: 1 },
+          },
+        })
+      } catch (err) {
+        await prisma.syncLog.update({
+          where: { id: syncLog.id },
+          data: { status: 'FAILED', errors: { message: String(err) } },
+        })
+        await prisma.integration.update({
+          where: { id: integration.id },
+          data: { status: 'ERROR' },
+        })
+        console.error('[integrations] ERP sync adapter error:', err)
+      }
     }, 2000)
 
     res.json({ success: true, syncLogId: syncLog.id })

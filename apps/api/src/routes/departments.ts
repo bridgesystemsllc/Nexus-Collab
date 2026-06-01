@@ -4,6 +4,89 @@ import { prisma } from '../index'
 
 export const departmentRoutes: ReturnType<typeof Router> = Router()
 
+// ─── SKU Pipeline ← NPD linkage ─────────────────────────────
+// When an NPD project completes a Stage-3 task, create or progress the
+// matching SKU Pipeline entry in Operations. Lives before /:id routes so
+// the literal path is matched first.
+const NPD_STAGE3_TO_SKU: Record<string, { status: string; step: number }> = {
+  'Code / BOM Send (to CM)': { status: 'Component Sourcing', step: 2 },
+  'Artwork Send (to CM)': { status: 'Awaiting Artwork', step: 3 },
+  'Proof Approval': { status: 'Pre-Production', step: 4 },
+  'PO Submission': { status: 'In Production', step: 5 },
+}
+
+departmentRoutes.post('/sku-pipeline/sync-from-npd', async (req: Request, res: Response) => {
+  try {
+    const { npdProjectId, skuItemId, name, sku, upc, brand, taskName } = req.body as {
+      npdProjectId?: string
+      skuItemId?: string
+      name?: string
+      sku?: string
+      upc?: string
+      brand?: string
+      taskName?: string
+    }
+
+    if (!taskName || !NPD_STAGE3_TO_SKU[taskName]) {
+      return res.json({ skipped: true, reason: 'Task does not map to a SKU pipeline stage' })
+    }
+    const target = NPD_STAGE3_TO_SKU[taskName]
+
+    const skuModule = await prisma.departmentModule.findFirst({
+      where: { type: 'SKU_PIPELINE' },
+    })
+    if (!skuModule) {
+      return res.status(404).json({ error: 'SKU Pipeline module not found' })
+    }
+
+    // Find an existing entry: explicit link, then by linkedNpdId.
+    const existingItems = await prisma.moduleItem.findMany({ where: { moduleId: skuModule.id } })
+    let existing = skuItemId ? existingItems.find((i) => i.id === skuItemId) : undefined
+    if (!existing && npdProjectId) {
+      existing = existingItems.find((i) => (i.data as any)?.linkedNpdId === npdProjectId)
+    }
+
+    if (existing) {
+      const prev = existing.data as any
+      // Only progress forward — never regress the pipeline.
+      const nextStep = Math.max(prev.step || 0, target.step)
+      const data = {
+        ...prev,
+        status: nextStep > (prev.step || 0) ? target.status : prev.status,
+        step: nextStep,
+        linkedNpdId: prev.linkedNpdId || npdProjectId || null,
+        ...(name ? { name } : {}),
+        ...(brand ? { brand } : {}),
+      }
+      const updated = await prisma.moduleItem.update({
+        where: { id: existing.id },
+        data: { data, status: data.status },
+      })
+      return res.json({ created: false, item: updated })
+    }
+
+    const data = {
+      name: name || 'NPD SKU',
+      sku: sku || '',
+      upc: upc || '',
+      status: target.status,
+      brand: brand || '',
+      step: target.step,
+      totalSteps: 6,
+      owner: 'Operations',
+      blocker: null,
+      linkedNpdId: npdProjectId || null,
+    }
+    const created = await prisma.moduleItem.create({
+      data: { moduleId: skuModule.id, data, status: target.status },
+    })
+    res.status(201).json({ created: true, item: created })
+  } catch (error) {
+    console.error('[departments] POST /sku-pipeline/sync-from-npd error:', error)
+    res.status(500).json({ error: 'Failed to sync SKU pipeline from NPD' })
+  }
+})
+
 // ─── List all departments ───────────────────────────────────
 departmentRoutes.get('/', async (_req: Request, res: Response) => {
   try {

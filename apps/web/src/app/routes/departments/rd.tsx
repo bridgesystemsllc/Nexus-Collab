@@ -1020,6 +1020,7 @@ function NPDTab({
   onRefresh,
   briefItems = [],
   formulationItems = [],
+  skuItems = [],
 }: {
   items: any[]
   moduleId: string | null
@@ -1027,6 +1028,7 @@ function NPDTab({
   onRefresh: () => void
   briefItems?: any[]
   formulationItems?: any[]
+  skuItems?: any[]
 }) {
   const openForm = useAppStore((s) => s.openForm)
   const [viewingProject, setViewingProject] = useState<any>(null)
@@ -1053,6 +1055,7 @@ function NPDTab({
         initialData: null,
         briefItems,
         formulationItems,
+        skuItems,
       },
     })
   }
@@ -1086,6 +1089,24 @@ function NPDTab({
         data: updatedProject,
       })
       setViewingProject(updatedProject)
+
+      // SKU Pipeline linkage: when a Stage-3 task completes, create/progress
+      // the matching SKU Pipeline entry in Operations.
+      const changedTask = updatedTasks.find((t: any) => t.id === taskId)
+      if (updates.status === 'complete' && changedTask?.stageKey === '3') {
+        try {
+          await api.post('/departments/sku-pipeline/sync-from-npd', {
+            npdProjectId: viewingProject.id,
+            skuItemId: viewingProject.linkedSkuId || undefined,
+            name: viewingProject.projectName || viewingProject.name,
+            brand: viewingProject.brand,
+            taskName: changedTask.taskName,
+          })
+        } catch (linkErr) {
+          console.error('Failed to sync SKU pipeline from NPD:', linkErr)
+        }
+      }
+
       onRefresh()
     } catch (err) {
       console.error('Failed to update task:', err)
@@ -1877,6 +1898,11 @@ export function RDPage() {
     return modules.find((m: any) => m.type === 'PRODUCTION_TRACKING')?.items || []
   }, [opsDetail])
 
+  const skuItems = useMemo(() => {
+    const modules = (opsDetail?.modules as any[]) || []
+    return modules.find((m: any) => m.type === 'SKU_PIPELINE')?.items || []
+  }, [opsDetail])
+
   const isLoading = deptsLoading || detailLoading
 
   const moduleData = useMemo(() => {
@@ -1975,7 +2001,7 @@ export function RDPage() {
           ) : activeTab === 'formulations' ? (
             <FormulationsTab items={tabContent.formulations} moduleId={moduleData.formulationsModuleId} departmentId={rdDept?.id || null} briefItems={moduleData.briefs} onRefresh={() => refetchDept()} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
           ) : activeTab === 'npd' ? (
-            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} />
+            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} skuItems={skuItems} />
           ) : activeTab === 'artwork' ? (
             <ArtworkTab items={moduleData.artwork} moduleId={moduleData.artworkModuleId} departmentId={rdDept?.id || null} briefs={moduleData.briefs} onRefresh={() => refetchDept()} />
           ) : (

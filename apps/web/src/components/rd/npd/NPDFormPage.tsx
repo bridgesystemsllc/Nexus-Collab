@@ -28,6 +28,8 @@ interface NPDFormContext {
   briefItems?: any[]
   /** Formulation items used to build the linked-formulation options. */
   formulationItems?: any[]
+  /** SKU Pipeline items used to build the linked-SKU options. */
+  skuItems?: any[]
 }
 
 /**
@@ -58,6 +60,10 @@ export function NPDFormPage({ form: activeForm }: { form: ActiveForm }) {
   const formulationOptions: IdOption[] = (ctx.formulationItems || []).map((item: any) => {
     const d = item.data || item
     return { id: item.id, label: [d.product, d.ver].filter(Boolean).join(' · ') || 'Untitled Formulation' }
+  })
+  const skuOptions: IdOption[] = (ctx.skuItems || []).map((item: any) => {
+    const d = item.data || item
+    return { id: item.id, label: [d.name, d.sku].filter(Boolean).join(' · ') || 'Untitled SKU' }
   })
 
   const isLastStep = step === STEPS.length - 1
@@ -223,6 +229,7 @@ export function NPDFormPage({ form: activeForm }: { form: ActiveForm }) {
           errors={errors}
           briefOptions={briefOptions}
           formulationOptions={formulationOptions}
+          skuOptions={skuOptions}
         />
       )}
       {step === 1 && <StepBusinessCommercial form={form} setForm={setForm} errors={errors} />}

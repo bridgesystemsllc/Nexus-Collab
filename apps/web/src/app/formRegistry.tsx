@@ -7,6 +7,12 @@ import { FormulationFormPage } from '@/components/rd/FormulationFormPage'
 import { NPDFormPage } from '@/components/rd/npd/NPDFormPage'
 import { ArtworkFormPage } from '@/components/rd/artwork/ArtworkFormPage'
 import { ComponentFormPage } from '@/components/rd/components/ComponentFormPage'
+import {
+  SkuPipelineFormPage,
+  InventoryFormPage,
+  ProductionFormPage,
+  BrandTransitionFormPage,
+} from '@/components/ops/forms/OpsForms'
 
 /**
  * Registry of full-page forms.
@@ -28,6 +34,10 @@ export const formRegistry: Record<string, (props: { form: ActiveForm }) => JSX.E
   npd: NPDFormPage,
   artwork: ArtworkFormPage,
   component: ComponentFormPage,
+  opsSku: SkuPipelineFormPage,
+  opsInventory: InventoryFormPage,
+  opsProduction: ProductionFormPage,
+  opsBrand: BrandTransitionFormPage,
 }
 
 export function FullPageFormHost({ form }: { form: ActiveForm }) {

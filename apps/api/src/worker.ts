@@ -1,6 +1,7 @@
 import { Worker, Queue } from 'bullmq'
 import IORedis from 'ioredis'
 import { PrismaClient } from '@prisma/client'
+import { syncErpInventory } from './lib/erpSync'
 
 const prisma = new PrismaClient()
 
@@ -61,9 +62,8 @@ const erpWorker = new Worker('erp-sync', async () => {
   })
 
   try {
-    // In production, this calls the ERP API
-    // For now, simulate a sync
-    const recordsProcessed = Math.floor(Math.random() * 50) + 10
+    // Pull the ERP inventory feed into the Inventory Health module.
+    const { recordsProcessed } = await syncErpInventory(prisma)
 
     await prisma.syncLog.update({
       where: { id: syncLog.id },

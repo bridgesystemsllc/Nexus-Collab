@@ -356,3 +356,99 @@ Return the structured JSON.`
     res.status(500).json({ error: error.message || 'Failed to parse document' })
   }
 })
+
+// ─── Parse open-order CM report and match to production POs ──
+aiRoutes.post('/parse-open-order', async (req: Request, res: Response) => {
+  try {
+    const { rows, orders, filename } = req.body as {
+      rows?: any[]
+      orders?: { id: string; poNumber?: string; product?: string; sku?: string; cm?: string; status?: string; eta?: string }[]
+      filename?: string
+    }
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'No rows parsed from the report' })
+    }
+    if (!Array.isArray(orders) || orders.length === 0) {
+      return res.status(400).json({ error: 'No existing production orders to match against' })
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) {
+      return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' })
+    }
+
+    const Anthropic = (await import('@anthropic-ai/sdk')).default
+    const client = new Anthropic({ apiKey })
+
+    const systemPrompt = `You are an operations assistant for KarEve Beauty Group's Nexus platform. You receive an open-order report exported from a contract manufacturer (CM) as spreadsheet rows, plus the list of existing production purchase orders (POs) in Nexus.
+
+Your job: match each report row to an existing PO and extract updates. Match primarily on PO number, then SKU, then product name (fuzzy allowed). A report row may reference a PO via columns like "PO", "PO #", "Order #", "Reference". Quantities, dates and notes may use varied column names.
+
+Valid production status values (use the closest one, or omit if unclear):
+"Awaiting Materials", "Production Scheduled", "In Production", "QC Review", "Ready to Ship", "Shipped", "On Hold"
+
+Return ONLY valid JSON with this exact shape (no markdown, no preamble):
+{
+  "updates": [
+    {
+      "id": "string — the id of the matched existing PO",
+      "poNumber": "string — matched PO number for display",
+      "status": "string — new status if the report indicates one, else omit",
+      "eta": "string — updated ETA in YYYY-MM-DD if present, else omit",
+      "cmNotes": "string — concise notes/comments synthesized from the report row (delays, comments, progress), else omit",
+      "confidence": 0.0
+    }
+  ],
+  "unmatched": ["array of report row identifiers that could not be matched"]
+}
+
+Rules:
+- Only include an "id" that exactly matches one of the provided existing PO ids.
+- Omit any field you cannot determine; never invent data.
+- Keep cmNotes concise (one or two sentences).`
+
+    const userMessage = `EXISTING PRODUCTION ORDERS (match against these; use their exact "id"):
+${JSON.stringify(orders, null, 2)}
+
+OPEN-ORDER REPORT ROWS (from "${filename || 'report'}"):
+${JSON.stringify(rows.slice(0, 200), null, 2)}
+
+Return the structured JSON with matched updates.`
+
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    })
+
+    const rawText = response.content[0].type === 'text' ? response.content[0].text : ''
+
+    let parsed: any
+    try {
+      parsed = JSON.parse(rawText)
+    } catch {
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0])
+      } else {
+        throw new Error('Failed to parse Claude response as JSON')
+      }
+    }
+
+    const validIds = new Set(orders.map((o) => o.id))
+    const updates = Array.isArray(parsed.updates)
+      ? parsed.updates.filter((u: any) => u && validIds.has(u.id))
+      : []
+
+    res.json({
+      updates,
+      unmatched: Array.isArray(parsed.unmatched) ? parsed.unmatched : [],
+      source: filename || 'open-order report',
+    })
+  } catch (error: any) {
+    console.error('[ai] POST /parse-open-order error:', error)
+    res.status(500).json({ error: error.message || 'Failed to parse open-order report' })
+  }
+})

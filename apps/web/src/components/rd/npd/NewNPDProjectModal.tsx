@@ -23,6 +23,7 @@ export interface NPDFormData {
   isOTC: boolean
   linkedBriefId: string
   linkedFormulationId: string
+  linkedSkuId: string
   description: string
   targetLaunchDate: string
   priority: string
@@ -78,6 +79,7 @@ export const EMPTY_NPD_FORM: NPDFormData = {
   isOTC: false,
   linkedBriefId: '',
   linkedFormulationId: '',
+  linkedSkuId: '',
   description: '',
   targetLaunchDate: '',
   priority: 'Standard',
@@ -313,7 +315,8 @@ export function StepProjectSetup({
   errors,
   briefOptions = [],
   formulationOptions = [],
-}: StepProps & { briefOptions?: IdOption[]; formulationOptions?: IdOption[] }) {
+  skuOptions = [],
+}: StepProps & { briefOptions?: IdOption[]; formulationOptions?: IdOption[]; skuOptions?: IdOption[] }) {
   return (
     <div className="space-y-5">
       <FormField label="Project Name" required error={errors.projectName}>
@@ -388,6 +391,15 @@ export function StepProjectSetup({
           />
         </FormField>
       </div>
+
+      <FormField label="Linked SKU (Operations Pipeline)">
+        <IdSelect
+          value={form.linkedSkuId}
+          onChange={(v) => setForm({ ...form, linkedSkuId: v })}
+          options={skuOptions}
+          placeholder={skuOptions.length ? 'Select an existing SKU pipeline entry' : 'No SKU pipeline entries available'}
+        />
+      </FormField>
 
       <FormField label="Description">
         <TextArea

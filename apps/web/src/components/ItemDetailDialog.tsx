@@ -13,12 +13,18 @@ import {
   Rocket,
   Users,
 } from 'lucide-react'
+import { Pencil } from 'lucide-react'
 import { Dialog } from './Dialog'
+import { AddToCowork, type AddToCoworkItem } from './shared/AddToCowork'
 
 interface ItemDetailDialogProps {
   item: any | null
   moduleType: string | null
   onClose: () => void
+  /** When provided, shows an Edit button in the detail footer. */
+  onEdit?: () => void
+  /** When provided, shows an "Add to Co-work" action in the detail footer. */
+  coworkItem?: AddToCoworkItem
 }
 
 // ─── Brief Detail ─────────────────────────────────────────
@@ -312,12 +318,14 @@ const MODULE_CONFIG: Record<string, { title: string; icon: React.ElementType }> 
 }
 
 // ─── Main Component ───────────────────────────────────────
-export function ItemDetailDialog({ item, moduleType, onClose }: ItemDetailDialogProps) {
+export function ItemDetailDialog({ item, moduleType, onClose, onEdit, coworkItem }: ItemDetailDialogProps) {
   if (!item || !moduleType) return null
 
   const d = item.data
   const config = MODULE_CONFIG[moduleType]
   const itemName = d?.name || d?.product || d?.component || d?.poNumber || config?.title || 'Item'
+
+  const showActions = !!onEdit || !!coworkItem
 
   return (
     <Dialog
@@ -336,6 +344,20 @@ export function ItemDetailDialog({ item, moduleType, onClose }: ItemDetailDialog
       {moduleType === 'PRODUCTION_TRACKING' && <ProductionDetail d={d} />}
       {['NPD_PIPELINE', 'ARTWORK', 'COMPONENTS', 'BRAND_TRANSITION'].includes(moduleType) && (
         <GenericModuleDetail d={d} />
+      )}
+
+      {showActions && (
+        <div className="flex items-center justify-end gap-2 pt-5 mt-5 border-t border-[var(--border-subtle)]">
+          {coworkItem && <AddToCowork item={coworkItem} variant="ghost" />}
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              className="inline-flex items-center gap-1.5 btn-primary px-4 py-2 rounded-lg text-[13px] font-medium"
+            >
+              <Pencil size={14} /> Edit
+            </button>
+          )}
+        </div>
       )}
     </Dialog>
   )

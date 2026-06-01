@@ -2,26 +2,22 @@ import { useState, useMemo } from 'react'
 import {
   AlertTriangle,
   Box,
-  Calendar,
-  CheckCircle2,
-  Clock,
   Cog,
   DollarSign,
   Factory,
-  LayoutGrid,
-  List,
-  Loader2,
   Package,
+  Pencil,
   Plus,
   Search,
   TrendingUp,
-  Truck,
   Users,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
-import { ProductionModule } from '@/components/ops/production/ProductionModule'
-import { BrandTransitionModule } from '@/components/ops/brand-transition/BrandTransitionModule'
+import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
+import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowork'
+import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
+import { useAppStore } from '@/stores/appStore'
 
 // ─── Types ─────────────────────────────────────────────────
 type OpsTab = 'sku' | 'inventory' | 'production' | 'brand'
@@ -33,7 +29,14 @@ const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'brand', label: 'Brand Transition', icon: TrendingUp },
 ]
 
-// ─── Skeleton ──────────────────────────────────────────────
+interface TabProps {
+  items: any[]
+  moduleId: string | null
+  departmentId: string | null
+  onSelect: (item: any) => void
+}
+
+// ─── Skeletons ─────────────────────────────────────────────
 function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
     <div className="space-y-3">
@@ -86,9 +89,7 @@ function StepProgression({ step, total }: { step: number; total: number }) {
               <div
                 className="w-4 h-0.5 mx-0.5"
                 style={{
-                  background: isComplete
-                    ? 'var(--accent)'
-                    : 'var(--border-default)',
+                  background: isComplete ? 'var(--accent)' : 'var(--border-default)',
                 }}
               />
             )}
@@ -102,68 +103,164 @@ function StepProgression({ step, total }: { step: number; total: number }) {
   )
 }
 
+// ─── Shared bits ───────────────────────────────────────────
+function TabHeader({
+  title,
+  count,
+  view,
+  onView,
+  onNew,
+  newLabel,
+  children,
+}: {
+  title: string
+  count: number
+  view: ViewMode
+  onView: (v: ViewMode) => void
+  onNew?: () => void
+  newLabel: string
+  children?: React.ReactNode
+}) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-2">
+        <h2 className="text-sm font-medium text-[var(--text-primary)]">{title}</h2>
+        <span className="text-xs text-[var(--text-tertiary)]">{count}</span>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        {children}
+        <ViewToggle value={view} onChange={onView} />
+        {onNew && (
+          <button onClick={onNew} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm rounded-lg w-fit">
+            <Plus size={15} />
+            {newLabel}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function RowActions({ cowork, onEdit }: { cowork: AddToCoworkItem; onEdit: () => void }) {
+  return (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <AddToCowork item={cowork} variant="icon" />
+      <button
+        onClick={onEdit}
+        title="Edit"
+        aria-label="Edit"
+        className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
+      >
+        <Pencil size={15} />
+      </button>
+    </div>
+  )
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">{text}</p>
+}
+
 // ─── SKU Pipeline Tab ──────────────────────────────────────
-function SKUPipelineTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
-  if (items.length === 0) {
-    return (
-      <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
-        No SKUs in pipeline.
-      </p>
-    )
-  }
+function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
+  const openForm = useAppStore((s) => s.openForm)
+  const [view, setView] = useState<ViewMode>('table')
+
+  const openCreate = () =>
+    openForm({ formType: 'opsSku', mode: 'create', context: { moduleId, departmentId } })
+  const openEdit = (item: any) =>
+    openForm({ formType: 'opsSku', mode: 'edit', recordId: item.id, context: { moduleId, departmentId, initialData: item.data } })
+
+  const cowork = (d: any, id: string): AddToCoworkItem => ({
+    name: d.name || d.sku || 'SKU',
+    type: 'SKU',
+    id,
+    description: `SKU ${d.sku || ''} — ${d.status || ''}`.trim(),
+  })
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {items.map((item: any) => {
-        const d = item.data
-        return (
-          <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
-            <div>
-              <h3 className="font-medium text-sm text-[var(--text-primary)]">
-                {d.name}
-              </h3>
-              <div className="flex items-center gap-3 mt-1 text-xs text-[var(--text-tertiary)]">
-                <span className="font-mono">{d.sku}</span>
-                <span className="font-mono">{d.upc}</span>
+    <div className="space-y-4">
+      <TabHeader title="SKUs in pipeline" count={items.length} view={view} onView={setView} onNew={openCreate} newLabel="New SKU" />
+
+      {items.length === 0 ? (
+        <EmptyState text="No SKUs in pipeline." />
+      ) : view === 'table' ? (
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+          <table className="nexus-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>SKU</th>
+                <th>UPC</th>
+                <th>Status</th>
+                <th>Progress</th>
+                <th>Owner</th>
+                <th className="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item: any) => {
+                const d = item.data
+                return (
+                  <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
+                    <td className="font-medium text-[var(--text-primary)]">{d.name}</td>
+                    <td className="font-mono text-xs text-[var(--text-secondary)]">{d.sku}</td>
+                    <td className="font-mono text-xs text-[var(--text-tertiary)]">{d.upc}</td>
+                    <td><span className="badge badge-info">{d.status}</span></td>
+                    <td><StepProgression step={d.step} total={d.totalSteps} /></td>
+                    <td className="text-[var(--text-secondary)]">{d.owner}</td>
+                    <td><div className="flex justify-end"><RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} /></div></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {items.map((item: any) => {
+            const d = item.data
+            return (
+              <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="font-medium text-sm text-[var(--text-primary)]">{d.name}</h3>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-[var(--text-tertiary)]">
+                      <span className="font-mono">{d.sku}</span>
+                      <span className="font-mono">{d.upc}</span>
+                    </div>
+                  </div>
+                  <RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="badge badge-info">{d.status}</span>
+                  <span className="text-xs text-[var(--text-tertiary)]">{d.owner}</span>
+                </div>
+                <StepProgression step={d.step} total={d.totalSteps} />
+                {d.blocker && (
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-[var(--danger-light)] border border-[var(--danger)]">
+                    <AlertTriangle size={13} className="text-[var(--danger)] mt-0.5 flex-shrink-0" />
+                    <span className="text-xs text-[var(--danger)]">{d.blocker}</span>
+                  </div>
+                )}
               </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="badge badge-info">{d.status}</span>
-              <span className="text-xs text-[var(--text-tertiary)]">
-                {d.owner}
-              </span>
-            </div>
-
-            <StepProgression step={d.step} total={d.totalSteps} />
-
-            {d.blocker && (
-              <div className="flex items-start gap-2 p-2 rounded-lg bg-[var(--danger-light)] border border-[var(--danger)]">
-                <AlertTriangle
-                  size={13}
-                  className="text-[var(--danger)] mt-0.5 flex-shrink-0"
-                />
-                <span className="text-xs text-[var(--danger)]">
-                  {d.blocker}
-                </span>
-              </div>
-            )}
-          </div>
-        )
-      })}
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
 
 // ─── Inventory Health Tab ──────────────────────────────────
-function InventoryHealthTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
-  if (items.length === 0) {
-    return (
-      <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
-        No inventory data found.
-      </p>
-    )
-  }
+function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProps) {
+  const openForm = useAppStore((s) => s.openForm)
+  const [view, setView] = useState<ViewMode>('table')
+
+  const openCreate = () =>
+    openForm({ formType: 'opsInventory', mode: 'create', context: { moduleId, departmentId } })
+  const openEdit = (item: any) =>
+    openForm({ formType: 'opsInventory', mode: 'edit', recordId: item.id, context: { moduleId, departmentId, initialData: item.data } })
 
   const statusConfig: Record<string, { badge: string; rowClass: string }> = {
     emergency: { badge: 'badge-emergency', rowClass: 'emergency' },
@@ -171,97 +268,98 @@ function InventoryHealthTab({ items, onSelect }: { items: any[]; onSelect: (item
     healthy: { badge: 'badge-healthy', rowClass: '' },
     overstock: { badge: 'badge-info', rowClass: '' },
   }
+  const sortOrder: Record<string, number> = { emergency: 0, critical: 1, healthy: 2, overstock: 3 }
+  const sorted = [...items].sort((a, b) => (sortOrder[a.data?.status] ?? 99) - (sortOrder[b.data?.status] ?? 99))
 
-  // Sort: emergency first, then critical, healthy, overstock
-  const sortOrder: Record<string, number> = {
-    emergency: 0,
-    critical: 1,
-    healthy: 2,
-    overstock: 3,
-  }
-  const sorted = [...items].sort(
-    (a, b) =>
-      (sortOrder[a.data?.status] ?? 99) - (sortOrder[b.data?.status] ?? 99)
-  )
+  const cowork = (d: any, id: string): AddToCoworkItem => ({
+    name: d.name || d.sku || 'Inventory',
+    type: 'Inventory',
+    id,
+    description: `SKU ${d.sku || ''} — ${d.status || ''} (${d.available ?? 0} available)`.trim(),
+  })
+
+  const coverageColor = (m: number) =>
+    m === 0 ? 'var(--danger)' : m < 1 ? 'var(--warning)' : m > 20 ? 'var(--info)' : 'var(--text-secondary)'
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
-      <table className="nexus-table">
-        <thead>
-          <tr>
-            <th>SKU</th>
-            <th>Product Name</th>
-            <th>On-Hand</th>
-            <th>Committed</th>
-            <th>Available</th>
-            <th>Coverage (Mo)</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="space-y-4">
+      <TabHeader title="Inventory records" count={items.length} view={view} onView={setView} onNew={openCreate} newLabel="New Record" />
+
+      {items.length === 0 ? (
+        <EmptyState text="No inventory data found." />
+      ) : view === 'table' ? (
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+          <table className="nexus-table">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Product Name</th>
+                <th>On-Hand</th>
+                <th>Committed</th>
+                <th>Available</th>
+                <th>Coverage (Mo)</th>
+                <th>Status</th>
+                <th className="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((item: any) => {
+                const d = item.data
+                const cfg = statusConfig[d.status] || { badge: 'badge-accent', rowClass: '' }
+                return (
+                  <tr key={item.id} className={`clickable-row ${cfg.rowClass}`} onClick={() => onSelect(item)}>
+                    <td className="font-mono text-xs text-[var(--text-secondary)]">{d.sku}</td>
+                    <td className="font-medium text-[var(--text-primary)]">{d.name}</td>
+                    <td className="tabular-nums text-[var(--text-secondary)]">{d.onHand?.toLocaleString()}</td>
+                    <td className="tabular-nums text-[var(--text-secondary)]">{d.committed?.toLocaleString()}</td>
+                    <td className="tabular-nums text-[var(--text-secondary)]">{d.available?.toLocaleString()}</td>
+                    <td className="tabular-nums"><span style={{ color: coverageColor(d.coverageMonths) }}>{d.coverageMonths}</span></td>
+                    <td><span className={`badge ${cfg.badge}`}>{d.status}</span></td>
+                    <td><div className="flex justify-end"><RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} /></div></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="space-y-2">
           {sorted.map((item: any) => {
             const d = item.data
-            const cfg = statusConfig[d.status] || {
-              badge: 'badge-accent',
-              rowClass: '',
-            }
+            const cfg = statusConfig[d.status] || { badge: 'badge-accent', rowClass: '' }
             return (
-              <tr key={item.id} className={`clickable-row ${cfg.rowClass}`} onClick={() => onSelect(item)}>
-                <td className="font-mono text-xs text-[var(--text-secondary)]">
-                  {d.sku}
-                </td>
-                <td className="font-medium text-[var(--text-primary)]">
-                  {d.name}
-                </td>
-                <td className="tabular-nums text-[var(--text-secondary)]">
-                  {d.onHand?.toLocaleString()}
-                </td>
-                <td className="tabular-nums text-[var(--text-secondary)]">
-                  {d.committed?.toLocaleString()}
-                </td>
-                <td className="tabular-nums text-[var(--text-secondary)]">
-                  {d.available?.toLocaleString()}
-                </td>
-                <td className="tabular-nums">
-                  <span
-                    style={{
-                      color:
-                        d.coverageMonths === 0
-                          ? 'var(--danger)'
-                          : d.coverageMonths < 1
-                            ? 'var(--warning)'
-                            : d.coverageMonths > 20
-                              ? 'var(--info)'
-                              : 'var(--text-secondary)',
-                    }}
-                  >
-                    {d.coverageMonths}
-                  </span>
-                </td>
-                <td>
-                  <span className={`badge ${cfg.badge}`}>{d.status}</span>
-                </td>
-              </tr>
+              <div key={item.id} className="data-cell flex items-center gap-4 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm text-[var(--text-primary)] truncate">{d.name}</p>
+                  <p className="font-mono text-xs text-[var(--text-tertiary)]">{d.sku}</p>
+                </div>
+                <div className="hidden sm:flex items-center gap-6 text-xs text-[var(--text-secondary)] tabular-nums">
+                  <span>On-hand <strong className="text-[var(--text-primary)]">{d.onHand?.toLocaleString()}</strong></span>
+                  <span>Available <strong className="text-[var(--text-primary)]">{d.available?.toLocaleString()}</strong></span>
+                  <span style={{ color: coverageColor(d.coverageMonths) }}>{d.coverageMonths} mo</span>
+                </div>
+                <span className={`badge ${cfg.badge}`}>{d.status}</span>
+                <RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} />
+              </div>
             )
           })}
-        </tbody>
-      </table>
+        </div>
+      )}
     </div>
   )
 }
 
 // ─── Production Tracking Tab ───────────────────────────────
-function ProductionTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
-  const [viewMode, setViewMode] = useState<'board' | 'table'>('board')
+function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
+  const openForm = useAppStore((s) => s.openForm)
+  const [view, setView] = useState<ViewMode>('table')
   const [brandFilter, setBrandFilter] = useState('All')
+  const [search, setSearch] = useState('')
 
-  if (items.length === 0) {
-    return (
-      <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">
-        No production orders found.
-      </p>
-    )
-  }
+  const openCreate = () =>
+    openForm({ formType: 'opsProduction', mode: 'create', context: { moduleId, departmentId } })
+  const openEdit = (item: any) =>
+    openForm({ formType: 'opsProduction', mode: 'edit', recordId: item.id, context: { moduleId, departmentId, initialData: item.data } })
 
   function statusColor(status: string): string {
     switch (status) {
@@ -279,13 +377,25 @@ function ProductionTab({ items, onSelect }: { items: any[]; onSelect: (item: any
   }
 
   const brands = ['All', ...Array.from(new Set(items.map((item: any) => item.data?.brand).filter(Boolean)))]
-  const filtered = brandFilter === 'All'
-    ? items
-    : items.filter((item: any) => item.data?.brand === brandFilter)
+  const q = search.toLowerCase()
+  const filtered = items.filter((item: any) => {
+    const d = item.data || {}
+    if (brandFilter !== 'All' && d.brand !== brandFilter) return false
+    if (!q) return true
+    return [d.poNumber, d.product, d.sku, d.cm].some((v: any) => (v ?? '').toString().toLowerCase().includes(q))
+  })
+
   const activeOrders = filtered.length
   const orderValue = filtered.reduce((sum: number, item: any) => sum + (item.data?.value ?? 0), 0)
   const emergency = filtered.filter((item: any) => item.data?.priority === 'emergency').length
   const coworkPending = filtered.filter((item: any) => item.data?.coworkPending).length
+
+  const cowork = (d: any, id: string): AddToCoworkItem => ({
+    name: d.product || d.poNumber || 'Production Order',
+    type: 'Production Order',
+    id,
+    description: `${d.poNumber || ''} — ${d.cm || ''} (${d.status || ''})`.trim(),
+  })
 
   return (
     <div className="space-y-5">
@@ -320,29 +430,9 @@ function ProductionTab({ items, onSelect }: { items: any[]; onSelect: (item: any
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-1.5 p-1 bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] w-fit">
-          <button
-            onClick={() => setViewMode('board')}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${viewMode === 'board' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'}`}
-          >
-            <LayoutGrid size={14} />
-            Board
-          </button>
-          <button
-            onClick={() => setViewMode('table')}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${viewMode === 'table' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'}`}
-          >
-            <List size={14} />
-            Table
-          </button>
-        </div>
-
-        <button className="btn-primary flex items-center gap-2 w-fit">
-          <Plus size={15} />
-          New Order
-        </button>
-      </div>
+      <TabHeader title="Production orders" count={filtered.length} view={view} onView={setView} onNew={openCreate} newLabel="New Order">
+        <OpenOrderImport items={items} moduleId={moduleId} departmentId={departmentId} />
+      </TabHeader>
 
       <div className="flex items-center gap-2 flex-wrap">
         {brands.map((brand) => (
@@ -361,15 +451,17 @@ function ProductionTab({ items, onSelect }: { items: any[]; onSelect: (item: any
         <div className="relative min-w-[260px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
           <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)]"
-            placeholder="Search SO#, item#, description..."
+            placeholder="Search PO#, SKU, item#, description..."
           />
         </div>
-        <span className="badge badge-emergency">Emergency</span>
-        <span className="badge badge-accent">Cowork</span>
       </div>
 
-      {viewMode === 'table' ? (
+      {filtered.length === 0 ? (
+        <EmptyState text="No production orders found." />
+      ) : view === 'table' ? (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
           <table className="nexus-table">
             <thead>
@@ -381,6 +473,7 @@ function ProductionTab({ items, onSelect }: { items: any[]; onSelect: (item: any
                 <th>Status</th>
                 <th>Progress</th>
                 <th>ETA</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -395,6 +488,7 @@ function ProductionTab({ items, onSelect }: { items: any[]; onSelect: (item: any
                     <td><span className="badge" style={{ background: `${statusColor(d.status)}20`, color: statusColor(d.status) }}>{d.status}</span></td>
                     <td className="tabular-nums text-[var(--text-secondary)]">{d.progress}%</td>
                     <td className="text-[var(--text-tertiary)]">{d.eta}</td>
+                    <td><div className="flex justify-end"><RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} /></div></td>
                   </tr>
                 )
               })}
@@ -420,7 +514,7 @@ function ProductionTab({ items, onSelect }: { items: any[]; onSelect: (item: any
                       <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
                         <div className="flex items-center justify-between">
                           <span className="badge" style={{ background: `${color}20`, color }}>{d.status}</span>
-                          <button className="text-xs text-[var(--accent)] hover:underline">Edit</button>
+                          <RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} />
                         </div>
                         <h3 className="font-medium text-sm text-[var(--text-primary)]">{d.product}</h3>
                         <div className="grid grid-cols-2 gap-2 text-xs text-[var(--text-secondary)]">
@@ -438,10 +532,9 @@ function ProductionTab({ items, onSelect }: { items: any[]; onSelect: (item: any
                             <div className="h-full rounded-full transition-all" style={{ width: `${d.progress}%`, background: color }} />
                           </div>
                         </div>
-                        <div className="flex items-center gap-4 text-xs text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
-                          <span>Cowork</span>
-                          <span>Notes</span>
-                        </div>
+                        {d.cmNotes && (
+                          <p className="text-xs text-[var(--text-tertiary)] line-clamp-2 pt-1 border-t border-[var(--border-subtle)]">{d.cmNotes}</p>
+                        )}
                       </div>
                     )
                   })}
@@ -455,59 +548,131 @@ function ProductionTab({ items, onSelect }: { items: any[]; onSelect: (item: any
   )
 }
 
-const FALLBACK_BRAND_TRANSITIONS = [
-  { id: 'brand-1', data: { product: 'CD Scalp Detox Shampoo 8oz', from: "L'Oreal Legacy", to: 'Kareve SKU Master', owner: 'Operations', progress: 50, status: 'Awaiting Artwork', blocker: null } },
-  { id: 'brand-2', data: { product: 'CD Scalp Cleansing Oil 6oz', from: 'Formula Lock', to: 'Component Sourcing', owner: 'Vendor Mgmt', progress: 33, status: 'Component Sourcing', blocker: 'TricorBraun MOQ pending' } },
-  { id: 'brand-3', data: { product: 'CD Scalp Renew Serum 2oz', from: 'R&D Brief', to: 'Formula Approval', owner: 'R&D', progress: 16, status: 'Formula Pending', blocker: 'Stability testing' } },
-]
+// ─── Brand Transition Tab ──────────────────────────────────
+function BrandTransitionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
+  const openForm = useAppStore((s) => s.openForm)
+  const [view, setView] = useState<ViewMode>('list')
 
-function BrandTransitionTab({ items }: { items: any[] }) {
-  const records = items.length > 0 ? items : FALLBACK_BRAND_TRANSITIONS
+  const openCreate = () =>
+    openForm({ formType: 'opsBrand', mode: 'create', context: { moduleId, departmentId } })
+  const openEdit = (item: any) =>
+    openForm({ formType: 'opsBrand', mode: 'edit', recordId: item.id, context: { moduleId, departmentId, initialData: item.data } })
+
+  const cowork = (d: any, id: string): AddToCoworkItem => ({
+    name: d.product || 'Brand Transition',
+    type: 'Brand Transition',
+    id,
+    description: `${d.from || ''} → ${d.to || ''} (${d.status || ''})`.trim(),
+  })
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {records.map((item: any) => {
-        const d = item.data
-        return (
-          <div key={item.id} className="data-cell space-y-3">
-            <div>
-              <h3 className="font-medium text-sm text-[var(--text-primary)]">{d.product}</h3>
-              <p className="text-xs text-[var(--text-tertiary)] mt-1">{d.owner}</p>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-              <span className="truncate">{d.from}</span>
-              <TrendingUp size={12} className="text-[var(--accent)] flex-shrink-0" />
-              <span className="truncate">{d.to}</span>
-            </div>
-            <div>
-              <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-[var(--text-tertiary)]">Transition Progress</span>
-                <span className="tabular-nums text-[var(--text-secondary)]">{d.progress}%</span>
+    <div className="space-y-4">
+      <TabHeader title="Brand transitions" count={items.length} view={view} onView={setView} onNew={openCreate} newLabel="New Transition" />
+
+      {items.length === 0 ? (
+        <EmptyState text="No brand transitions found." />
+      ) : view === 'table' ? (
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+          <table className="nexus-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Owner</th>
+                <th>Progress</th>
+                <th>Status</th>
+                <th className="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item: any) => {
+                const d = item.data
+                return (
+                  <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
+                    <td className="font-medium text-[var(--text-primary)]">{d.product}</td>
+                    <td className="text-[var(--text-secondary)]">{d.from}</td>
+                    <td className="text-[var(--text-secondary)]">{d.to}</td>
+                    <td className="text-[var(--text-secondary)]">{d.owner}</td>
+                    <td className="tabular-nums text-[var(--text-secondary)]">{d.progress}%</td>
+                    <td><span className="badge badge-info">{d.status}</span></td>
+                    <td><div className="flex justify-end"><RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} /></div></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {items.map((item: any) => {
+            const d = item.data
+            return (
+              <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="font-medium text-sm text-[var(--text-primary)]">{d.product}</h3>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-1">{d.owner}</p>
+                  </div>
+                  <RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} />
+                </div>
+                <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                  <span className="truncate">{d.from}</span>
+                  <TrendingUp size={12} className="text-[var(--accent)] flex-shrink-0" />
+                  <span className="truncate">{d.to}</span>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-[var(--text-tertiary)]">Transition Progress</span>
+                    <span className="tabular-nums text-[var(--text-secondary)]">{d.progress}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+                    <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${d.progress}%` }} />
+                  </div>
+                </div>
+                <span className="badge badge-info">{d.status}</span>
+                {d.blocker && (
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-[rgba(255,69,58,0.06)] border border-[rgba(255,69,58,0.15)]">
+                    <AlertTriangle size={13} className="text-[var(--danger)] mt-0.5 flex-shrink-0" />
+                    <span className="text-xs text-[var(--danger)]">{d.blocker}</span>
+                  </div>
+                )}
               </div>
-              <div className="h-2 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
-                <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${d.progress}%` }} />
-              </div>
-            </div>
-            <span className="badge badge-info">{d.status}</span>
-            {d.blocker && (
-              <div className="flex items-start gap-2 p-2 rounded-lg bg-[rgba(255,69,58,0.06)] border border-[rgba(255,69,58,0.15)]">
-                <AlertTriangle size={13} className="text-[var(--danger)] mt-0.5 flex-shrink-0" />
-                <span className="text-xs text-[var(--danger)]">{d.blocker}</span>
-              </div>
-            )}
-          </div>
-        )
-      })}
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
 
 // ─── Main Page ─────────────────────────────────────────────
+const MODULE_TYPE_BY_TAB: Record<OpsTab, string> = {
+  sku: 'SKU_PIPELINE',
+  inventory: 'INVENTORY_HEALTH',
+  production: 'PRODUCTION_TRACKING',
+  brand: 'BRAND_TRANSITION',
+}
+
+const FORM_TYPE_BY_MODULE: Record<string, string> = {
+  SKU_PIPELINE: 'opsSku',
+  INVENTORY_HEALTH: 'opsInventory',
+  PRODUCTION_TRACKING: 'opsProduction',
+  BRAND_TRANSITION: 'opsBrand',
+}
+
+const COWORK_TYPE_BY_MODULE: Record<string, string> = {
+  SKU_PIPELINE: 'SKU',
+  INVENTORY_HEALTH: 'Inventory',
+  PRODUCTION_TRACKING: 'Production Order',
+  BRAND_TRANSITION: 'Brand Transition',
+}
+
 export function OpsPage() {
   const [activeTab, setActiveTab] = useState<OpsTab>('sku')
   const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
+  const openForm = useAppStore((s) => s.openForm)
 
-  // Find Operations department from departments list
   const { data: departments, isLoading: deptsLoading } = useDepartments()
 
   const opsDept = useMemo(() => {
@@ -515,22 +680,15 @@ export function OpsPage() {
     return departments.find((d: any) => d.type === 'BUILTIN_OPS') || null
   }, [departments])
 
-  const { data: deptDetail, isLoading: detailLoading, refetch: refetchDept } = useDepartment(
-    opsDept?.id || ''
-  )
+  const { data: deptDetail, isLoading: detailLoading } = useDepartment(opsDept?.id || '')
 
   const isLoading = deptsLoading || detailLoading
 
-  // Organize module items by type
-  const moduleData = useMemo(() => {
-    if (!deptDetail?.modules) {
-      return { sku: [], inventory: [], production: [], brand: [] }
-    }
-    const modules = deptDetail.modules as any[]
-    const find = (type: string) =>
-      modules.find((m: any) => m.type === type)?.items || []
-    const prodModule = modules.find((m: any) => m.type === 'PRODUCTION_TRACKING')
+  const modules = (deptDetail?.modules as any[]) || []
+  const moduleByType = (type: string) => modules.find((m: any) => m.type === type) || null
 
+  const moduleData = useMemo(() => {
+    const find = (type: string) => modules.find((m: any) => m.type === type)?.items || []
     return {
       sku: find('SKU_PIPELINE'),
       inventory: find('INVENTORY_HEALTH'),
@@ -539,14 +697,38 @@ export function OpsPage() {
     }
   }, [deptDetail])
 
-  // Emergency count for header badge
+  const moduleIds = {
+    sku: moduleByType('SKU_PIPELINE')?.id ?? null,
+    inventory: moduleByType('INVENTORY_HEALTH')?.id ?? null,
+    production: moduleByType('PRODUCTION_TRACKING')?.id ?? null,
+    brand: moduleByType('BRAND_TRANSITION')?.id ?? null,
+  }
+
   const emergencyCount = useMemo(
-    () =>
-      moduleData.inventory.filter(
-        (i: any) => i.data?.status === 'emergency'
-      ).length,
+    () => moduleData.inventory.filter((i: any) => i.data?.status === 'emergency').length,
     [moduleData.inventory]
   )
+
+  const deptId = opsDept?.id ?? null
+
+  // Detail dialog → Edit opens the matching full-page form
+  const editSelected = () => {
+    if (!selectedItem) return
+    const moduleType = selectedItem.type
+    const formType = FORM_TYPE_BY_MODULE[moduleType]
+    const mod = moduleByType(moduleType)
+    if (!formType || !mod) return
+    setSelectedItem(null)
+    openForm({ formType, mode: 'edit', recordId: selectedItem.item.id, context: { moduleId: mod.id, departmentId: deptId, initialData: selectedItem.item.data } })
+  }
+
+  const selectedCowork: AddToCoworkItem | undefined = selectedItem
+    ? {
+        name: selectedItem.item.data?.name || selectedItem.item.data?.product || selectedItem.item.data?.poNumber || 'Item',
+        type: COWORK_TYPE_BY_MODULE[selectedItem.type] || 'Item',
+        id: selectedItem.item.id,
+      }
+    : undefined
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -554,19 +736,13 @@ export function OpsPage() {
       <div className="flex items-center gap-3">
         <span
           className="w-10 h-10 rounded-xl flex items-center justify-center text-xl"
-          style={{
-            background: opsDept?.color
-              ? `${opsDept.color}20`
-              : 'var(--accent-subtle)',
-          }}
+          style={{ background: opsDept?.color ? `${opsDept.color}20` : 'var(--accent-subtle)' }}
         >
           {opsDept?.icon || <Cog size={20} />}
         </span>
         <div className="flex-1">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
-              Operations
-            </h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-primary)]">Operations</h1>
             {emergencyCount > 0 && (
               <span className="badge badge-emergency">
                 <AlertTriangle size={11} />
@@ -574,9 +750,7 @@ export function OpsPage() {
               </span>
             )}
           </div>
-          <p className="text-sm text-[var(--text-tertiary)]">
-            SKU pipeline, inventory, production tracking
-          </p>
+          <p className="text-sm text-[var(--text-tertiary)]">SKU pipeline, inventory, production tracking</p>
         </div>
       </div>
 
@@ -609,19 +783,15 @@ export function OpsPage() {
       <div className="stagger">
         <div>
           {isLoading ? (
-            activeTab === 'inventory' ? (
-              <TableSkeleton />
-            ) : (
-              <CardsSkeleton />
-            )
+            activeTab === 'inventory' ? <TableSkeleton /> : <CardsSkeleton />
           ) : activeTab === 'sku' ? (
-            <SKUPipelineTab items={moduleData.sku} onSelect={(item) => setSelectedItem({ item, type: 'SKU_PIPELINE' })} />
+            <SKUPipelineTab items={moduleData.sku} moduleId={moduleIds.sku} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'SKU_PIPELINE' })} />
           ) : activeTab === 'inventory' ? (
-            <InventoryHealthTab items={moduleData.inventory} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
+            <InventoryHealthTab items={moduleData.inventory} moduleId={moduleIds.inventory} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
           ) : activeTab === 'production' ? (
-            <ProductionTab items={moduleData.production} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} />
+            <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} />
           ) : (
-            <BrandTransitionTab items={moduleData.brand} />
+            <BrandTransitionTab items={moduleData.brand} moduleId={moduleIds.brand} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'BRAND_TRANSITION' })} />
           )}
         </div>
       </div>
@@ -630,6 +800,8 @@ export function OpsPage() {
         item={selectedItem?.item ?? null}
         moduleType={selectedItem?.type ?? null}
         onClose={() => setSelectedItem(null)}
+        onEdit={selectedItem ? editSelected : undefined}
+        coworkItem={selectedCowork}
       />
     </div>
   )
