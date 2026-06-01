@@ -62,3 +62,8 @@ integrations = ["javascript_object_storage:2.0.0"]
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 180000
+
+[userenv]
+
+[userenv.shared]
+AZURE_TENANT_ID = "508de5bc-d544-4309-b07f-dcac9f64447e"
