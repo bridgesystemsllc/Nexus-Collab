@@ -123,7 +123,7 @@ const STATUSES = ['Brief Submitted', 'In Formulation', 'Stability Testing', 'For
 const MARKET_OPTIONS = ['USA', 'Asia', 'Global', 'UK', 'Other']
 const LABEL_OPTIONS = ['Label', 'Screen Print', 'Wrap Label', 'Front & Back', 'Other']
 
-const STEPS = [
+export const STEPS = [
   'Project Overview',
   'Project Contacts',
   'Objective & Business',
@@ -141,7 +141,7 @@ interface NewBriefModalProps {
 }
 
 // ─── Validation ────────────────────────────────────────────
-function validateStep(step: number, form: BriefFormData): Record<string, string> {
+export function validateStep(step: number, form: BriefFormData): Record<string, string> {
   const errors: Record<string, string> = {}
   if (step === 0) {
     if (!(form.projectName ?? '').trim()) errors.projectName = 'Project name is required'
@@ -304,7 +304,7 @@ function Select({
 
 // ─── Step Components ───────────────────────────────────────
 
-function Step1({ form, setForm, errors }: StepProps) {
+export function Step1({ form, setForm, errors }: StepProps) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-4">
@@ -384,7 +384,7 @@ function Step1({ form, setForm, errors }: StepProps) {
   )
 }
 
-function Step2({ form, setForm, errors }: StepProps) {
+export function Step2({ form, setForm, errors }: StepProps) {
   const addContact = () => {
     if (form.projectContacts.length < 10) {
       setForm({ ...form, projectContacts: [...form.projectContacts, { name: '', role: '', email: '' }] })
@@ -436,7 +436,7 @@ function Step2({ form, setForm, errors }: StepProps) {
   )
 }
 
-function Step3({ form, setForm, errors }: StepProps) {
+export function Step3({ form, setForm, errors }: StepProps) {
   const toggleMarket = (market: string) => {
     const markets = form.markets.includes(market)
       ? form.markets.filter((m) => m !== market)
@@ -519,7 +519,7 @@ function Step3({ form, setForm, errors }: StepProps) {
   )
 }
 
-function Step4({ form, setForm }: StepProps) {
+export function Step4({ form, setForm }: StepProps) {
   return (
     <div className="space-y-5">
       <FormField label="Product Name / Description">
@@ -594,7 +594,7 @@ function Step4({ form, setForm }: StepProps) {
   )
 }
 
-function Step5({ form, setForm }: StepProps) {
+export function Step5({ form, setForm }: StepProps) {
   return (
     <div className="space-y-5">
       <FormField label="Target Market Demographics">
@@ -679,7 +679,7 @@ function Step5({ form, setForm }: StepProps) {
   )
 }
 
-function Step6({ form, setForm, oneDriveConnected }: StepProps & { oneDriveConnected: boolean }) {
+export function Step6({ form, setForm, oneDriveConnected }: StepProps & { oneDriveConnected: boolean }) {
   const addMember = () => {
     setForm({ ...form, teamMembers: [...form.teamMembers, { name: '', role: '' }] })
   }

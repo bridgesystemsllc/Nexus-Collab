@@ -17,9 +17,15 @@ import { EmailAgentPage } from '@/app/routes/email-agent'
 import { DeptManagerPage } from '@/app/routes/dept-manager'
 import { PulsePage } from '@/app/routes/pulse'
 import { CustomDeptPage } from '@/app/routes/custom-dept'
+import { FullPageFormHost } from '@/app/formRegistry'
 
 function PageContent() {
   const currentPage = useAppStore((s) => s.currentPage)
+  const activeForm = useAppStore((s) => s.activeForm)
+
+  if (activeForm) {
+    return <FullPageFormHost form={activeForm} />
+  }
 
   switch (currentPage) {
     case 'dashboard':

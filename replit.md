@@ -63,6 +63,15 @@ NEXUS is a cross-departmental operations platform for Kareve Beauty Group. It pr
 - `/everything` returns `{ records, kpis }`
 - `/briefs` returns a plain array of moduleItems
 
+## Shared UI Foundation (full-page forms)
+Reusable building blocks live in `apps/web/src/components/shared/`:
+- **Full-page form routing** — `appStore` holds `activeForm` plus `openForm()` / `closeForm()`. When `activeForm` is set, `layout.tsx`'s `PageContent` renders the matching form (looked up in `apps/web/src/app/formRegistry.tsx`) in place of the page; `closeForm()` returns to the originating page (sidebar/topbar stay visible).
+- **`FullPageForm`** (`shared/FullPageForm.tsx`) — full-height shell: sticky header with title + Back button, single scrollable body (no nested scrolling), sticky footer action bar.
+- **`ViewToggle`** (`shared/ViewToggle.tsx`) — reusable table ↔ list/line toggle returning `'table' | 'list'`.
+- **`AddToCowork`** (`shared/AddToCowork.tsx`) — drop-in button/menu for any row or detail view; opens a multi-coworker tagging picker and pushes the item into a new or existing co-work space (creates a linked shared task + activity).
+
+To add a new full-page form: build a component taking `{ form: ActiveForm }` that uses `<FullPageForm>` and persists on save (invalidate the relevant React Query key), register it in `formRegistry`, then call `openForm({ formType, mode, recordId?, context? })` from any list/row. Reference implementation: `apps/web/src/components/briefs/BriefFormPage.tsx` (New/Edit Brief), wired from `apps/web/src/app/routes/departments/rd.tsx`.
+
 ## Features
 - Dark/light theme toggle (persisted to localStorage)
 - Real-time WebSocket support for activity feeds and task updates

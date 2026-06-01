@@ -26,7 +26,8 @@ import {
   X,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
-import { NewBriefModal, type BriefFormData, EMPTY_FORM } from '@/components/briefs/NewBriefModal'
+import { type BriefFormData, EMPTY_FORM } from '@/components/briefs/NewBriefModal'
+import { useAppStore } from '@/stores/appStore'
 import { BriefDetailView } from '@/components/briefs/BriefDetailView'
 import { generateBriefPDF } from '@/utils/generateBriefPDF'
 import { CMDetailModal } from '@/components/rd/CMDetailModal'
@@ -418,16 +419,13 @@ function ImportBriefModal({
 }
 
 // ─── Active Briefs Tab ─────────────────────────────────────
-function BriefsTab({ items, moduleId, onRefresh, transferItems, formulationItems }: {
-  items: any[]; moduleId: string | null; onRefresh: () => void; transferItems: any[]; formulationItems: any[]
+function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, formulationItems }: {
+  items: any[]; moduleId: string | null; departmentId: string | null; onRefresh: () => void; transferItems: any[]; formulationItems: any[]
 }) {
-  const [showNewBrief, setShowNewBrief] = useState(false)
-  const [editingBrief, setEditingBrief] = useState<(BriefFormData & { id: string }) | null>(null)
+  const openForm = useAppStore((s) => s.openForm)
   const [viewingBrief, setViewingBrief] = useState<(BriefFormData & { id: string }) | null>(null)
   const [deletingItem, setDeletingItem] = useState<{ id: string; name: string } | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
-  const [importedData, setImportedData] = useState<BriefFormData | null>(null)
 
   const briefs = useMemo(() => items.map((item: any) => ({ id: item.id, moduleId: item.moduleId, ...item.data })), [items])
 
@@ -437,19 +435,22 @@ function BriefsTab({ items, moduleId, onRefresh, transferItems, formulationItems
   const briefHasFormulation = (briefId: string, briefName: string) =>
     formulationItems.some((f: any) => f.data?.linkedBriefId === briefId || f.data?.linkedBriefName === briefName)
 
-  const handleSubmit = async (data: BriefFormData, isDraft: boolean) => {
-    if (!moduleId) return
-    setIsSubmitting(true)
-    try {
-      const briefData = { ...data, briefStatus: isDraft ? 'Draft' : data.briefStatus || 'Brief Submitted', phase: data.phase || 1 }
-      if (editingBrief) {
-        const item = items.find((i: any) => i.id === editingBrief.id)
-        if (item) await api.patch(`/departments/_/modules/${item.moduleId}/items/${editingBrief.id}`, { data: briefData, status: briefData.briefStatus })
-      } else {
-        await api.post(`/departments/_/modules/${moduleId}/items`, { data: briefData, status: briefData.briefStatus })
-      }
-      setShowNewBrief(false); setEditingBrief(null); onRefresh()
-    } catch (err) { console.error('Failed to save brief:', err) } finally { setIsSubmitting(false) }
+  // Open the shared full-page brief form (create / edit / import)
+  const openBriefForm = (
+    mode: 'create' | 'edit',
+    opts?: { brief?: any; initialData?: BriefFormData | null },
+  ) => {
+    const brief = opts?.brief
+    openForm({
+      formType: 'brief',
+      mode,
+      recordId: brief?.id ?? null,
+      context: {
+        moduleId: mode === 'edit' ? brief?.moduleId ?? moduleId : moduleId,
+        departmentId,
+        initialData: opts?.initialData ?? brief ?? null,
+      },
+    })
   }
 
   const handleDelete = async () => {
@@ -478,7 +479,7 @@ function BriefsTab({ items, moduleId, onRefresh, transferItems, formulationItems
             <Upload size={15} /> Import Brief
           </button>
           <button
-            onClick={() => { setEditingBrief(null); setShowNewBrief(true) }}
+            onClick={() => openBriefForm('create')}
             className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]"
           >
             <Plus size={15} /> New Brief
@@ -489,7 +490,7 @@ function BriefsTab({ items, moduleId, onRefresh, transferItems, formulationItems
         <div className="text-center py-12">
           <FileText size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
           <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No active briefs yet</p>
-          <button onClick={() => { setEditingBrief(null); setShowNewBrief(true) }} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Create Your First Brief</button>
+          <button onClick={() => openBriefForm('create')} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Create Your First Brief</button>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
@@ -524,7 +525,7 @@ function BriefsTab({ items, moduleId, onRefresh, transferItems, formulationItems
                   <td>
                     <ActionsMenu actions={[
                       { label: 'View', icon: Eye, onClick: () => setViewingBrief(brief) },
-                      { label: 'Edit', icon: Edit3, onClick: () => { setEditingBrief(brief); setShowNewBrief(true) } },
+                      { label: 'Edit', icon: Edit3, onClick: () => openBriefForm('edit', { brief }) },
                       { label: 'Download PDF', icon: Download, onClick: () => generateBriefPDF(brief) },
                       { label: 'Delete', icon: Trash2, onClick: () => setDeletingItem({ id: brief.id, name: brief.projectName || brief.name }), danger: true },
                     ]} />
@@ -536,22 +537,13 @@ function BriefsTab({ items, moduleId, onRefresh, transferItems, formulationItems
         </div>
       )}
 
-      {/* New / Edit Brief Modal */}
-      <NewBriefModal
-        open={showNewBrief}
-        onClose={() => { setShowNewBrief(false); setEditingBrief(null); setImportedData(null) }}
-        onSubmit={handleSubmit}
-        initialData={editingBrief || importedData}
-        isSubmitting={isSubmitting}
-      />
-
       {/* Brief Detail View */}
       <BriefDetailView
         open={!!viewingBrief}
         brief={viewingBrief}
         onClose={() => setViewingBrief(null)}
         onEdit={() => {
-          if (viewingBrief) { setEditingBrief(viewingBrief); setViewingBrief(null); setShowNewBrief(true) }
+          if (viewingBrief) { const b = viewingBrief; setViewingBrief(null); openBriefForm('edit', { brief: b }) }
         }}
         onDelete={() => {
           if (viewingBrief) {
@@ -566,10 +558,8 @@ function BriefsTab({ items, moduleId, onRefresh, transferItems, formulationItems
         onClose={() => setShowImportModal(false)}
         onImported={(data) => {
           setShowImportModal(false)
-          setEditingBrief(null)
-          // Pre-fill the new brief form with imported data and open it
-          setImportedData(data)
-          setShowNewBrief(true)
+          // Pre-fill the new full-page brief form with imported data
+          openBriefForm('create', { initialData: data })
         }}
       />
 
@@ -1817,7 +1807,7 @@ export function RDPage() {
           {isLoading ? (
             activeTab === 'cm' ? <CardsSkeleton /> : <TableSkeleton />
           ) : activeTab === 'briefs' ? (
-            <BriefsTab items={moduleData.briefs} moduleId={moduleData.briefsModuleId} onRefresh={() => refetchDept()} transferItems={moduleData.transfers} formulationItems={moduleData.formulations} />
+            <BriefsTab items={moduleData.briefs} moduleId={moduleData.briefsModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} transferItems={moduleData.transfers} formulationItems={moduleData.formulations} />
           ) : activeTab === 'cm' ? (
             <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
           ) : activeTab === 'transfers' ? (
