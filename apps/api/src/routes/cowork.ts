@@ -2,10 +2,16 @@ import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma, io } from '../index'
 import { ObjectStorageService } from '../lib/objectStorage'
+import { UPLOAD_MAX_BYTES, validateUpload } from '../lib/uploadValidation'
 
 export const coworkRoutes: ReturnType<typeof Router> = Router()
 
 const objectStorage = new ObjectStorageService()
+
+// Matches the exact shape of a server-issued upload path: /objects/uploads/<uuid>.
+// Used to ensure file-attach only ever inspects objects we just issued URLs for.
+const UPLOAD_OBJECT_PATH_RE =
+  /^\/objects\/uploads\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // ─── Resolve memberIds → member objects ─────────────────────
 async function resolveMembers(memberIds: string[]) {
@@ -422,6 +428,40 @@ coworkRoutes.post('/:id/files', async (req: Request, res: Response) => {
   try {
     const { name, storageUrl, objectPath, type, mimeType, size } = req.body
     if (!name) return res.status(400).json({ error: 'File name is required' })
+
+    // For real uploads (objectPath present), enforce the size/type rules.
+    // Link-only attachments have no uploaded bytes and skip this check.
+    if (objectPath) {
+      // Only accept paths in the exact server-issued upload shape
+      // (/objects/uploads/<uuid>) so we never touch arbitrary objects.
+      if (!UPLOAD_OBJECT_PATH_RE.test(objectPath)) {
+        return res.status(400).json({ error: 'Invalid upload reference' })
+      }
+
+      // A valid claimed size is required (can't be bypassed by omitting it).
+      if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) {
+        return res.status(400).json({ error: 'A valid file size is required' })
+      }
+      const claimed = validateUpload({ name, size, mimeType }, UPLOAD_MAX_BYTES)
+      if (!claimed.ok) return res.status(400).json({ error: claimed.error })
+
+      // Authoritative check: verify the actually-stored object against the
+      // limits. A client could understate `size`, so we trust storage, not
+      // the request body. We do NOT delete the object on failure (the path
+      // is client-supplied and ownership isn't proven) — we simply refuse to
+      // attach/serve it, so an oversized/unsupported file never becomes usable.
+      try {
+        const meta = await objectStorage.getObjectEntityMetadata(objectPath)
+        const actual = validateUpload(
+          { name, size: meta.size, mimeType: meta.contentType || mimeType },
+          UPLOAD_MAX_BYTES,
+        )
+        if (!actual.ok) return res.status(400).json({ error: actual.error })
+      } catch (verifyErr) {
+        console.error('[cowork] upload verification failed:', verifyErr)
+        return res.status(400).json({ error: 'Uploaded file could not be verified.' })
+      }
+    }
 
     const org = await prisma.organization.findFirst()
     if (!org) return res.status(400).json({ error: 'No organization found' })

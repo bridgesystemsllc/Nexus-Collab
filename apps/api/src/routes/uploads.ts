@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { ObjectStorageService, ObjectNotFoundError } from '../lib/objectStorage'
+import { UPLOAD_MAX_BYTES, validateUpload } from '../lib/uploadValidation'
 
 export const uploadRoutes: ReturnType<typeof Router> = Router()
 
@@ -10,8 +11,18 @@ const objectStorage = new ObjectStorageService()
 // directly to the returned uploadURL (Google Cloud Storage).
 uploadRoutes.post('/request-url', async (req: Request, res: Response) => {
   try {
-    const { name } = req.body
+    const { name, size, contentType } = req.body
     if (!name) return res.status(400).json({ error: 'File name is required' })
+
+    // A valid, positive size is required so the size limit cannot be
+    // bypassed by simply omitting it.
+    if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) {
+      return res.status(400).json({ error: 'A valid file size is required' })
+    }
+
+    // Reject oversized or unsupported files before issuing an upload URL.
+    const validation = validateUpload({ name, size, mimeType: contentType }, UPLOAD_MAX_BYTES)
+    if (!validation.ok) return res.status(400).json({ error: validation.error })
 
     const uploadURL = await objectStorage.getObjectEntityUploadURL()
     const objectPath = objectStorage.normalizeObjectEntityPath(uploadURL)

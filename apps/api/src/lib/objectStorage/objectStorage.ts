@@ -221,6 +221,27 @@ export class ObjectStorageService {
     return normalizedPath;
   }
 
+  // Reads the actual stored size/contentType of an uploaded object.
+  // This is authoritative (the real bytes in storage), unlike the size
+  // a client claims at request-url time.
+  async getObjectEntityMetadata(
+    objectPath: string,
+  ): Promise<{ size: number; contentType?: string }> {
+    const objectFile = await this.getObjectEntityFile(objectPath);
+    const [metadata] = await objectFile.getMetadata();
+    const rawSize = metadata.size;
+    const size =
+      typeof rawSize === "number"
+        ? rawSize
+        : typeof rawSize === "string"
+          ? Number(rawSize)
+          : NaN;
+    return {
+      size: Number.isFinite(size) ? size : NaN,
+      contentType: metadata.contentType,
+    };
+  }
+
   // Checks if the user can access the object entity.
   async canAccessObjectEntity({
     userId,

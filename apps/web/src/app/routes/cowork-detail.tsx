@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
+import { validateUpload } from '@nexus/shared'
 import { useCoworkSpace, useMembers, useCreateCoworkTask, usePostActivity, useUpdateCoworkSpace, useAttachCoworkFile, useUpdateTask } from '@/hooks/useData'
 import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/appStore'
@@ -789,8 +790,21 @@ function FilesTab({ documents, spaceId, onRefresh }: { documents: any[]; spaceId
     e.target.value = ''
     if (!file) return
 
-    setUploading(true)
     setUploadError(null)
+
+    // Pre-check size/type before hitting the network. The server enforces
+    // the same rules authoritatively, but this gives instant feedback.
+    const precheck = validateUpload({
+      name: file.name,
+      size: file.size,
+      mimeType: file.type || undefined,
+    })
+    if (!precheck.ok) {
+      setUploadError(precheck.error ?? 'This file cannot be uploaded.')
+      return
+    }
+
+    setUploading(true)
     try {
       // 1) Ask the API for a presigned upload URL (metadata only).
       const { data } = await api.post('/uploads/request-url', {
@@ -817,9 +831,16 @@ function FilesTab({ documents, spaceId, onRefresh }: { documents: any[]; spaceId
         type: 'OTHER',
       })
       onRefresh()
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to upload file:', err)
-      setUploadError('Failed to upload file. Please try again.')
+      // Surface a server-provided rejection reason (oversized / unsupported
+      // type) when available; otherwise fall back to a generic message.
+      const serverError = err?.response?.data?.error
+      setUploadError(
+        typeof serverError === 'string' && serverError
+          ? serverError
+          : 'Failed to upload file. Please try again.'
+      )
     } finally {
       setUploading(false)
     }

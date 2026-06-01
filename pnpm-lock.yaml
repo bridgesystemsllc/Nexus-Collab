@@ -134,6 +134,9 @@ importers:
       '@clerk/clerk-react':
         specifier: ^5.0.0
         version: 5.61.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@nexus/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@tanstack/react-query':
         specifier: ^5.60.0
         version: 5.100.14(react@18.3.1)
