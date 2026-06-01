@@ -118,6 +118,14 @@ export function useUpdateTask() {
   })
 }
 
+export function useDeleteTask() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/tasks/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  })
+}
+
 export function useAddTaskNote() {
   const qc = useQueryClient()
   return useMutation({

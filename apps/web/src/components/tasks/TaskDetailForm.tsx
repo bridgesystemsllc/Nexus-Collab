@@ -8,8 +8,10 @@ import {
   Clock,
   Loader2,
   MessageSquare,
+  Plus,
   Save,
   Send,
+  Trash2,
   User,
 } from 'lucide-react'
 import { FullPageForm } from '@/components/shared/FullPageForm'
@@ -19,6 +21,8 @@ import { useAppStore, type ActiveForm } from '@/stores/appStore'
 import {
   useTask,
   useUpdateTask,
+  useCreateTask,
+  useDeleteTask,
   useAddTaskNote,
   useMembers,
   useDepartments,
@@ -63,6 +67,8 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
 
   const { data: task, isLoading } = useTask(taskId)
   const updateTask = useUpdateTask()
+  const createTask = useCreateTask()
+  const deleteTask = useDeleteTask()
   const addNote = useAddTaskNote()
   const { data: members } = useMembers()
   const { data: departments } = useDepartments()
@@ -74,6 +80,7 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [noteText, setNoteText] = useState('')
+  const [subtaskText, setSubtaskText] = useState('')
   const [showStatusMenu, setShowStatusMenu] = useState(false)
   const [showPriorityMenu, setShowPriorityMenu] = useState(false)
   const [saveError, setSaveError] = useState('')
@@ -118,6 +125,28 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
       { id: sub.id, status: next, completedAt: next === 'COMPLETE' ? new Date().toISOString() : null },
       { onSuccess: refreshTask },
     )
+  }
+
+  function handleAddSubtask() {
+    if (!taskId || !subtaskText.trim()) return
+    setSaveError('')
+    createTask.mutate(
+      { title: subtaskText.trim(), parentId: taskId, departmentId: task?.departmentId ?? undefined },
+      {
+        onSuccess: () => { setSubtaskText(''); refreshTask() },
+        onError: (err: any) =>
+          setSaveError(err?.response?.data?.error || err?.message || 'Failed to add subtask'),
+      },
+    )
+  }
+
+  function handleDeleteSubtask(sub: any) {
+    setSaveError('')
+    deleteTask.mutate(sub.id, {
+      onSuccess: refreshTask,
+      onError: (err: any) =>
+        setSaveError(err?.response?.data?.error || err?.message || 'Failed to delete subtask'),
+    })
   }
 
   function handleAddNote() {
@@ -336,6 +365,24 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
                 Subtasks{task.subtasks?.length ? ` (${task.subtasks.length})` : ''}
               </h3>
             </div>
+            <div className="flex gap-2 mb-3">
+              <input
+                type="text"
+                value={subtaskText}
+                onChange={(e) => setSubtaskText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask() }}
+                placeholder="Add a subtask…"
+                className="flex-1 px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)] transition-colors"
+              />
+              <button
+                onClick={handleAddSubtask}
+                disabled={!subtaskText.trim() || createTask.isPending}
+                className="px-3 py-2 rounded-xl bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+                title="Add subtask"
+              >
+                {createTask.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              </button>
+            </div>
             {task.subtasks?.length > 0 ? (
               <div className="space-y-1.5">
                 {task.subtasks.map((sub: any) => {
@@ -343,7 +390,7 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
                   return (
                     <div
                       key={sub.id}
-                      className="flex items-center gap-3 p-3 rounded-xl bg-[var(--bg-base)] border border-[var(--border-subtle)]"
+                      className="group flex items-center gap-3 p-3 rounded-xl bg-[var(--bg-base)] border border-[var(--border-subtle)]"
                     >
                       <button
                         onClick={() => toggleSubtask(sub)}
@@ -366,12 +413,20 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
                       >
                         {STATUS_OPTIONS.find((s) => s.value === sub.status)?.label ?? sub.status?.replace(/_/g, ' ')}
                       </span>
+                      <button
+                        onClick={() => handleDeleteSubtask(sub)}
+                        disabled={deleteTask.isPending}
+                        className="flex-shrink-0 p-1 rounded-md text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 hover:text-[var(--danger)] hover:bg-[var(--bg-overlay)] transition-all disabled:opacity-40"
+                        title="Delete subtask"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   )
                 })}
               </div>
             ) : (
-              <p className="text-sm text-[var(--text-tertiary)] py-2">No subtasks</p>
+              <p className="text-sm text-[var(--text-tertiary)] py-2">No subtasks yet</p>
             )}
           </div>
 
