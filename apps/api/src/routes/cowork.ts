@@ -194,23 +194,72 @@ coworkRoutes.get('/:id/activity', async (req: Request, res: Response) => {
 // ─── Post activity ──────────────────────────────────────────
 coworkRoutes.post('/:id/activity', async (req: Request, res: Response) => {
   try {
+    const spaceId = req.params.id as string
     const activity = await prisma.activity.create({
       data: {
         type: req.body.type || 'UPDATE',
         content: req.body.content,
-        coworkSpaceId: req.params.id as string,
+        coworkSpaceId: spaceId,
         authorId: req.body.authorId,
         metadata: req.body.metadata,
       },
       include: { author: { select: { id: true, name: true, avatar: true } } },
     })
-    io.to(`space:${req.params.id as string}`).emit('activity_new', { spaceId: req.params.id as string, activity })
+    io.to(`space:${spaceId}`).emit('activity_new', { spaceId, activity })
+
+    // Notify any tagged coworkers via the Pulse feed.
+    await notifyTaggedMembers(spaceId, activity)
+
     res.status(201).json(activity)
   } catch (error) {
     console.error('[cowork] POST /:id/activity error:', error)
     res.status(500).json({ error: 'Failed to post activity' })
   }
 })
+
+// ─── Notify tagged coworkers about a new activity ───────────
+async function notifyTaggedMembers(spaceId: string, activity: any) {
+  try {
+    const tagged = activity?.metadata?.taggedMembers
+    if (!Array.isArray(tagged) || tagged.length === 0) return
+
+    const targetIds = Array.from(
+      new Set(
+        tagged
+          .map((t: any) => (typeof t === 'string' ? t : t?.id))
+          .filter((id: any): id is string => typeof id === 'string' && id.length > 0)
+          // Don't notify the author about their own tag.
+          .filter((id: string) => id !== activity.authorId),
+      ),
+    )
+    if (targetIds.length === 0) return
+
+    const space = await prisma.coworkSpace.findUnique({
+      where: { id: spaceId },
+      select: { name: true },
+    })
+    const spaceName = space?.name || 'a space'
+    const authorName = activity.author?.name || 'Someone'
+
+    const content = (activity.content || '').trim()
+    const snippet = content.length > 140 ? `${content.slice(0, 137)}…` : content
+    const message = snippet
+      ? `${authorName} tagged you in ${spaceName}: "${snippet}"`
+      : `${authorName} tagged you in ${spaceName}`
+
+    await prisma.pulse.createMany({
+      data: targetIds.map((targetId) => ({
+        type: 'SIGNAL',
+        message,
+        targetId,
+        metadata: { spaceId, activityId: activity.id, taggedBy: activity.authorId ?? null },
+      })),
+    })
+  } catch (error) {
+    // Notification failure shouldn't block the activity from being posted.
+    console.error('[cowork] notifyTaggedMembers error:', error)
+  }
+}
 
 // ─── Get shared tasks ───────────────────────────────────────
 coworkRoutes.get('/:id/tasks', async (req: Request, res: Response) => {

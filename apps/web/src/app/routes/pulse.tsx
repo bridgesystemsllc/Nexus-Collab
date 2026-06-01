@@ -11,6 +11,7 @@ import {
 import { formatDistanceToNow } from 'date-fns'
 import { usePulse, useMarkPulseRead, useMarkAllPulseRead } from '@/hooks/useData'
 import { useUserStore } from '@/stores/userStore'
+import { useAppStore } from '@/stores/appStore'
 import { ModuleHeader } from '@/components/ModuleHeader'
 
 type PulseType = 'ALL' | 'ALERT' | 'SIGNAL' | 'HEARTBEAT' | 'BROADCAST'
@@ -37,6 +38,7 @@ export function PulsePage() {
   const [activeTab, setActiveTab] = useState<PulseType>('ALL')
   const currentUser = useUserStore((s) => s.currentUser)
   const firstName = currentUser?.firstName || 'User'
+  const setSelectedCowork = useAppStore((s) => s.setSelectedCowork)
 
   const filters = useMemo(() => {
     const f: Record<string, string> = {}
@@ -135,6 +137,8 @@ export function PulsePage() {
                 }}
                 onClick={() => {
                   if (isUnread) markRead.mutate(pulse.id)
+                  const spaceId = pulse.metadata?.spaceId
+                  if (spaceId) setSelectedCowork(spaceId)
                 }}
               >
                 <div className="relative z-10 flex gap-4 w-full">

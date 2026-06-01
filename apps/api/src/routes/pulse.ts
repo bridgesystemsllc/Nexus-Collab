@@ -6,11 +6,13 @@ export const pulseRoutes: ReturnType<typeof Router> = Router()
 // ─── List pulse notifications ───────────────────────────────
 pulseRoutes.get('/', async (req: Request, res: Response) => {
   try {
-    const { type, page = '1', limit = '20' } = req.query
+    const { type, userId, page = '1', limit = '20' } = req.query
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string)
 
     const where: any = {}
     if (type) where.type = type
+    // Scope to the current user: their targeted pulses + global (untargeted) ones.
+    if (userId) where.OR = [{ targetId: userId as string }, { targetId: null }]
 
     const [pulses, total, unread] = await Promise.all([
       prisma.pulse.findMany({
@@ -20,7 +22,7 @@ pulseRoutes.get('/', async (req: Request, res: Response) => {
         take: parseInt(limit as string),
       }),
       prisma.pulse.count({ where }),
-      prisma.pulse.count({ where: { read: false } }),
+      prisma.pulse.count({ where: { ...where, read: false } }),
     ])
 
     res.json({ pulses, total, unread })
