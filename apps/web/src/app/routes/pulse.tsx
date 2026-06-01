@@ -55,7 +55,7 @@ export function PulsePage() {
   const markAllRead = useMarkAllPulseRead()
 
   const items = (Array.isArray(pulses) ? pulses : (pulses as any)?.pulses ?? []) as any[]
-  const unreadCount = items.filter((p: any) => !p.readAt).length
+  const unreadCount = items.filter((p: any) => !p.read).length
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -121,7 +121,7 @@ export function PulsePage() {
               color: 'var(--text-tertiary)',
             }
             const Icon = config.icon
-            const isUnread = !pulse.readAt
+            const isUnread = !pulse.read
             const timestamp = pulse.createdAt
               ? formatDistanceToNow(new Date(pulse.createdAt), { addSuffix: true })
               : ''
