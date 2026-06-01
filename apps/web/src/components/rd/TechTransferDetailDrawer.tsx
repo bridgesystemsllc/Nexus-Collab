@@ -4,6 +4,7 @@ import {
   Play, SkipForward, Lock, Users, FileText, MessageSquare, Plus, Trash2,
 } from 'lucide-react'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
+import { AddToCowork } from '@/components/shared/AddToCowork'
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ interface StageTask {
 }
 
 interface Stage {
+  id?: string
   name: string
   status: 'pending' | 'in_progress' | 'complete' | 'blocked' | 'skipped'
   assignee: string
@@ -209,6 +211,11 @@ export function TechTransferDetailDrawer({
   const [selectedStageIndex, setSelectedStageIndex] = useState(0)
   const [stageNotes, setStageNotes] = useState('')
 
+  // Status board (post-completion PM feed)
+  const [statusUpdates, setStatusUpdates] = useState<any[]>([])
+  const [newStatusLabel, setNewStatusLabel] = useState('')
+  const [newStatusNote, setNewStatusNote] = useState('')
+
   // Initialize stages from transfer data or defaults
   useEffect(() => {
     if (!transfer) return
@@ -217,6 +224,7 @@ export function TechTransferDetailDrawer({
     } else {
       setStages(buildDefaultStages(transfer.transferType))
     }
+    setStatusUpdates(Array.isArray(transfer.statusUpdates) ? transfer.statusUpdates : [])
   }, [transfer])
 
   // Sync notes textarea when stage selection changes
@@ -244,6 +252,37 @@ export function TechTransferDetailDrawer({
   )
 
   const selectedStage = stages[selectedStageIndex] || null
+
+  const isComplete = useMemo(
+    () =>
+      transfer?.status === 'Complete' ||
+      progress === 100 ||
+      (stages.length > 0 && stages.every((s) => s.status === 'complete' || s.status === 'skipped')),
+    [transfer, progress, stages],
+  )
+
+  const knownStatuses = useMemo(() => {
+    const defaults = ['Handed Off', 'In Production', 'First Article Approved', 'Validated', 'On Hold', 'Closed']
+    const used = statusUpdates.map((u) => u.status).filter(Boolean)
+    return Array.from(new Set([...defaults, ...used]))
+  }, [statusUpdates])
+
+  function addStatusUpdate() {
+    const label = newStatusLabel.trim()
+    if (!label) return
+    const entry = {
+      id: generateId(),
+      status: label,
+      note: newStatusNote.trim(),
+      createdBy: 'You',
+      createdAt: new Date().toISOString(),
+    }
+    const updated = [...statusUpdates, entry]
+    setStatusUpdates(updated)
+    onUpdate({ statusUpdates: updated })
+    setNewStatusLabel('')
+    setNewStatusNote('')
+  }
 
   // ── Stage Completion Logic ──────────────────────────────
 
@@ -424,6 +463,10 @@ export function TechTransferDetailDrawer({
 
             {/* Action buttons */}
             <div className="flex items-center gap-2 ml-4 shrink-0">
+              <AddToCowork
+                item={{ name: transfer.product || transfer.productName || 'Untitled Transfer', type: 'Transfer', id: transfer.id, description: `${transfer.fromCM || transfer.from || '—'} → ${transfer.toCM || transfer.to || '—'}` }}
+                variant="ghost"
+              />
               <button
                 onClick={handleAdvanceStage}
                 disabled={activeStageIndex < 0}
@@ -469,6 +512,110 @@ export function TechTransferDetailDrawer({
 
         {/* ── Scrollable Body ─────────────────────────────── */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+          {/* Status Board — appears once the transfer is complete / handed off */}
+          {isComplete && (
+            <div>
+              <SectionHeader icon={CheckCircle2} label="Project Status Board" />
+
+              {/* Source / brief + product info */}
+              <div className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 mb-4">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
+                  <div>
+                    <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5 font-medium">Product</p>
+                    <p className="text-[13px] font-medium text-[var(--text-primary)]">{transfer.product || transfer.productName || '\u2014'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5 font-medium">Transfer Type</p>
+                    <p className="text-[13px] text-[var(--text-primary)]">{transferTypeLabel}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5 font-medium">Source &rarr; Destination</p>
+                    <p className="text-[13px] text-[var(--text-primary)]">{transfer.fromCM || transfer.from || '\u2014'} <span className="mx-1 text-[var(--text-tertiary)]">&rarr;</span> {transfer.toCM || transfer.to || '\u2014'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5 font-medium">Requester</p>
+                    <p className="text-[13px] text-[var(--text-primary)]">{transfer.requesterName || '\u2014'}</p>
+                  </div>
+                  {(transfer.linkedBriefName || transfer.linkedBriefId) && (
+                    <div>
+                      <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5 font-medium">Linked Brief</p>
+                      <span className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--accent)]">
+                        <FileText size={11} /> {transfer.linkedBriefName || 'Linked Brief'}
+                      </span>
+                    </div>
+                  )}
+                  {(transfer.targetCompletionDate || transfer.targetDate || transfer.target) && (
+                    <div>
+                      <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5 font-medium">Target</p>
+                      <p className="text-[13px] text-[var(--text-primary)]">{formatDate(transfer.targetCompletionDate || transfer.targetDate || transfer.target)}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Add status update */}
+              <div className="rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-subtle)] p-3 mb-4 space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <input
+                    list="tt-status-options"
+                    value={newStatusLabel}
+                    onChange={(e) => setNewStatusLabel(e.target.value)}
+                    placeholder="Status (e.g. Handed Off) — pick or type your own"
+                    className="flex-1 px-2.5 py-1.5 rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-input)] text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)]"
+                  />
+                  <datalist id="tt-status-options">
+                    {knownStatuses.map((s) => <option key={s} value={s} />)}
+                  </datalist>
+                  <button
+                    onClick={addStatusUpdate}
+                    disabled={!newStatusLabel.trim()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[12px] font-semibold text-white bg-[var(--accent)] hover:opacity-90 disabled:opacity-40 transition-colors whitespace-nowrap"
+                  >
+                    <Plus size={13} /> Add Update
+                  </button>
+                </div>
+                <textarea
+                  value={newStatusNote}
+                  onChange={(e) => setNewStatusNote(e.target.value)}
+                  rows={2}
+                  placeholder="Note (optional)"
+                  className="w-full px-2.5 py-1.5 rounded-[6px] border border-[var(--border-default)] bg-[var(--bg-input)] text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] resize-none"
+                />
+              </div>
+
+              {/* Chronological feed (most recent first) */}
+              {statusUpdates.length === 0 ? (
+                <p className="text-[13px] text-[var(--text-tertiary)] py-4 text-center">
+                  No status updates yet. Add the first update above.
+                </p>
+              ) : (
+                <div className="space-y-0">
+                  {[...statusUpdates].reverse().map((entry: any, i: number, arr: any[]) => (
+                    <div key={entry.id || i} className="flex gap-3 py-2.5">
+                      <div className="flex flex-col items-center">
+                        <div className="w-2.5 h-2.5 rounded-full bg-[var(--accent)] mt-1.5 flex-shrink-0" />
+                        {i < arr.length - 1 && <div className="w-px flex-1 bg-[var(--border-subtle)] mt-1" />}
+                      </div>
+                      <div className="flex-1 min-w-0 pb-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[var(--accent-subtle)] text-[var(--accent)]">
+                            {entry.status}
+                          </span>
+                          <span className="text-[11px] text-[var(--text-tertiary)]">
+                            {entry.createdBy || 'System'} &middot; {formatTimestamp(entry.createdAt)}
+                          </span>
+                        </div>
+                        {entry.note && (
+                          <p className="text-[13px] text-[var(--text-secondary)] mt-1 whitespace-pre-wrap leading-relaxed">{entry.note}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Section 1: Stage Pipeline (horizontal strip) */}
           <div>

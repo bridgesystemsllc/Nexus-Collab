@@ -62,7 +62,7 @@ const DEFAULT_MILESTONES = [
   'Transfer Complete',
 ]
 
-const STEPS = [
+export const STEPS = [
   'Basic Info',
   'Transfer Details',
   'Timeline',
@@ -121,7 +121,7 @@ interface NewTransferModalProps {
 
 // ─── Validation ────────────────────────────────────────────
 
-function validateStep(step: number, form: TransferFormData): Record<string, string> {
+export function validateStep(step: number, form: TransferFormData): Record<string, string> {
   const errors: Record<string, string> = {}
   if (step === 0) {
     if (!form.product?.trim()) errors.product = 'Product name is required'
@@ -288,7 +288,7 @@ interface StepProps {
 
 // ─── Step 1 — Basic Info ───────────────────────────────────
 
-function Step1({ form, setForm, errors, briefItems }: StepProps) {
+export function Step1({ form, setForm, errors, briefItems }: StepProps) {
   const [briefSearch, setBriefSearch] = useState('')
   const [showBriefDropdown, setShowBriefDropdown] = useState(false)
 
@@ -445,7 +445,7 @@ function Step1({ form, setForm, errors, briefItems }: StepProps) {
 
 // ─── Step 2 — Transfer Details ─────────────────────────────
 
-function Step2({ form, setForm, errors, cmItems }: StepProps) {
+export function Step2({ form, setForm, errors, cmItems }: StepProps) {
   const cmOptions = cmItems?.map((c: any) => c.name || c) || CM_OPTIONS
 
   return (
@@ -560,7 +560,7 @@ function Step2({ form, setForm, errors, cmItems }: StepProps) {
 
 // ─── Step 3 — Timeline ─────────────────────────────────────
 
-function Step3({ form, setForm }: StepProps) {
+export function Step3({ form, setForm }: StepProps) {
   const updateMilestoneDate = (index: number, date: string) => {
     const milestones = [...form.milestones]
     milestones[index] = { ...milestones[index], targetDate: date }
@@ -613,7 +613,7 @@ function Step3({ form, setForm }: StepProps) {
 
 // ─── Step 4 — Documents ────────────────────────────────────
 
-function Step4({ form, setForm }: StepProps) {
+export function Step4({ form, setForm }: StepProps) {
   const [showLinkForm, setShowLinkForm] = useState(false)
   const [linkName, setLinkName] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
@@ -757,7 +757,7 @@ function Step4({ form, setForm }: StepProps) {
 
 // ─── Step 5 — Team ─────────────────────────────────────────
 
-function Step5({ form, setForm }: StepProps) {
+export function Step5({ form, setForm }: StepProps) {
   const addMember = () => {
     setForm({ ...form, teamMembers: [...form.teamMembers, { name: '', role: '' }] })
   }

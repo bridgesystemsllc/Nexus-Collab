@@ -70,7 +70,7 @@ const DEFAULT_TEAM: { role: string }[] = [
   { role: 'Amazon/Operations' },
 ]
 
-const EMPTY_NPD_FORM: NPDFormData = {
+export const EMPTY_NPD_FORM: NPDFormData = {
   projectName: '',
   brand: '',
   subBrand: '',
@@ -111,18 +111,25 @@ const CATEGORIES = ['Skincare', 'Haircare', 'Bodycare', 'OTC Drug', 'Color Cosme
 const PRIORITIES = ['Critical', 'High', 'Standard']
 const MARKET_OPTIONS = ['USA', 'Amazon', 'Canada', 'UK', 'Asia', 'Global', 'Other']
 
-const STEPS = ['Project Setup', 'Business & Commercial', 'Team Assignment', 'Stage Target Dates']
-const STEP_ICONS = [Briefcase, DollarSign, Users, Calendar]
+export const STEPS = ['Project Setup', 'Business & Commercial', 'Team Assignment', 'Stage Target Dates']
+export const STEP_ICONS = [Briefcase, DollarSign, Users, Calendar]
 
 interface Props {
   open: boolean
   onClose: () => void
   onSubmit: (data: NPDFormData) => void
   isSubmitting: boolean
+  briefItems?: any[]
+  formulationItems?: any[]
+}
+
+export interface IdOption {
+  id: string
+  label: string
 }
 
 // ─── Validation ────────────────────────────────────────────
-function validateStep(step: number, form: NPDFormData): Record<string, string> {
+export function validateStep(step: number, form: NPDFormData): Record<string, string> {
   const errors: Record<string, string> = {}
   if (step === 0) {
     if (!form.projectName.trim()) errors.projectName = 'Project name is required'
@@ -246,6 +253,33 @@ function Select({
   )
 }
 
+function IdSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  options: IdOption[]
+  placeholder?: string
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] outline-none transition-all focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(47,128,237,0.12)]"
+    >
+      <option value="">{placeholder || 'Select...'}</option>
+      {options.map((o) => (
+        <option key={o.id} value={o.id}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 // ─── Toggle Switch ────────────────────────────────────────
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -273,7 +307,13 @@ interface StepProps {
 }
 
 // ─── Step 1: Project Setup ─────────────────────────────────
-function StepProjectSetup({ form, setForm, errors }: StepProps) {
+export function StepProjectSetup({
+  form,
+  setForm,
+  errors,
+  briefOptions = [],
+  formulationOptions = [],
+}: StepProps & { briefOptions?: IdOption[]; formulationOptions?: IdOption[] }) {
   return (
     <div className="space-y-5">
       <FormField label="Project Name" required error={errors.projectName}>
@@ -331,18 +371,20 @@ function StepProjectSetup({ form, setForm, errors }: StepProps) {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <FormField label="Linked Brief ID">
-          <TextInput
+        <FormField label="Linked Brief">
+          <IdSelect
             value={form.linkedBriefId}
             onChange={(v) => setForm({ ...form, linkedBriefId: v })}
-            placeholder="Search or enter brief ID"
+            options={briefOptions}
+            placeholder={briefOptions.length ? 'Select a brief' : 'No briefs available'}
           />
         </FormField>
-        <FormField label="Linked Formulation ID">
-          <TextInput
+        <FormField label="Linked Formulation">
+          <IdSelect
             value={form.linkedFormulationId}
             onChange={(v) => setForm({ ...form, linkedFormulationId: v })}
-            placeholder="Search or enter formulation ID"
+            options={formulationOptions}
+            placeholder={formulationOptions.length ? 'Select a formulation' : 'No formulations available'}
           />
         </FormField>
       </div>
@@ -369,7 +411,7 @@ function StepProjectSetup({ form, setForm, errors }: StepProps) {
 }
 
 // ─── Step 2: Business & Commercial ─────────────────────────
-function StepBusinessCommercial({ form, setForm }: StepProps) {
+export function StepBusinessCommercial({ form, setForm }: StepProps) {
   const toggleMarket = (market: string) => {
     const markets = form.markets.includes(market)
       ? form.markets.filter((m) => m !== market)
@@ -673,7 +715,7 @@ function MemberSelect({
 }
 
 // ─── Step 3: Team Assignment ───────────────────────────────
-function StepTeamAssignment({ form, setForm }: StepProps) {
+export function StepTeamAssignment({ form, setForm }: StepProps) {
   const { data: members = [] } = useMembers()
 
   const updateAssignee = (index: number, val: { memberId: string; assignedName: string }) => {
@@ -727,7 +769,7 @@ const STAGE_DATE_FIELDS: { key: keyof NPDFormData['stageDates']; label: string }
   { key: 'stage4Target', label: 'Stage 4 - Testing & Validation' },
 ]
 
-function StepStageDates({ form, setForm }: StepProps) {
+export function StepStageDates({ form, setForm }: StepProps) {
   const updateStageDate = (key: keyof NPDFormData['stageDates'], value: string) => {
     setForm({
       ...form,
@@ -784,10 +826,19 @@ function StepStageDates({ form, setForm }: StepProps) {
 }
 
 // ─── Main Modal ────────────────────────────────────────────
-export function NewNPDProjectModal({ open, onClose, onSubmit, isSubmitting }: Props) {
+export function NewNPDProjectModal({ open, onClose, onSubmit, isSubmitting, briefItems = [], formulationItems = [] }: Props) {
   const [step, setStep] = useState(0)
   const [form, setForm] = useState<NPDFormData>(EMPTY_NPD_FORM)
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  const briefOptions: IdOption[] = briefItems.map((item: any) => {
+    const d = item.data || item
+    return { id: item.id, label: d.projectName || d.name || 'Untitled Brief' }
+  })
+  const formulationOptions: IdOption[] = formulationItems.map((item: any) => {
+    const d = item.data || item
+    return { id: item.id, label: [d.product, d.ver].filter(Boolean).join(' · ') || 'Untitled Formulation' }
+  })
 
   useEffect(() => {
     if (open) {
@@ -892,7 +943,7 @@ export function NewNPDProjectModal({ open, onClose, onSubmit, isSubmitting }: Pr
 
         {/* Scrollable form body */}
         <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
-          {step === 0 && <StepProjectSetup form={form} setForm={setForm} errors={errors} />}
+          {step === 0 && <StepProjectSetup form={form} setForm={setForm} errors={errors} briefOptions={briefOptions} formulationOptions={formulationOptions} />}
           {step === 1 && <StepBusinessCommercial form={form} setForm={setForm} errors={errors} />}
           {step === 2 && <StepTeamAssignment form={form} setForm={setForm} errors={errors} />}
           {step === 3 && <StepStageDates form={form} setForm={setForm} errors={errors} />}

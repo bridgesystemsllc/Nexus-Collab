@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
+import { AddToCowork } from '@/components/shared/AddToCowork'
 import {
   X,
   Edit3,
@@ -414,6 +415,10 @@ export function ArtworkProjectDetail({ open, project, onClose, onProjectUpdate }
                 </h2>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                <AddToCowork
+                  item={{ name: project.artworkName, type: 'Artwork', id: project.id, description: `Artwork — ${project.brand}` }}
+                  variant="ghost"
+                />
                 <button
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border border-[var(--border-default)] transition-all"
                   onClick={() => { /* placeholder edit */ }}

@@ -31,7 +31,7 @@ const ORIENTATION_OPTIONS = ['Upright', 'Inverted', 'Horizontal']
 const CLOSURE_SUBTYPE_OPTIONS = ['Screw Cap', 'Flip Top', 'Disc Top', 'Press Cap', 'Snap Cap', 'Overcap', 'Dropper Cap', 'Pump Cap', 'Mist Sprayer', 'Tamper Evident']
 const SUPPLIED_AS_OPTIONS = ['Liquid', 'Powder', 'Paste', 'Flake', 'Pellet', 'Solution', 'Emulsion', 'Other']
 
-const STEPS = [
+export const STEPS = [
   'Component Identity',
   'Physical Specifications',
   'Vendor & Sourcing',
@@ -151,7 +151,7 @@ const EMPTY_TIER: MOQTierForm = {
   totalLandedCost: 0,
 }
 
-const EMPTY_FORM: ComponentFormData = {
+export const EMPTY_FORM: ComponentFormData = {
   name: '',
   partNumber: generatePartNumber(),
   type: 'Primary Packaging',
@@ -193,7 +193,7 @@ const EMPTY_FORM: ComponentFormData = {
 
 // ─── Validation ────────────────────────────────────────────
 
-function validateStep(step: number, form: ComponentFormData): Record<string, string> {
+export function validateStep(step: number, form: ComponentFormData): Record<string, string> {
   const errors: Record<string, string> = {}
   if (step === 0) {
     if (!form.name.trim()) errors.name = 'Component name is required'
@@ -399,7 +399,7 @@ interface StepProps {
 
 // ─── Step 1 — Component Identity ──────────────────────────
 
-function Step1({ form, setForm, errors }: StepProps) {
+export function Step1({ form, setForm, errors }: StepProps) {
   return (
     <div className="space-y-5">
       <FormField label="Component Name" required error={errors.name}>
@@ -496,7 +496,7 @@ function Step1({ form, setForm, errors }: StepProps) {
 
 // ─── Step 2 — Physical Specifications ─────────────────────
 
-function Step2({ form, setForm }: StepProps) {
+export function Step2({ form, setForm }: StepProps) {
   const specs = form.typeSpecs
   const setSpec = (key: string, value: any) => {
     setForm({ ...form, typeSpecs: { ...specs, [key]: value } })
@@ -710,7 +710,7 @@ function Step2({ form, setForm }: StepProps) {
 
 // ─── Step 3 — Vendor & Sourcing ───────────────────────────
 
-function Step3({ form, setForm, errors }: StepProps) {
+export function Step3({ form, setForm, errors }: StepProps) {
   const addVendor = () => {
     if (form.vendors.length < 5) {
       const newVendors = [...form.vendors, { ...EMPTY_VENDOR }]
@@ -905,7 +905,7 @@ function Step3({ form, setForm, errors }: StepProps) {
 
 // ─── Step 4 — MOQ & Cost Tiers ────────────────────────────
 
-function Step4({ form, setForm }: StepProps) {
+export function Step4({ form, setForm }: StepProps) {
   const [activeVendorIdx, setActiveVendorIdx] = useState(0)
 
   const tiers = form.moqTiers[activeVendorIdx] || []
@@ -1126,7 +1126,7 @@ function Step4({ form, setForm }: StepProps) {
 
 // ─── Step 5 — Feasibility & Testing ──────────────────────
 
-function Step5({ form, setForm }: StepProps) {
+export function Step5({ form, setForm }: StepProps) {
   return (
     <div className="space-y-5">
       <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">Key Dates</h3>

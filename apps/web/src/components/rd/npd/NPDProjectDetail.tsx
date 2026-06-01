@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo, useCallback } from 'react'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
+import { AddToCowork } from '@/components/shared/AddToCowork'
 import {
   AlertTriangle,
   Check,
@@ -1221,6 +1222,10 @@ export function NPDProjectDetail({
             <h2 className="text-lg font-semibold text-[var(--text-primary)] truncate flex-1">
               {project.projectName}
             </h2>
+            <AddToCowork
+              item={{ name: project.projectName, type: 'NPD', id: project.id, description: `NPD Project — ${project.brand}${project.category ? ` · ${project.category}` : ''}` }}
+              variant="ghost"
+            />
             <button className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium btn-ghost">
               <Edit3 size={14} /> Edit
             </button>

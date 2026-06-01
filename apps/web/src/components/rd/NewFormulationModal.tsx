@@ -61,7 +61,7 @@ export interface FormulationFormData {
   updatedAt: string
 }
 
-const EMPTY_FORM: FormulationFormData = {
+export const EMPTY_FORM: FormulationFormData = {
   product: '',
   brand: '',
   category: '',
@@ -121,7 +121,7 @@ const RESTRICTED_OPTIONS = [
   'Clean Beauty Compliant',
 ]
 
-const STEPS = [
+export const STEPS = [
   'Basic Info',
   'Formula Content',
   'Regulatory',
@@ -142,7 +142,7 @@ interface NewFormulationModalProps {
 
 // ─── Validation ────────────────────────────────────────────
 
-function validateStep(step: number, form: FormulationFormData): Record<string, string> {
+export function validateStep(step: number, form: FormulationFormData): Record<string, string> {
   const errors: Record<string, string> = {}
   if (step === 0) {
     if (!form.product.trim()) errors.product = 'Product name is required'
@@ -275,7 +275,7 @@ interface StepProps {
 
 // ─── Step 1: Basic Info ───────────────────────────────────
 
-function Step1({ form, setForm, errors, briefItems }: StepProps) {
+export function Step1({ form, setForm, errors, briefItems }: StepProps) {
   const [briefSearch, setBriefSearch] = useState('')
 
   const filteredBriefs = briefItems?.filter(
@@ -434,7 +434,7 @@ function Step1({ form, setForm, errors, briefItems }: StepProps) {
 
 // ─── Step 2: Formula Content ──────────────────────────────
 
-function Step2({ form, setForm }: StepProps) {
+export function Step2({ form, setForm }: StepProps) {
   const [otherRestricted, setOtherRestricted] = useState('')
   const hasOther = form.restrictedIngredients.some((r) => !RESTRICTED_OPTIONS.includes(r))
 
@@ -556,7 +556,7 @@ function Step2({ form, setForm }: StepProps) {
 
 // ─── Step 3: Regulatory ───────────────────────────────────
 
-function Step3({ form, setForm }: StepProps) {
+export function Step3({ form, setForm }: StepProps) {
   const toggleCountry = (country: string) => {
     const updated = form.countryRegistrations.includes(country)
       ? form.countryRegistrations.filter((c) => c !== country)
@@ -646,7 +646,7 @@ function Step3({ form, setForm }: StepProps) {
 
 // ─── Step 4: Documents ────────────────────────────────────
 
-function Step4({ form, setForm }: StepProps) {
+export function Step4({ form, setForm }: StepProps) {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files) return
@@ -890,7 +890,7 @@ function Step4({ form, setForm }: StepProps) {
 
 // ─── Step 5: Team & Notes ─────────────────────────────────
 
-function Step5({ form, setForm }: StepProps) {
+export function Step5({ form, setForm }: StepProps) {
   const addMember = () => {
     setForm({ ...form, teamMembers: [...form.teamMembers, { name: '', role: '' }] })
   }

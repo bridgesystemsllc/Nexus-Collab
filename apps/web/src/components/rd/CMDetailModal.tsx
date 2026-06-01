@@ -1,5 +1,7 @@
 import { useState, useMemo, useRef } from 'react'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
+import { IssueLogger, type Issue } from '@/components/rd/IssueLogger'
+import { AddToCowork } from '@/components/shared/AddToCowork'
 import {
   X,
   Edit3,
@@ -26,6 +28,7 @@ interface CMDetailModalProps {
   onClose: () => void
   onEdit: () => void
   onDelete: () => void
+  onUpdate?: (data: any) => void
   briefItems?: any[]
 }
 
@@ -124,105 +127,43 @@ function KPICell({
   )
 }
 
-// ─── Inline Issue Logger ───────────────────────────────────
+// ─── Issue Normalization ───────────────────────────────────
 
-function IssueLogger({ issues }: { issues: any[] }) {
-  const [expanded, setExpanded] = useState<string | null>(null)
-
-  if (!issues || issues.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-8 text-[13px] text-[var(--text-tertiary)]">
-        No issues logged for this CM.
-      </div>
-    )
+function normalizePriority(p: any): Issue['priority'] {
+  switch (String(p || '').toLowerCase()) {
+    case 'critical': return 'Critical'
+    case 'high': return 'High'
+    case 'low': return 'Low'
+    default: return 'Medium'
   }
+}
 
-  const severityColor = (severity: string) => {
-    switch (severity?.toLowerCase()) {
-      case 'critical':
-        return { bg: 'var(--danger-light)', text: 'var(--danger)' }
-      case 'high':
-        return { bg: 'var(--warning-light)', text: 'var(--warning)' }
-      case 'medium':
-        return { bg: 'var(--info-light)', text: 'var(--info)' }
-      case 'low':
-        return { bg: 'var(--bg-hover)', text: 'var(--text-tertiary)' }
-      default:
-        return { bg: 'var(--bg-hover)', text: 'var(--text-tertiary)' }
-    }
+function normalizeStatus(s: any): Issue['status'] {
+  switch (String(s || '').toLowerCase()) {
+    case 'resolved':
+    case 'closed': return 'Resolved'
+    case 'in review':
+    case 'in progress': return 'In Review'
+    default: return 'Open'
   }
+}
 
-  const statusColor = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'open':
-        return { bg: 'var(--danger-light)', text: 'var(--danger)' }
-      case 'in progress':
-        return { bg: 'var(--warning-light)', text: 'var(--warning)' }
-      case 'resolved':
-        return { bg: 'var(--success-light)', text: 'var(--success)' }
-      case 'closed':
-        return { bg: 'var(--bg-hover)', text: 'var(--text-tertiary)' }
-      default:
-        return { bg: 'var(--bg-hover)', text: 'var(--text-tertiary)' }
-    }
+function normalizeIssue(iss: any, i: number): Issue {
+  return {
+    id: iss.id || `issue-${i}`,
+    description: iss.description || iss.title || 'Untitled Issue',
+    priority: normalizePriority(iss.priority ?? iss.severity),
+    category: iss.category,
+    reportedDate: iss.reportedDate || (iss.createdAt ? new Date(iss.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'),
+    status: normalizeStatus(iss.status),
+    assignedTo: iss.assignedTo,
+    resolutionNotes: iss.resolutionNotes,
   }
-
-  return (
-    <div className="space-y-2">
-      {issues.map((issue: any, i: number) => {
-        const id = issue.id || `issue-${i}`
-        const isExpanded = expanded === id
-        const sev = severityColor(issue.severity)
-        const stat = statusColor(issue.status)
-        return (
-          <div
-            key={id}
-            className="rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] overflow-hidden"
-          >
-            <button
-              onClick={() => setExpanded(isExpanded ? null : id)}
-              className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--bg-hover)] transition-colors"
-            >
-              <AlertTriangle size={14} style={{ color: sev.text }} />
-              <span className="flex-1 text-[13px] font-medium text-[var(--text-primary)] truncate">
-                {issue.title || issue.description?.slice(0, 60) || 'Untitled Issue'}
-              </span>
-              <span
-                className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold"
-                style={{ background: sev.bg, color: sev.text }}
-              >
-                {issue.severity || 'Medium'}
-              </span>
-              <span
-                className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold"
-                style={{ background: stat.bg, color: stat.text }}
-              >
-                {issue.status || 'Open'}
-              </span>
-              {isExpanded ? <ChevronUp size={14} className="text-[var(--text-tertiary)]" /> : <ChevronDown size={14} className="text-[var(--text-tertiary)]" />}
-            </button>
-            {isExpanded && (
-              <div className="px-4 pb-4 pt-1 border-t border-[var(--border-subtle)]">
-                {issue.description && (
-                  <p className="text-[13px] text-[var(--text-secondary)] mb-2">{issue.description}</p>
-                )}
-                <div className="flex gap-4 text-[12px] text-[var(--text-tertiary)]">
-                  {issue.reportedDate && <span>Reported: {issue.reportedDate}</span>}
-                  {issue.assignedTo && <span>Assigned: {issue.assignedTo}</span>}
-                  {issue.product && <span>Product: {issue.product}</span>}
-                </div>
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
 }
 
 // ─── Main Modal ────────────────────────────────────────────
 
-export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, briefItems }: CMDetailModalProps) {
+export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, briefItems }: CMDetailModalProps) {
   const issuesRef = useRef<HTMLDivElement>(null)
   const [sortField, setSortField] = useState<SortField>('unitsOrdered')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -240,6 +181,31 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, briefItems 
   const avgLeadTime = data.avgLeadTime ?? 0
   const capacityUtil = data.capacityUtilization ?? 85
   const productivityScore = Math.round(quality * 0.5 + onTime * 0.3 + capacityUtil * 0.2)
+
+  // Issues — normalized for the IssueLogger + persistence handlers
+  const normalizedIssues = useMemo<Issue[]>(
+    () => (issues as any[]).map((iss, i) => normalizeIssue(iss, i)),
+    [issues],
+  )
+
+  const handleAddIssue = (input: Omit<Issue, 'id' | 'reportedDate' | 'status'>) => {
+    if (!onUpdate) return
+    const newIssue: Issue = {
+      id: `issue-${Date.now()}`,
+      reportedDate: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      status: 'Open',
+      ...input,
+    }
+    onUpdate({ ...data, issues: [...(data.issues || []), newIssue] })
+  }
+
+  const handleResolveIssue = (id: string) => {
+    if (!onUpdate) return
+    const updated = (data.issues || []).map((iss: any, i: number) =>
+      (iss.id || `issue-${i}`) === id ? { ...iss, status: 'Resolved' } : iss,
+    )
+    onUpdate({ ...data, issues: updated })
+  }
 
   // Contact helpers
   const primaryContact = contacts.find((c: any) => c.type === 'Primary / Project Manager') || contacts[0]
@@ -314,6 +280,9 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, briefItems 
             </div>
           </div>
           <div className="flex items-center gap-2 ml-4">
+            <AddToCowork
+              item={{ name: data.name || 'Untitled CM', type: 'CM', id: cm?.id || data.id, description: `Contract Manufacturer — ${data.contractStatus || 'Unknown'}` }}
+            />
             <button
               onClick={onEdit}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium btn-primary"
@@ -531,7 +500,12 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, briefItems 
           {/* Issues Section */}
           <div ref={issuesRef}>
             <SectionHeader icon={AlertTriangle} label="Issues" />
-            <IssueLogger issues={issues} />
+            <IssueLogger
+              issues={normalizedIssues}
+              onAdd={handleAddIssue}
+              onResolve={handleResolveIssue}
+              categories={['Quality', 'Delivery', 'Communication', 'Compliance', 'Capacity', 'Other']}
+            />
           </div>
 
           {/* Task Attachments */}

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
+import { AddToCowork } from '@/components/shared/AddToCowork'
 import {
   X,
   Edit3,
@@ -1304,6 +1305,10 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate }:
               </div>
             </div>
             <div className="flex items-center gap-2 ml-4">
+              <AddToCowork
+                item={{ name: component.name, type: 'Component', id: component.id, description: `${component.type || 'Component'}${component.partNumber ? ` · ${component.partNumber}` : ''}` }}
+                variant="ghost"
+              />
               <button className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium btn-primary">
                 <Edit3 size={14} /> Edit
               </button>

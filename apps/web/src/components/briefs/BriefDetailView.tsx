@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import type { BriefFormData } from './NewBriefModal'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
+import { AddToCowork } from '@/components/shared/AddToCowork'
 import { generateBriefPDF } from '@/utils/generateBriefPDF'
 
 interface BriefDetailViewProps {
@@ -105,6 +106,10 @@ export function BriefDetailView({ open, brief, onClose, onEdit, onDelete }: Brie
             </div>
           </div>
           <div className="flex items-center gap-2 ml-4">
+            <AddToCowork
+              item={{ name: brief.projectName, type: 'Brief', id: brief.id, description: brief.brand ? `Brief — ${brief.brand}` : 'Brief' }}
+              variant="ghost"
+            />
             <button
               onClick={handleDownload}
               className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border border-[var(--border-default)] transition-all"

@@ -5,6 +5,7 @@ import {
   Thermometer, Timer, Gauge,
 } from 'lucide-react'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
+import { AddToCowork } from '@/components/shared/AddToCowork'
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -325,6 +326,10 @@ export function FormulationDetailDrawer({
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 mt-3">
+            <AddToCowork
+              item={{ name: f.name || f.title || f.formulaName || f.product || 'Untitled Formulation', type: 'Formulation', id: f.id, description: f.cmName ? `CM: ${f.cmName}` : 'Formulation' }}
+              variant="ghost"
+            />
             <button
               onClick={() => onUpdate({ action: 'new-version' })}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"

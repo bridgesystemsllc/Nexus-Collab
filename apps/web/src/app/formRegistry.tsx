@@ -1,6 +1,12 @@
 import type { ActiveForm } from '@/stores/appStore'
 import { BriefFormPage } from '@/components/briefs/BriefFormPage'
 import { TaskDetailForm } from '@/components/tasks/TaskDetailForm'
+import { CMFormPage } from '@/components/rd/CMFormPage'
+import { TransferFormPage } from '@/components/rd/TransferFormPage'
+import { FormulationFormPage } from '@/components/rd/FormulationFormPage'
+import { NPDFormPage } from '@/components/rd/npd/NPDFormPage'
+import { ArtworkFormPage } from '@/components/rd/artwork/ArtworkFormPage'
+import { ComponentFormPage } from '@/components/rd/components/ComponentFormPage'
 
 /**
  * Registry of full-page forms.
@@ -16,6 +22,12 @@ import { TaskDetailForm } from '@/components/tasks/TaskDetailForm'
 export const formRegistry: Record<string, (props: { form: ActiveForm }) => JSX.Element> = {
   brief: BriefFormPage,
   task: TaskDetailForm,
+  cm: CMFormPage,
+  transfer: TransferFormPage,
+  formulation: FormulationFormPage,
+  npd: NPDFormPage,
+  artwork: ArtworkFormPage,
+  component: ComponentFormPage,
 }
 
 export function FullPageFormHost({ form }: { form: ActiveForm }) {

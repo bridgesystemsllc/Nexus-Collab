@@ -48,6 +48,8 @@ import { STAGE_CONFIG, createDefaultTasks, getStageProgress, getOverallProgress,
 import { NewArtworkModal } from '@/components/rd/artwork/NewArtworkModal'
 import { ArtworkProjectDetail } from '@/components/rd/artwork/ArtworkProjectDetail'
 import { ARTWORK_STATUS_COLORS, DEFAULT_COMPLIANCE_ITEMS, generateRetailerComplianceItems, getApprovalChainSummary } from '@/components/rd/artwork/artworkData'
+import { AddToCowork } from '@/components/shared/AddToCowork'
+import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 
 // ─── Types ─────────────────────────────────────────────────
 type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd' | 'artwork' | 'components'
@@ -80,6 +82,21 @@ function productivityColor(score: number): string {
   if (score >= 85) return 'var(--success)'
   if (score >= 70) return 'var(--warning)'
   return 'var(--danger)'
+}
+
+// On-time score from actual production deliveries vs requested PO dates.
+// Matches production orders to a CM by name; returns null when no comparable data.
+function computeCMOnTime(cmName: string, productionOrders: any[]): number | null {
+  if (!cmName || !productionOrders?.length) return null
+  const orders = productionOrders
+    .map((o: any) => o?.data || o)
+    .filter((o: any) => (o?.cm || '').trim().toLowerCase() === cmName.trim().toLowerCase())
+    .filter((o: any) => o?.requestedDel && o?.shipDate)
+  if (orders.length === 0) return null
+  const onTimeCount = orders.filter(
+    (o: any) => new Date(o.shipDate).getTime() <= new Date(o.requestedDel).getTime(),
+  ).length
+  return Math.round((onTimeCount / orders.length) * 100)
 }
 
 function relativeTime(dateStr: string): string {
@@ -426,6 +443,7 @@ function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, fo
   const [viewingBrief, setViewingBrief] = useState<(BriefFormData & { id: string }) | null>(null)
   const [deletingItem, setDeletingItem] = useState<{ id: string; name: string } | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [view, setView] = useState<ViewMode>('table')
 
   const briefs = useMemo(() => items.map((item: any) => ({ id: item.id, moduleId: item.moduleId, ...item.data })), [items])
 
@@ -470,7 +488,7 @@ function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, fo
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div />
+        <ViewToggle value={view} onChange={setView} />
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowImportModal(true)}
@@ -492,7 +510,7 @@ function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, fo
           <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No active briefs yet</p>
           <button onClick={() => openBriefForm('create')} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Create Your First Brief</button>
         </div>
-      ) : (
+      ) : view === 'table' ? (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
           <table className="nexus-table">
             <thead>
@@ -523,17 +541,52 @@ function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, fo
                     </div>
                   </td>
                   <td>
-                    <ActionsMenu actions={[
-                      { label: 'View', icon: Eye, onClick: () => setViewingBrief(brief) },
-                      { label: 'Edit', icon: Edit3, onClick: () => openBriefForm('edit', { brief }) },
-                      { label: 'Download PDF', icon: Download, onClick: () => generateBriefPDF(brief) },
-                      { label: 'Delete', icon: Trash2, onClick: () => setDeletingItem({ id: brief.id, name: brief.projectName || brief.name }), danger: true },
-                    ]} />
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                      <AddToCowork item={{ name: brief.projectName || brief.name || 'Untitled Brief', type: 'Brief', id: brief.id, description: brief.brand ? `Brief — ${brief.brand}` : 'Brief' }} variant="icon" />
+                      <ActionsMenu actions={[
+                        { label: 'View', icon: Eye, onClick: () => setViewingBrief(brief) },
+                        { label: 'Edit', icon: Edit3, onClick: () => openBriefForm('edit', { brief }) },
+                        { label: 'Download PDF', icon: Download, onClick: () => generateBriefPDF(brief) },
+                        { label: 'Delete', icon: Trash2, onClick: () => setDeletingItem({ id: brief.id, name: brief.projectName || brief.name }), danger: true },
+                      ]} />
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {briefs.map((brief: any) => (
+            <div
+              key={brief.id}
+              className="clickable-row flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors cursor-pointer"
+              onClick={() => setViewingBrief(brief)}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-[14px] text-[var(--text-primary)] truncate">{brief.projectName || brief.name || '—'}</span>
+                  <StatusBadge status={brief.briefStatus || brief.status || 'Draft'} />
+                  {briefHasTransfer(brief.id, brief.projectName) && <span className="badge badge-info text-[10px]">Transfer</span>}
+                  {briefHasFormulation(brief.id, brief.projectName) && <span className="badge badge-accent text-[10px]">Formula</span>}
+                </div>
+                <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5 truncate">
+                  {brief.brand || '—'} · {brief.contractManufacturer || brief.cm || '—'} · {formatDate(brief.dateOfRequest)}
+                </p>
+              </div>
+              <div className="w-[160px] hidden sm:block"><PhaseBar phase={brief.phase || 1} total={5} /></div>
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <AddToCowork item={{ name: brief.projectName || brief.name || 'Untitled Brief', type: 'Brief', id: brief.id, description: brief.brand ? `Brief — ${brief.brand}` : 'Brief' }} variant="icon" />
+                <ActionsMenu actions={[
+                  { label: 'View', icon: Eye, onClick: () => setViewingBrief(brief) },
+                  { label: 'Edit', icon: Edit3, onClick: () => openBriefForm('edit', { brief }) },
+                  { label: 'Download PDF', icon: Download, onClick: () => generateBriefPDF(brief) },
+                  { label: 'Delete', icon: Trash2, onClick: () => setDeletingItem({ id: brief.id, name: brief.projectName || brief.name }), danger: true },
+                ]} />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -575,32 +628,33 @@ function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, fo
 }
 
 // ─── CM Productivity Tab (Expanded) ────────────────────────
-function CMTab({ items, moduleId, onRefresh, briefItems }: { items: any[]; moduleId: string | null; onRefresh: () => void; briefItems: any[] }) {
+function CMTab({ items, moduleId, departmentId, onRefresh, briefItems, productionItems = [] }: { items: any[]; moduleId: string | null; departmentId: string | null; onRefresh: () => void; briefItems: any[]; productionItems?: any[] }) {
+  const openForm = useAppStore((s) => s.openForm)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [showNewCM, setShowNewCM] = useState(false)
-  const [editingCM, setEditingCM] = useState<any>(null)
   const [viewingCM, setViewingCM] = useState<any>(null)
   const [deletingItem, setDeletingItem] = useState<{ id: string; name: string } | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const cmList = useMemo(() =>
-    items.map((item: any) => ({ id: item.id, moduleId: item.moduleId, ...item.data }))
+    items.map((item: any) => {
+      const base = { id: item.id, moduleId: item.moduleId, ...item.data }
+      const computedOnTime = computeCMOnTime(base.name, productionItems)
+      return computedOnTime != null ? { ...base, onTime: computedOnTime } : base
+    })
       .sort((a: any, b: any) => productivityScore(b) - productivityScore(a)),
-    [items]
+    [items, productionItems]
   )
 
-  const handleSubmit = async (data: CMFormData) => {
-    if (!moduleId) return
-    setIsSubmitting(true)
-    try {
-      const cmData = { ...data, contractStatus: data.contractStatus || 'Active' }
-      if (editingCM) {
-        await api.patch(`/departments/_/modules/${editingCM.moduleId}/items/${editingCM.id}`, { data: cmData, status: cmData.contractStatus })
-      } else {
-        await api.post(`/departments/_/modules/${moduleId}/items`, { data: cmData, status: cmData.contractStatus })
-      }
-      setShowNewCM(false); setEditingCM(null); onRefresh()
-    } catch (err) { console.error('Failed to save CM:', err) } finally { setIsSubmitting(false) }
+  const openCMForm = (mode: 'create' | 'edit', cm?: any) => {
+    openForm({
+      formType: 'cm',
+      mode,
+      recordId: cm?.id ?? null,
+      context: {
+        moduleId: mode === 'edit' ? cm?.moduleId ?? moduleId : moduleId,
+        departmentId,
+        initialData: cm ?? null,
+      },
+    })
   }
 
   const handleDelete = async () => {
@@ -615,6 +669,15 @@ function CMTab({ items, moduleId, onRefresh, briefItems }: { items: any[]; modul
   const handleItemUpdate = async (cm: any) => {
     try {
       await api.patch(`/departments/_/modules/${cm.moduleId}/items/${cm.id}`, { data: cm })
+      onRefresh()
+    } catch (err) { console.error('Failed to update CM:', err) }
+  }
+
+  const handleCMUpdate = async (updatedData: any) => {
+    if (!viewingCM) return
+    try {
+      await api.patch(`/departments/_/modules/${viewingCM.moduleId}/items/${viewingCM.id}`, { data: updatedData })
+      setViewingCM({ ...viewingCM, ...updatedData })
       onRefresh()
     } catch (err) { console.error('Failed to update CM:', err) }
   }
@@ -640,7 +703,7 @@ function CMTab({ items, moduleId, onRefresh, briefItems }: { items: any[]; modul
             </button>
           ))}
         </div>
-        <button onClick={() => { setEditingCM(null); setShowNewCM(true) }} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
+        <button onClick={() => openCMForm('create')} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
           <Plus size={15} /> Add CM
         </button>
       </div>
@@ -649,7 +712,7 @@ function CMTab({ items, moduleId, onRefresh, briefItems }: { items: any[]; modul
         <div className="text-center py-12">
           <Users size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
           <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No contract manufacturers yet</p>
-          <button onClick={() => { setEditingCM(null); setShowNewCM(true) }} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Add Your First CM</button>
+          <button onClick={() => openCMForm('create')} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Add Your First CM</button>
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -659,7 +722,12 @@ function CMTab({ items, moduleId, onRefresh, briefItems }: { items: any[]; modul
               <div key={cm.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => setViewingCM(cm)}>
                 <div className="flex items-center justify-between">
                   <h3 className="font-medium text-[14px] text-[var(--text-primary)]">{cm.name}</h3>
-                  <StatusBadge status={cm.contractStatus || 'Active'} />
+                  <div className="flex items-center gap-1">
+                    <StatusBadge status={cm.contractStatus || 'Active'} />
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <AddToCowork item={{ name: cm.name, type: 'CM', id: cm.id, description: `Contract Manufacturer — ${cm.contractStatus || 'Active'}` }} variant="icon" />
+                    </div>
+                  </div>
                 </div>
                 <div className="text-[12px] text-[var(--text-secondary)]">{(cm.brands || []).join(', ')}</div>
                 <div className="grid grid-cols-2 gap-3">
@@ -727,11 +795,14 @@ function CMTab({ items, moduleId, onRefresh, briefItems }: { items: any[]; modul
                     <td><span className="text-[14px] font-bold tabular-nums" style={{ color: productivityColor(score) }}>{score}</span></td>
                     <td className="text-[13px] text-[var(--text-secondary)] max-w-[120px] truncate">{topProduct(cm)}</td>
                     <td>
-                      <ActionsMenu actions={[
-                        { label: 'View', icon: Eye, onClick: () => setViewingCM(cm) },
-                        { label: 'Edit', icon: Edit3, onClick: () => { setEditingCM(cm); setShowNewCM(true) } },
-                        { label: 'Delete', icon: Trash2, onClick: () => setDeletingItem({ id: cm.id, name: cm.name }), danger: true },
-                      ]} />
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <AddToCowork item={{ name: cm.name, type: 'CM', id: cm.id, description: `Contract Manufacturer — ${cm.contractStatus || 'Active'}` }} variant="icon" />
+                        <ActionsMenu actions={[
+                          { label: 'View', icon: Eye, onClick: () => setViewingCM(cm) },
+                          { label: 'Edit', icon: Edit3, onClick: () => openCMForm('edit', cm) },
+                          { label: 'Delete', icon: Trash2, onClick: () => setDeletingItem({ id: cm.id, name: cm.name }), danger: true },
+                        ]} />
+                      </div>
                     </td>
                   </tr>
                 )
@@ -741,8 +812,7 @@ function CMTab({ items, moduleId, onRefresh, briefItems }: { items: any[]; modul
         </div>
       )}
 
-      <CMDetailModal open={!!viewingCM} cm={viewingCM} onClose={() => setViewingCM(null)} onEdit={() => { if (viewingCM) { setEditingCM(viewingCM); setViewingCM(null); setShowNewCM(true) } }} onDelete={() => { if (viewingCM) setDeletingItem({ id: viewingCM.id, name: viewingCM.name }) }} briefItems={briefItems} />
-      <NewCMModal open={showNewCM} onClose={() => { setShowNewCM(false); setEditingCM(null) }} onSubmit={handleSubmit} initialData={editingCM} isSubmitting={isSubmitting} />
+      <CMDetailModal open={!!viewingCM} cm={viewingCM} onClose={() => setViewingCM(null)} onEdit={() => { if (viewingCM) { const c = viewingCM; setViewingCM(null); openCMForm('edit', c) } }} onDelete={() => { if (viewingCM) setDeletingItem({ id: viewingCM.id, name: viewingCM.name }) }} onUpdate={handleCMUpdate} briefItems={briefItems} />
       <DeleteConfirmDialog open={!!deletingItem} itemName={deletingItem?.name || ''} onConfirm={handleDelete} onCancel={() => setDeletingItem(null)} />
     </div>
   )
@@ -752,20 +822,22 @@ function CMTab({ items, moduleId, onRefresh, briefItems }: { items: any[]; modul
 function TransfersTab({
   items,
   moduleId,
+  departmentId,
   briefs,
+  cmItems = [],
   onRefresh,
   onSelect,
 }: {
   items: any[]
   moduleId: string | null
+  departmentId: string | null
   briefs: any[]
+  cmItems?: any[]
   onRefresh: () => void
   onSelect: (item: any) => void
 }) {
+  const openForm = useAppStore((s) => s.openForm)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [showNewTransfer, setShowNewTransfer] = useState(false)
-  const [editingTransfer, setEditingTransfer] = useState<any>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Build a brief lookup map for display
   const briefMap = useMemo(() => {
@@ -776,37 +848,19 @@ function TransfersTab({
     return map
   }, [briefs])
 
-  const handleSubmit = async (data: any) => {
-    if (!moduleId) return
-    setIsSubmitting(true)
-    try {
-      if (editingTransfer) {
-        const item = items.find((i: any) => i.id === editingTransfer.id)
-        if (item) {
-          await api.patch(`/departments/_/modules/${item.moduleId}/items/${editingTransfer.id}`, {
-            data: { ...data },
-            status: data.status,
-          })
-        }
-      } else {
-        await api.post(`/departments/_/modules/${moduleId}/items`, {
-          data: { ...data, docs: 0 },
-          status: data.status,
-        })
-      }
-      setShowNewTransfer(false)
-      setEditingTransfer(null)
-      onRefresh()
-    } catch (err) {
-      console.error('Failed to save transfer:', err)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  const handleEdit = (item: any) => {
-    setEditingTransfer({ id: item.id, ...item.data })
-    setShowNewTransfer(true)
+  const openTransferForm = (mode: 'create' | 'edit', item?: any) => {
+    openForm({
+      formType: 'transfer',
+      mode,
+      recordId: item?.id ?? null,
+      context: {
+        moduleId: mode === 'edit' ? item?.moduleId ?? moduleId : moduleId,
+        departmentId,
+        initialData: item ? item.data : null,
+        briefItems: briefs,
+        cmItems,
+      },
+    })
   }
 
   const getLinkedBriefName = (d: any) => {
@@ -826,7 +880,7 @@ function TransfersTab({
             <button onClick={() => setViewMode('list')} className={`px-3 py-1.5 text-[12px] font-medium ${viewMode === 'list' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)]'}`}>List</button>
           </div>
           <button
-            onClick={() => { setEditingTransfer(null); setShowNewTransfer(true) }}
+            onClick={() => openTransferForm('create')}
             className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]"
           >
             <Plus size={15} /> New Transfer
@@ -839,7 +893,7 @@ function TransfersTab({
           <Repeat2 size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
           <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No tech transfers yet</p>
           <button
-            onClick={() => { setEditingTransfer(null); setShowNewTransfer(true) }}
+            onClick={() => openTransferForm('create')}
             className="btn-primary px-5 py-2.5 rounded-lg text-[14px]"
           >
             Create Your First Transfer
@@ -887,12 +941,15 @@ function TransfersTab({
                     </td>
                     <td className="text-[14px] text-[var(--text-secondary)]">{d.target}</td>
                     <td>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleEdit(item) }}
-                        className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-                      >
-                        <Edit3 size={14} />
-                      </button>
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <AddToCowork item={{ name: d.product || 'Untitled Transfer', type: 'Transfer', id: item.id, description: `${d.from || '—'} → ${d.to || '—'}` }} variant="icon" />
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openTransferForm('edit', item) }}
+                          className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -940,7 +997,10 @@ function TransfersTab({
 
                 <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
                   <span className="flex items-center gap-1"><Clock size={11} /> Target: {d.target}</span>
-                  <button onClick={(e) => { e.stopPropagation(); handleEdit(item) }} className="text-[var(--accent)] hover:underline text-[11px]">Edit</button>
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <AddToCowork item={{ name: d.product || 'Untitled Transfer', type: 'Transfer', id: item.id, description: `${d.from || '—'} → ${d.to || '—'}` }} variant="icon" />
+                    <button onClick={(e) => { e.stopPropagation(); openTransferForm('edit', item) }} className="text-[var(--accent)] hover:underline text-[11px]">Edit</button>
+                  </div>
                 </div>
               </div>
             )
@@ -948,15 +1008,6 @@ function TransfersTab({
         </div>
       )}
 
-      {/* New/Edit Transfer Modal */}
-      <NewTransferModal
-        open={showNewTransfer}
-        onClose={() => { setShowNewTransfer(false); setEditingTransfer(null) }}
-        onSubmit={handleSubmit}
-        initialData={editingTransfer}
-        isSubmitting={isSubmitting}
-        briefItems={briefs}
-      />
     </div>
   )
 }
@@ -967,16 +1018,20 @@ function NPDTab({
   moduleId,
   departmentId,
   onRefresh,
+  briefItems = [],
+  formulationItems = [],
 }: {
   items: any[]
   moduleId: string | null
   departmentId: string | null
   onRefresh: () => void
+  briefItems?: any[]
+  formulationItems?: any[]
 }) {
-  const [showNewProject, setShowNewProject] = useState(false)
+  const openForm = useAppStore((s) => s.openForm)
   const [viewingProject, setViewingProject] = useState<any>(null)
   const [deletingProject, setDeletingProject] = useState<{ id: string; name: string } | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [view, setView] = useState<ViewMode>('table')
 
   // Convert module items to NPD project data
   const projects = useMemo(() => {
@@ -987,64 +1042,19 @@ function NPDTab({
     }))
   }, [items])
 
-  const handleCreateProject = async (data: NPDFormData) => {
-    setIsSubmitting(true)
-    try {
-      // Auto-create NPD_PIPELINE module if it doesn't exist yet
-      let targetModuleId = moduleId
-      if (!targetModuleId && departmentId) {
-        const res = await api.post(`/departments/${departmentId}/modules`, {
-          name: 'NPD Pipeline',
-          type: 'NPD_PIPELINE',
-          sortOrder: 4,
-        })
-        targetModuleId = res.data.id
-      }
-      if (!targetModuleId) return
-      // Generate the 34 tasks from the master checklist
-      const tasks = createDefaultTasks(
-        data.teamAssignments.map(t => ({ role: t.role, assignedName: t.assignedName })),
-        {
-          stage0Target: data.stageDates.stage0Target,
-          stage1Target: data.stageDates.stage1Target,
-          gate12Target: data.stageDates.gate12Target,
-          stage2Target: data.stageDates.stage2Target,
-          gate23Target: data.stageDates.gate23Target,
-          stage3Target: data.stageDates.stage3Target,
-          stage4Target: data.stageDates.stage4Target,
-        }
-      )
-
-      // Add IDs to tasks
-      const tasksWithIds = tasks.map((t, i) => ({
-        ...t,
-        id: `task-${Date.now()}-${i}`,
-      }))
-
-      const projectData = {
-        ...data,
-        tasks: tasksWithIds,
-        gateApprovals: [],
-        status: 'Active',
-        activityLog: [{
-          user: 'System',
-          action: 'Project created with 34 tasks generated',
-          timestamp: new Date().toISOString(),
-        }],
-      }
-
-      await api.post(`/departments/_/modules/${targetModuleId}/items`, {
-        data: projectData,
-        status: 'Active',
-      })
-
-      setShowNewProject(false)
-      onRefresh()
-    } catch (err) {
-      console.error('Failed to create NPD project:', err)
-    } finally {
-      setIsSubmitting(false)
-    }
+  const openNPDForm = () => {
+    openForm({
+      formType: 'npd',
+      mode: 'create',
+      recordId: null,
+      context: {
+        moduleId,
+        departmentId,
+        initialData: null,
+        briefItems,
+        formulationItems,
+      },
+    })
   }
 
   const handleTaskUpdate = async (taskId: string, updates: Partial<NPDTask>) => {
@@ -1168,9 +1178,9 @@ function NPDTab({
     <div>
       {/* Header with New Project button */}
       <div className="flex items-center justify-between mb-4">
-        <div />
+        <ViewToggle value={view} onChange={setView} />
         <button
-          onClick={() => setShowNewProject(true)}
+          onClick={openNPDForm}
           className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]"
         >
           <Plus size={15} /> New NPD Project
@@ -1183,13 +1193,13 @@ function NPDTab({
           <Rocket size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
           <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No NPD projects yet</p>
           <button
-            onClick={() => setShowNewProject(true)}
+            onClick={openNPDForm}
             className="btn-primary px-5 py-2.5 rounded-lg text-[14px]"
           >
             Create Your First NPD Project
           </button>
         </div>
-      ) : (
+      ) : view === 'table' ? (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
           <table className="nexus-table">
             <thead>
@@ -1290,11 +1300,14 @@ function NPDTab({
                         {formatDate(proj.targetLaunchDate)}
                       </td>
                       <td>
-                        <ActionsMenu actions={[
-                          { label: 'View', icon: Eye, onClick: () => setViewingProject(proj) },
-                          { label: 'Edit', icon: Edit3, onClick: () => setViewingProject(proj) },
-                          { label: 'Delete', icon: Trash2, onClick: () => setDeletingProject({ id: proj.id, name: proj.projectName }), danger: true },
-                        ]} />
+                        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                          <AddToCowork item={{ name: proj.projectName || 'Untitled NPD Project', type: 'NPD', id: proj.id, description: `NPD Project — ${proj.brand || '—'}${proj.category ? ` · ${proj.category}` : ''}` }} variant="icon" />
+                          <ActionsMenu actions={[
+                            { label: 'View', icon: Eye, onClick: () => setViewingProject(proj) },
+                            { label: 'Edit', icon: Edit3, onClick: () => setViewingProject(proj) },
+                            { label: 'Delete', icon: Trash2, onClick: () => setDeletingProject({ id: proj.id, name: proj.projectName }), danger: true },
+                          ]} />
+                        </div>
                       </td>
                     </tr>
                   )
@@ -1302,15 +1315,53 @@ function NPDTab({
             </tbody>
           </table>
         </div>
+      ) : (
+        <div className="space-y-2">
+          {[...projects]
+            .sort((a, b) => new Date(a.targetLaunchDate || 0).getTime() - new Date(b.targetLaunchDate || 0).getTime())
+            .map((proj: any) => {
+              const tasks: NPDTask[] = proj.tasks || []
+              const { completed, total } = getOverallProgress(tasks)
+              const currentStage = getCurrentStage(tasks, proj.gateApprovals || [])
+              const currentConfig = STAGE_CONFIG.find(s => s.key === currentStage)
+              const hasBlockedTasks = tasks.some(t => t.status === 'blocked')
+              return (
+                <div
+                  key={proj.id}
+                  className="clickable-row flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors cursor-pointer"
+                  onClick={() => setViewingProject(proj)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-[14px] text-[var(--text-primary)] truncate">{proj.projectName || '—'}</span>
+                      <span className="badge badge-accent text-[11px]">{proj.brand || '—'}</span>
+                      {currentConfig && (
+                        <span className="badge text-[11px]" style={{ background: `${currentConfig.color}18`, color: currentConfig.color }}>
+                          Stage {currentConfig.key} — {currentConfig.name}
+                        </span>
+                      )}
+                      {hasBlockedTasks && (
+                        <span className="badge" style={{ background: '#EF444418', color: '#EF4444', fontSize: '10px' }}>Blocked</span>
+                      )}
+                    </div>
+                    <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5 truncate">
+                      {proj.category || '—'} · {completed}/{total} tasks · Launch {formatDate(proj.targetLaunchDate)}
+                    </p>
+                  </div>
+                  <div className="w-[160px] hidden sm:block"><NPDSegmentedProgress tasks={tasks} /></div>
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <AddToCowork item={{ name: proj.projectName || 'Untitled NPD Project', type: 'NPD', id: proj.id, description: `NPD Project — ${proj.brand || '—'}${proj.category ? ` · ${proj.category}` : ''}` }} variant="icon" />
+                    <ActionsMenu actions={[
+                      { label: 'View', icon: Eye, onClick: () => setViewingProject(proj) },
+                      { label: 'Edit', icon: Edit3, onClick: () => setViewingProject(proj) },
+                      { label: 'Delete', icon: Trash2, onClick: () => setDeletingProject({ id: proj.id, name: proj.projectName }), danger: true },
+                    ]} />
+                  </div>
+                </div>
+              )
+            })}
+        </div>
       )}
-
-      {/* New NPD Project Modal */}
-      <NewNPDProjectModal
-        open={showNewProject}
-        onClose={() => setShowNewProject(false)}
-        onSubmit={handleCreateProject}
-        isSubmitting={isSubmitting}
-      />
 
       {/* NPD Project Detail */}
       <NPDProjectDetail
@@ -1337,17 +1388,19 @@ function NPDTab({
 function ArtworkTab({
   items,
   moduleId,
+  departmentId,
   briefs,
   onRefresh,
 }: {
   items: any[]
   moduleId: string | null
+  departmentId: string | null
   briefs: any[]
   onRefresh: () => void
 }) {
-  const [showNewArtwork, setShowNewArtwork] = useState(false)
+  const openForm = useAppStore((s) => s.openForm)
   const [viewingArtwork, setViewingArtwork] = useState<any>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [view, setView] = useState<ViewMode>('table')
 
   const projects = useMemo(() => {
     return items.map((item: any) => ({
@@ -1357,48 +1410,18 @@ function ArtworkTab({
     }))
   }, [items])
 
-  const handleCreate = async (data: any) => {
-    if (!moduleId) return
-    setIsSubmitting(true)
-    try {
-      // Generate compliance checklist
-      const staticItems = DEFAULT_COMPLIANCE_ITEMS.map((item, i) => ({
-        ...item,
-        id: `comp-${Date.now()}-${i}`,
-      }))
-      const retailerItems = generateRetailerComplianceItems(data.targetRetailers || []).map((item, i) => ({
-        ...item,
-        id: `comp-ret-${Date.now()}-${i}`,
-      }))
-
-      const projectData: any = {
-        ...data,
-        currentVersion: 'v1.0',
-        status: 'Draft',
-        versions: [],
-        submissions: [],
-        complianceChecklist: [...staticItems, ...retailerItems],
-        activityLog: [{
-          user: 'System',
-          action: 'Artwork project created',
-          timestamp: new Date().toISOString(),
-        }],
-        createdBy: 'You',
-        createdAt: new Date().toISOString(),
-      }
-
-      await api.post(`/departments/_/modules/${moduleId}/items`, {
-        data: projectData,
-        status: 'Draft',
-      })
-
-      setShowNewArtwork(false)
-      onRefresh()
-    } catch (err) {
-      console.error('Failed to create artwork project:', err)
-    } finally {
-      setIsSubmitting(false)
-    }
+  const openArtworkForm = () => {
+    openForm({
+      formType: 'artwork',
+      mode: 'create',
+      recordId: null,
+      context: {
+        moduleId,
+        departmentId,
+        initialData: null,
+        briefs,
+      },
+    })
   }
 
   const handleProjectUpdate = async (updates: any) => {
@@ -1426,9 +1449,9 @@ function ArtworkTab({
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div />
+        <ViewToggle value={view} onChange={setView} />
         <button
-          onClick={() => setShowNewArtwork(true)}
+          onClick={openArtworkForm}
           className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]"
         >
           <Plus size={15} /> New Artwork Project
@@ -1439,11 +1462,11 @@ function ArtworkTab({
         <div className="text-center py-12">
           <Palette size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
           <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No artwork projects yet</p>
-          <button onClick={() => setShowNewArtwork(true)} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">
+          <button onClick={openArtworkForm} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">
             Create Your First Artwork Project
           </button>
         </div>
-      ) : (
+      ) : view === 'table' ? (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
           <table className="nexus-table">
             <thead>
@@ -1456,6 +1479,7 @@ function ArtworkTab({
                 <th>Approval</th>
                 <th>Due Date</th>
                 <th>Last Updated</th>
+                <th className="w-12">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1501,20 +1525,48 @@ function ArtworkTab({
                     </td>
                     <td className="text-[13px] text-[var(--text-secondary)]">{formatDate(proj.submissionDueDate)}</td>
                     <td className="text-[13px] text-[var(--text-secondary)]">{formatDate(proj.createdAt)}</td>
+                    <td>
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <AddToCowork item={{ name: proj.artworkName || 'Untitled Artwork', type: 'Artwork', id: proj.id, description: `Artwork — ${proj.brand || '—'}${proj.currentVersion ? ` · ${proj.currentVersion}` : ''}` }} variant="icon" />
+                      </div>
+                    </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
         </div>
+      ) : (
+        <div className="space-y-2">
+          {projects.map((proj: any) => {
+            const statusColor = ARTWORK_STATUS_COLORS[proj.status] || '#6B7280'
+            const latestVersion = (proj.versions || [])[(proj.versions || []).length - 1]
+            const approvals = latestVersion?.approvals || proj.approvalChain?.map((a: any) => ({ ...a, status: 'pending' })) || []
+            const { approved, total } = getApprovalChainSummary(approvals)
+            return (
+              <div
+                key={proj.id}
+                className="clickable-row flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors cursor-pointer"
+                onClick={() => setViewingArtwork(proj)}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-[14px] text-[var(--text-primary)] truncate">{proj.artworkName || '—'}</span>
+                    <span className="badge badge-accent text-[11px]">{proj.brand || '—'}</span>
+                    <span className="badge text-[11px]" style={{ background: `${statusColor}18`, color: statusColor }}>{proj.status || 'Draft'}</span>
+                  </div>
+                  <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5 truncate">
+                    {proj.currentVersion || 'v1.0'} · {approved}/{total} approvals · Due {formatDate(proj.submissionDueDate)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <AddToCowork item={{ name: proj.artworkName || 'Untitled Artwork', type: 'Artwork', id: proj.id, description: `Artwork — ${proj.brand || '—'}${proj.currentVersion ? ` · ${proj.currentVersion}` : ''}` }} variant="icon" />
+                </div>
+              </div>
+            )
+          })}
+        </div>
       )}
-
-      <NewArtworkModal
-        open={showNewArtwork}
-        onClose={() => setShowNewArtwork(false)}
-        onSubmit={handleCreate}
-        isSubmitting={isSubmitting}
-      />
 
       <ArtworkProjectDetail
         open={!!viewingArtwork}
@@ -1530,39 +1582,33 @@ function ArtworkTab({
 function ComponentsTab({
   items,
   moduleId,
+  departmentId,
   onRefresh,
 }: {
   items: any[]
   moduleId: string | null
+  departmentId: string | null
   onRefresh: () => void
 }) {
-  const [showNewComponent, setShowNewComponent] = useState(false)
+  const openForm = useAppStore((s) => s.openForm)
   const [viewingComponent, setViewingComponent] = useState<any>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [view, setView] = useState<ViewMode>('table')
 
   const components = useMemo(() => {
     return items.map((item: any) => ({ id: item.id, moduleId: item.moduleId, ...item.data }))
   }, [items])
 
-  const handleCreate = async (data: any) => {
-    if (!moduleId) return
-    setIsSubmitting(true)
-    try {
-      const componentData = {
-        ...data,
-        partNumber: data.partNumber || generatePartNumber(),
-        activityLog: [{ user: 'System', action: 'Component created', timestamp: new Date().toISOString() }],
-        createdBy: 'You',
-        createdAt: new Date().toISOString(),
-      }
-      await api.post(`/departments/_/modules/${moduleId}/items`, { data: componentData, status: data.status || 'Concept' })
-      setShowNewComponent(false)
-      onRefresh()
-    } catch (err) {
-      console.error('Failed to create component:', err)
-    } finally {
-      setIsSubmitting(false)
-    }
+  const openComponentForm = (mode: 'create' | 'edit', comp?: any) => {
+    openForm({
+      formType: 'component',
+      mode,
+      recordId: comp?.id ?? null,
+      context: {
+        moduleId: mode === 'edit' ? comp?.moduleId ?? moduleId : moduleId,
+        departmentId,
+        initialData: comp ?? null,
+      },
+    })
   }
 
   const handleComponentUpdate = async (updates: any) => {
@@ -1582,8 +1628,8 @@ function ComponentsTab({
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div />
-        <button onClick={() => setShowNewComponent(true)} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
+        <ViewToggle value={view} onChange={setView} />
+        <button onClick={() => openComponentForm('create')} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
           <Plus size={15} /> New Component
         </button>
       </div>
@@ -1592,9 +1638,9 @@ function ComponentsTab({
         <div className="text-center py-12">
           <Boxes size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
           <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No components yet</p>
-          <button onClick={() => setShowNewComponent(true)} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Add Your First Component</button>
+          <button onClick={() => openComponentForm('create')} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Add Your First Component</button>
         </div>
-      ) : (
+      ) : view === 'table' ? (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
           <table className="nexus-table">
             <thead>
@@ -1608,6 +1654,7 @@ function ComponentsTab({
                 <th>Target</th>
                 <th>Compatibility</th>
                 <th>Assigned</th>
+                <th className="w-12">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1643,15 +1690,49 @@ function ComponentsTab({
                       )}
                     </td>
                     <td className="text-[13px] text-[var(--text-secondary)]">{assignmentCount > 0 ? `${assignmentCount} products` : '—'}</td>
+                    <td>
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <AddToCowork item={{ name: comp.name || 'Untitled Component', type: 'Component', id: comp.id, description: `Component — ${comp.type || '—'}${comp.partNumber ? ` · ${comp.partNumber}` : ''}` }} variant="icon" />
+                      </div>
+                    </td>
                   </tr>
                 )
               })}
             </tbody>
           </table>
         </div>
+      ) : (
+        <div className="space-y-2">
+          {components.map((comp: RDComponent & { moduleId?: string }) => {
+            const typeColor = COMPONENT_TYPE_COLORS[comp.type] || '#6B7280'
+            const statusColor = FEASIBILITY_STATUS_COLORS[comp.status] || '#6B7280'
+            const primaryVendor = (comp.vendors || []).find((v: any) => v.vendorStatus === 'Primary') || (comp.vendors || [])[0]
+            const bestCost = getBestUnitCost(comp.moqTiers || [])
+            return (
+              <div
+                key={comp.id}
+                className="clickable-row flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors cursor-pointer"
+                onClick={() => setViewingComponent(comp)}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-[14px] text-[var(--text-primary)] truncate">{comp.name || '—'}</span>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: `${typeColor}18`, color: typeColor }}>{comp.type || '—'}</span>
+                    <span className="badge text-[11px]" style={{ background: `${statusColor}18`, color: statusColor }}>{comp.status || 'Concept'}</span>
+                  </div>
+                  <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5 truncate">
+                    {comp.partNumber || '—'} · {primaryVendor?.vendorName || 'No vendor'} · {bestCost ? `$${bestCost.toFixed(2)}` : '—'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <AddToCowork item={{ name: comp.name || 'Untitled Component', type: 'Component', id: comp.id, description: `Component — ${comp.type || '—'}${comp.partNumber ? ` · ${comp.partNumber}` : ''}` }} variant="icon" />
+                </div>
+              </div>
+            )
+          })}
+        </div>
       )}
 
-      <NewComponentModal open={showNewComponent} onClose={() => setShowNewComponent(false)} onSubmit={handleCreate} isSubmitting={isSubmitting} />
       <ComponentDetail open={!!viewingComponent} component={viewingComponent} onClose={() => setViewingComponent(null)} onComponentUpdate={handleComponentUpdate} />
     </div>
   )
@@ -1678,27 +1759,93 @@ function NPDSegmentedProgress({ tasks }: { tasks: NPDTask[] }) {
 }
 
 // ─── Formulations Tab ────────────────────────────────────
-function FormulationsTab({ items, onSelect }: { items: any[]; onSelect: (item: any) => void }) {
-  if (items.length === 0) return <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">No formulations found.</p>
+function FormulationsTab({ items, moduleId, departmentId, briefItems = [], onSelect }: { items: any[]; moduleId: string | null; departmentId: string | null; briefItems?: any[]; onRefresh?: () => void; onSelect: (item: any) => void }) {
+  const openForm = useAppStore((s) => s.openForm)
+  const [view, setView] = useState<ViewMode>('table')
+
+  const openFormulationForm = (mode: 'create' | 'edit', item?: any) => {
+    openForm({
+      formType: 'formulation',
+      mode,
+      recordId: item?.id ?? null,
+      context: {
+        moduleId: mode === 'edit' ? item?.moduleId ?? moduleId : moduleId,
+        departmentId,
+        initialData: item ? item.data : null,
+        briefItems,
+      },
+    })
+  }
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
-      <table className="nexus-table">
-        <thead><tr><th>Product</th><th>Version</th><th>Status</th><th>Stability</th><th>Changes</th></tr></thead>
-        <tbody>
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <ViewToggle value={view} onChange={setView} />
+        <button onClick={() => openFormulationForm('create')} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
+          <Plus size={15} /> New Formulation
+        </button>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">No formulations found.</p>
+      ) : view === 'table' ? (
+        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+          <table className="nexus-table">
+            <thead><tr><th>Product</th><th>Version</th><th>Status</th><th>Stability</th><th>Changes</th><th className="w-12">Actions</th></tr></thead>
+            <tbody>
+              {items.map((item: any) => {
+                const d = item.data
+                return (
+                  <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
+                    <td className="font-medium text-[var(--text-primary)]">{d.product}</td>
+                    <td><span className="badge badge-accent font-mono text-xs">{d.ver}</span></td>
+                    <td><StatusBadge status={d.status} /></td>
+                    <td><StatusBadge status={d.stability} /></td>
+                    <td className="text-[var(--text-secondary)] max-w-[300px] truncate">{d.changes}</td>
+                    <td>
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <AddToCowork item={{ name: d.product || 'Untitled Formulation', type: 'Formulation', id: item.id, description: `Formulation${d.ver ? ` · ${d.ver}` : ''}` }} variant="icon" />
+                        <ActionsMenu actions={[
+                          { label: 'View', icon: Eye, onClick: () => onSelect(item) },
+                          { label: 'Edit', icon: Edit3, onClick: () => openFormulationForm('edit', item) },
+                        ]} />
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="space-y-2">
           {items.map((item: any) => {
             const d = item.data
             return (
-              <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
-                <td className="font-medium text-[var(--text-primary)]">{d.product}</td>
-                <td><span className="badge badge-accent font-mono text-xs">{d.ver}</span></td>
-                <td><StatusBadge status={d.status} /></td>
-                <td><StatusBadge status={d.stability} /></td>
-                <td className="text-[var(--text-secondary)] max-w-[300px] truncate">{d.changes}</td>
-              </tr>
+              <div
+                key={item.id}
+                className="clickable-row flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors cursor-pointer"
+                onClick={() => onSelect(item)}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-[14px] text-[var(--text-primary)] truncate">{d.product || '—'}</span>
+                    <span className="badge badge-accent font-mono text-xs">{d.ver}</span>
+                    <StatusBadge status={d.status} />
+                  </div>
+                  {d.changes && <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5 truncate">{d.changes}</p>}
+                </div>
+                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <AddToCowork item={{ name: d.product || 'Untitled Formulation', type: 'Formulation', id: item.id, description: `Formulation${d.ver ? ` · ${d.ver}` : ''}` }} variant="icon" />
+                  <ActionsMenu actions={[
+                    { label: 'View', icon: Eye, onClick: () => onSelect(item) },
+                    { label: 'Edit', icon: Edit3, onClick: () => openFormulationForm('edit', item) },
+                  ]} />
+                </div>
+              </div>
             )
           })}
-        </tbody>
-      </table>
+        </div>
+      )}
     </div>
   )
 }
@@ -1717,7 +1864,18 @@ export function RDPage() {
     return departments.find((d: any) => d.type === 'BUILTIN_RD') || null
   }, [departments])
 
+  const opsDept = useMemo(() => {
+    if (!Array.isArray(departments)) return null
+    return departments.find((d: any) => d.type === 'BUILTIN_OPS') || null
+  }, [departments])
+
   const { data: deptDetail, isLoading: detailLoading, refetch: refetchDept } = useDepartment(rdDept?.id || '')
+  const { data: opsDetail } = useDepartment(opsDept?.id || '')
+
+  const productionItems = useMemo(() => {
+    const modules = (opsDetail?.modules as any[]) || []
+    return modules.find((m: any) => m.type === 'PRODUCTION_TRACKING')?.items || []
+  }, [opsDetail])
 
   const isLoading = deptsLoading || detailLoading
 
@@ -1726,6 +1884,7 @@ export function RDPage() {
       return {
         briefs: [], cm: [], transfers: [], formulations: [], npd: [], artwork: [], components: [],
         briefsModuleId: null, cmModuleId: null, transfersModuleId: null,
+        formulationsModuleId: null,
         npdModuleId: null, artworkModuleId: null, componentsModuleId: null,
       }
     }
@@ -1749,6 +1908,7 @@ export function RDPage() {
       npdModuleId: findModuleId('NPD_PIPELINE'),
       artworkModuleId: findModuleId('ARTWORK'),
       componentsModuleId: findModuleId('COMPONENTS'),
+      formulationsModuleId: findModuleId('FORMULATIONS'),
     }
   }, [deptDetail])
 
@@ -1809,17 +1969,17 @@ export function RDPage() {
           ) : activeTab === 'briefs' ? (
             <BriefsTab items={moduleData.briefs} moduleId={moduleData.briefsModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} transferItems={moduleData.transfers} formulationItems={moduleData.formulations} />
           ) : activeTab === 'cm' ? (
-            <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} />
+            <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} productionItems={productionItems} />
           ) : activeTab === 'transfers' ? (
-            <TransfersTab items={moduleData.transfers} moduleId={moduleData.transfersModuleId} briefs={moduleData.briefs} onRefresh={() => refetchDept()} onSelect={(item) => setSelectedItem({ item, type: 'TECH_TRANSFERS' })} />
+            <TransfersTab items={moduleData.transfers} moduleId={moduleData.transfersModuleId} departmentId={rdDept?.id || null} briefs={moduleData.briefs} cmItems={moduleData.cm} onRefresh={() => refetchDept()} onSelect={(item) => setViewingTransfer(item)} />
           ) : activeTab === 'formulations' ? (
-            <FormulationsTab items={tabContent.formulations} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
+            <FormulationsTab items={tabContent.formulations} moduleId={moduleData.formulationsModuleId} departmentId={rdDept?.id || null} briefItems={moduleData.briefs} onRefresh={() => refetchDept()} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
           ) : activeTab === 'npd' ? (
-            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} />
+            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} />
           ) : activeTab === 'artwork' ? (
-            <ArtworkTab items={moduleData.artwork} moduleId={moduleData.artworkModuleId} briefs={moduleData.briefs} onRefresh={() => refetchDept()} />
+            <ArtworkTab items={moduleData.artwork} moduleId={moduleData.artworkModuleId} departmentId={rdDept?.id || null} briefs={moduleData.briefs} onRefresh={() => refetchDept()} />
           ) : (
-            <ComponentsTab items={moduleData.components} moduleId={moduleData.componentsModuleId} onRefresh={() => refetchDept()} />
+            <ComponentsTab items={moduleData.components} moduleId={moduleData.componentsModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} />
           )}
         </div>
       </div>

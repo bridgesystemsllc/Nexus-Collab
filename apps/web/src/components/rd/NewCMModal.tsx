@@ -63,11 +63,11 @@ const CONTACT_TYPES = [
 ]
 const BRANDS = ["Carol's Daughter", 'Dermablend', 'Baxter of California', 'Ambi', 'AcneFree']
 
-const STEPS = ['Company Info', 'Contacts', 'Brands & Products', 'Performance Defaults']
+export const STEPS = ['Company Info', 'Contacts', 'Brands & Products', 'Performance Defaults']
 
 // ─── Validation ────────────────────────────────────────────
 
-function validateStep(step: number, form: CMFormData): Record<string, string> {
+export function validateStep(step: number, form: CMFormData): Record<string, string> {
   const errors: Record<string, string> = {}
   if (step === 0) {
     if (!form.name.trim()) errors.name = 'CM company name is required'
@@ -219,13 +219,13 @@ function Select({
 
 // ─── Step 1: Company Info ──────────────────────────────────
 
-interface StepProps {
+export interface StepProps {
   form: CMFormData
   setForm: (f: CMFormData) => void
   errors: Record<string, string>
 }
 
-function Step1({ form, setForm, errors }: StepProps) {
+export function Step1({ form, setForm, errors }: StepProps) {
   const updateAddress = (field: keyof CMFormData['address'], value: string) => {
     setForm({ ...form, address: { ...form.address, [field]: value } })
   }
@@ -317,7 +317,7 @@ function Step1({ form, setForm, errors }: StepProps) {
 
 // ─── Step 2: Contacts ──────────────────────────────────────
 
-function Step2({ form, setForm, errors }: StepProps) {
+export function Step2({ form, setForm, errors }: StepProps) {
   const addContact = () => {
     if (form.contacts.length < 10) {
       setForm({
@@ -419,7 +419,7 @@ function Step2({ form, setForm, errors }: StepProps) {
 
 // ─── Step 3: Brands & Products ─────────────────────────────
 
-function Step3({ form, setForm }: StepProps) {
+export function Step3({ form, setForm }: StepProps) {
   const toggleBrand = (brand: string) => {
     const brands = form.brands.includes(brand)
       ? form.brands.filter((b) => b !== brand)
@@ -470,7 +470,7 @@ function Step3({ form, setForm }: StepProps) {
 
 // ─── Step 4: Performance Defaults ──────────────────────────
 
-function Step4({ form, setForm }: StepProps) {
+export function Step4({ form, setForm }: StepProps) {
   return (
     <div className="space-y-5">
       <p className="text-[13px] text-[var(--text-tertiary)]">
