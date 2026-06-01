@@ -28,7 +28,7 @@ import { techTransferStageRoutes } from './routes/techTransferStages'
 import { formulationDetailRoutes } from './routes/formulationDetail'
 import { uploadRoutes } from './routes/uploads'
 import { authRoutes } from './routes/auth'
-import { setupAuth, attachMember } from './auth/replitAuth'
+import { setupAuth, attachMember } from './auth/session'
 
 export const prisma = new PrismaClient()
 
@@ -120,8 +120,9 @@ io.on('connection', (socket) => {
 const PORT = parseInt(process.env.PORT || '3000', 10)
 
 async function start() {
-  // Auth (session + passport + /api/login,/api/callback,/api/logout) must be
-  // wired before the API router so req.user / req.isAuthenticated are available.
+  // Auth (session + /api/login,/api/logout) must be wired before the API router
+  // so the session cookie is available. The Microsoft OAuth callback lives in
+  // the /api/v1/integrations/microsoft router and sets req.session.userId.
   await setupAuth(app)
 
   app.use('/api/v1', api)

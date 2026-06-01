@@ -1,4 +1,19 @@
+const ERROR_MESSAGES: Record<string, string> = {
+  not_configured: 'Microsoft sign-in is not configured yet. Please contact your administrator.',
+  no_workspace: 'No NEXUS workspace is set up for your account yet.',
+  exchange_failed: 'Microsoft sign-in failed. Please try again.',
+  state_persist_failed: 'Your session could not be started. Please try again.',
+  session_persist_failed: 'Your session could not be saved. Please try again.',
+  invalid_state: 'Your sign-in link expired. Please try again.',
+}
+
 export function LandingPage() {
+  const params = new URLSearchParams(window.location.search)
+  const errorReason = params.get('ms') === 'error' ? params.get('reason') : null
+  const errorMessage = errorReason
+    ? ERROR_MESSAGES[errorReason] || 'Microsoft sign-in failed. Please try again.'
+    : null
+
   const signIn = () => {
     window.location.href = '/api/login'
   }
@@ -52,16 +67,35 @@ export function LandingPage() {
             Sign in to access your department workspace.
           </p>
 
+          {errorMessage && (
+            <div
+              className="mt-6 rounded-lg px-4 py-3 text-[13px]"
+              style={{
+                background: 'color-mix(in srgb, #ef4444 12%, transparent)',
+                color: '#ef4444',
+                border: '1px solid color-mix(in srgb, #ef4444 35%, transparent)',
+              }}
+            >
+              {errorMessage}
+            </div>
+          )}
+
           <button
             onClick={signIn}
-            className="mt-8 w-full flex items-center justify-center gap-2 rounded-lg py-3 text-[15px] font-semibold text-white transition-opacity hover:opacity-90"
+            className="mt-8 w-full flex items-center justify-center gap-3 rounded-lg py-3 text-[15px] font-semibold text-white transition-opacity hover:opacity-90"
             style={{ background: 'var(--accent)' }}
           >
-            Sign in with Replit
+            <svg width="18" height="18" viewBox="0 0 21 21" aria-hidden="true">
+              <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+              <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+              <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+              <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+            </svg>
+            Sign in with Microsoft
           </button>
 
           <p className="text-[12px] mt-6 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
-            We use Replit to verify your identity so every action in NEXUS is
+            Sign in with your Microsoft work account so every action in NEXUS is
             attributed to the right person.
           </p>
         </div>

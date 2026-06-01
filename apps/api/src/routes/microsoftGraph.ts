@@ -13,11 +13,15 @@ import {
   graphGet,
   MicrosoftNotConnectedError,
 } from '../lib/microsoftGraph'
+import { upsertMemberFromMicrosoft } from '../auth/session'
 
-// OAuth state stored server-side in the session: single-use, member-bound.
+// OAuth state stored server-side in the session: single-use. `flow` tells the
+// shared callback whether this was a primary login (no prior member) or a
+// per-user "connect" of an already-signed-in member (bound to memberId).
 interface MsOAuthState {
   nonce: string
-  memberId: string
+  flow: 'login' | 'connect'
+  memberId?: string
   createdAt: number
 }
 const STATE_TTL_MS = 10 * 60 * 1000
@@ -82,7 +86,7 @@ microsoftGraphRoutes.get('/connect', (req: Request, res: Response) => {
   const redirectUri = getRedirectUri(req)
   const nonce = createStateNonce()
   // Bind the flow to this member in the server-side session (single-use).
-  ;(req.session as any).msOAuth = { nonce, memberId, createdAt: Date.now() } as MsOAuthState
+  ;(req.session as any).msOAuth = { nonce, flow: 'connect', memberId, createdAt: Date.now() } as MsOAuthState
 
   // Persist the session BEFORE redirecting away so the callback can read it.
   req.session.save((err) => {
@@ -110,19 +114,15 @@ microsoftGraphRoutes.get('/callback', async (req: Request, res: Response) => {
     return res.redirect(APP_REDIRECT('error', error_description || error))
   }
 
-  // Validate state: present, fresh, matches the nonce, and bound to the
-  // currently authenticated member.
-  const member = (req as any).member
-  const stateValid =
+  // Validate state: present, fresh, and matches the single-use nonce (CSRF).
+  const baseValid =
     !!code &&
     !!state &&
     !!stored &&
     Date.now() - stored.createdAt <= STATE_TTL_MS &&
-    safeEqual(state, stored.nonce) &&
-    !!member?.id &&
-    member.id === stored.memberId
+    safeEqual(state, stored.nonce)
 
-  if (!stateValid) {
+  if (!baseValid) {
     return res.redirect(APP_REDIRECT('error', 'invalid_state'))
   }
 
@@ -130,11 +130,34 @@ microsoftGraphRoutes.get('/callback', async (req: Request, res: Response) => {
     const redirectUri = getRedirectUri(req)
     const tokens = await exchangeCode(code, redirectUri)
     const profile = await fetchProfile(tokens.access_token)
-    await saveTokensForMember(stored!.memberId, tokens, profile)
+
+    // ── Primary login: provision/resolve the member and start a session.
+    if (stored!.flow === 'login') {
+      const loggedInMember = await upsertMemberFromMicrosoft(profile)
+      ;(req.session as any).userId = loggedInMember.id
+      // Signing in also connects Graph (same scopes), so Outlook/OneDrive work
+      // immediately without a separate "connect" step.
+      await saveTokensForMember(loggedInMember.id, tokens, profile)
+      return req.session.save((err) => {
+        if (err) {
+          console.error('[microsoft] failed to persist login session:', err)
+          return res.redirect(APP_REDIRECT('error', 'session_persist_failed'))
+        }
+        res.redirect('/')
+      })
+    }
+
+    // ── Connect flow: the bound member must still be the acting member.
+    const member = (req as any).member
+    if (!member?.id || member.id !== stored!.memberId) {
+      return res.redirect(APP_REDIRECT('error', 'invalid_state'))
+    }
+    await saveTokensForMember(stored!.memberId!, tokens, profile)
     res.redirect(APP_REDIRECT('connected'))
   } catch (err) {
     console.error('[microsoft] callback exchange failed:', err)
-    res.redirect(APP_REDIRECT('error', 'exchange_failed'))
+    const reason = (err as Error)?.message === 'NO_ORGANIZATION' ? 'no_workspace' : 'exchange_failed'
+    res.redirect(APP_REDIRECT('error', reason))
   }
 })
 

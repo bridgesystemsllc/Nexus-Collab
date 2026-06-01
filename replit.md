@@ -79,6 +79,14 @@ Reusable building blocks live in `apps/web/src/components/shared/`:
 
 To add a new full-page form: build a component taking `{ form: ActiveForm }` that uses `<FullPageForm>` and persists on save (invalidate the relevant React Query key), register it in `formRegistry`, then call `openForm({ formType, mode, recordId?, context? })` from any list/row. Reference implementation: `apps/web/src/components/briefs/BriefFormPage.tsx` (New/Edit Brief), wired from `apps/web/src/app/routes/departments/rd.tsx`.
 
+## Authentication (Microsoft only)
+- Sole login is "Sign in with Microsoft" (Azure Entra ID). The old Replit OIDC login was removed.
+- Secrets: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`. Registered Entra redirect URI: `<REPLIT_DEV_DOMAIN>/api/v1/integrations/microsoft/callback` (single URI shared by login + connect).
+- Session: `express-session` + `connect-pg-simple` (Postgres-backed). On successful login the OAuth callback sets `req.session.userId = member.id`; `attachMember` resolves `req.member` from it on every request.
+- Auth module: `apps/api/src/auth/session.ts` (`setupAuth` wires session + `GET /api/login` + `GET /api/logout`; `attachMember`, `isAuthenticated`, `upsertMemberFromMicrosoft`). The OAuth callback itself lives in `apps/api/src/routes/microsoftGraph.ts` and branches on `msOAuth.flow` (`'login'` vs `'connect'`).
+- Identity mapping: Entra object id is stored in `Member.clerkUserId`; new logins match by that id, then adopt by email, else create a member in the first Organization.
+- Signing in uses the full Graph scopes (incl. `offline_access`, `Mail.Read`, `Files.Read`), so login also connects the member's Microsoft account — Outlook/OneDrive attach features work without a separate connect step.
+
 ## Features
 - Dark/light theme toggle (persisted to localStorage)
 - Real-time WebSocket support for activity feeds and task updates
