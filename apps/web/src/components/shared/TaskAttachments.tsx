@@ -1,9 +1,12 @@
-import { useState, useRef, useCallback } from 'react'
-import { Mail, Paperclip, MessageSquare, X, Download, Trash2, ExternalLink, Send, Link, ChevronDown, Loader2 } from 'lucide-react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import { Mail, Paperclip, MessageSquare, X, Download, Trash2, ExternalLink, Send, Link, ChevronDown, Loader2, Search } from 'lucide-react'
 import {
   useTaskAttachments, useCreateEmailAttachment, useCreateFileAttachment,
   useCreateFileFromUrl, useCreateCommentAttachment, useDeleteAttachment,
+  useMicrosoftStatus, useMailSearch, type MailSearchResult,
 } from '@/hooks/useData'
+import { ConnectMicrosoft } from '@/components/shared/ConnectMicrosoft'
+import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
 // ─── Types ─────────────────────────────────────────────────
@@ -25,6 +28,7 @@ interface Attachment {
   sender_email?: string
   snippet?: string
   message_count?: number
+  web_link?: string
   // file fields
   filename?: string
   size_bytes?: number
@@ -142,6 +146,17 @@ function AttachmentRow({ att, onDelete }: { att: Attachment; onDelete: () => voi
 
       {/* Actions */}
       <div className="flex items-center gap-1 shrink-0">
+        {att.type === 'email' && att.web_link && (
+          <a
+            href={att.web_link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-6 h-6 flex items-center justify-center rounded text-[var(--text-tertiary)] hover:text-indigo-400 hover:bg-[var(--bg-hover)] transition-colors"
+            title="Open in Outlook"
+          >
+            <ExternalLink size={13} />
+          </a>
+        )}
         {att.type === 'file' && att.storage_url && (
           <a
             href={att.storage_url}
@@ -192,76 +207,126 @@ function ModalShell({ title, onClose, children }: { title: string; onClose: () =
 // ─── Attach Email Modal ────────────────────────────────────
 
 function AttachEmailModal({ taskId, module, onClose }: { taskId: string; module: string; onClose: () => void }) {
-  const [subject, setSubject] = useState('')
-  const [senderName, setSenderName] = useState('')
-  const [senderEmail, setSenderEmail] = useState('')
-  const [snippet, setSnippet] = useState('')
+  const [query, setQuery] = useState('')
+  const [debounced, setDebounced] = useState('')
+  const [attachingId, setAttachingId] = useState<string | null>(null)
+  const { data: status, isLoading: statusLoading } = useMicrosoftStatus()
   const createEmail = useCreateEmailAttachment()
+  const qc = useQueryClient()
 
-  const handleSubmit = () => {
-    if (!subject.trim()) return
+  const connected = status?.connected ?? false
+
+  // Debounce the query so we don't hit Graph on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 350)
+    return () => clearTimeout(t)
+  }, [query])
+
+  const search = useMailSearch(debounced, connected)
+  const results = search.data?.messages ?? []
+  // A 412 mid-session means the connection lapsed → fall back to the prompt.
+  const lapsed = (search.error as any)?.response?.status === 412
+
+  // On a lapse the server has already cleared the connection, but our cached
+  // status may still say "connected" (which would make the inline prompt render
+  // nothing). Refetch so ConnectMicrosoft shows the reconnect button.
+  useEffect(() => {
+    if (lapsed) qc.invalidateQueries({ queryKey: ['microsoft', 'status'] })
+  }, [lapsed, qc])
+
+  const handleSelect = (m: MailSearchResult) => {
+    if (attachingId) return
+    setAttachingId(m.id)
     createEmail.mutate(
-      { taskId, module, subject: subject.trim(), sender_name: senderName.trim() || undefined, sender_email: senderEmail.trim() || undefined, snippet: snippet.trim() || undefined },
-      { onSuccess: () => onClose() },
+      {
+        taskId,
+        module,
+        subject: m.subject,
+        sender_name: m.from_name || undefined,
+        sender_email: m.from_email || undefined,
+        received_at: m.received_at || undefined,
+        snippet: m.snippet || undefined,
+        web_link: m.web_link || undefined,
+        source: 'outlook',
+      },
+      { onSuccess: () => onClose(), onSettled: () => setAttachingId(null) },
     )
   }
 
   return (
-    <ModalShell title="Attach Email" onClose={onClose}>
-      <div className="space-y-3">
-        <div>
-          <label className="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">Subject *</label>
-          <input
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg text-[13px] text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent)] transition-colors"
-            style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}
-            placeholder="Email subject line"
-            autoFocus
-          />
+    <ModalShell title="Attach Outlook email" onClose={onClose}>
+      {statusLoading ? (
+        <div className="py-10 flex items-center justify-center text-[var(--text-tertiary)]">
+          <Loader2 size={18} className="animate-spin" />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">Sender Name</label>
+      ) : !connected || lapsed ? (
+        <ConnectMicrosoft variant="inline" purpose="to search your Outlook inbox" />
+      ) : (
+        <div className="space-y-3">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
             <input
-              value={senderName}
-              onChange={(e) => setSenderName(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-[13px] text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent)] transition-colors"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              autoFocus
+              placeholder="Search your inbox by subject, sender, or keyword"
+              className="w-full pl-9 pr-9 py-2 rounded-lg text-[13px] text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent)] transition-colors"
               style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}
-              placeholder="John Doe"
             />
+            {search.isFetching && (
+              <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-[var(--text-tertiary)]" />
+            )}
           </div>
-          <div>
-            <label className="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">Sender Email</label>
-            <input
-              value={senderEmail}
-              onChange={(e) => setSenderEmail(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-[13px] text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent)] transition-colors"
-              style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}
-              placeholder="john@example.com"
-            />
+
+          <div className="max-h-[340px] overflow-y-auto -mx-1 px-1">
+            {debounced.length < 2 && (
+              <p className="text-[12px] text-[var(--text-tertiary)] text-center py-8">
+                Type at least 2 characters to search your Outlook mailbox.
+              </p>
+            )}
+            {debounced.length >= 2 && search.isError && !lapsed && (
+              <p className="text-[12px] text-[var(--danger)] text-center py-8">
+                Couldn’t search Outlook. Please try again.
+              </p>
+            )}
+            {debounced.length >= 2 && !search.isFetching && !search.isError && results.length === 0 && (
+              <p className="text-[12px] text-[var(--text-tertiary)] text-center py-8">
+                No messages match “{debounced}”.
+              </p>
+            )}
+
+            <div className="space-y-1">
+              {results.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => handleSelect(m)}
+                  disabled={!!attachingId}
+                  className="w-full text-left p-2.5 rounded-lg border border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] hover:border-[var(--border-default)] transition-colors disabled:opacity-50 flex items-start gap-2.5"
+                >
+                  <div className="w-7 h-7 rounded-full bg-indigo-500/15 text-indigo-400 flex items-center justify-center text-[11px] font-semibold shrink-0 mt-0.5">
+                    {initial(m.from_name || m.from_email || '?')}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">{m.subject}</p>
+                    <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5 truncate">
+                      {m.from_name || m.from_email || 'unknown'}
+                      {m.received_at ? ` \u00B7 ${new Date(m.received_at).toLocaleDateString()}` : ''}
+                    </p>
+                    {m.snippet && (
+                      <p className="text-[11px] text-[var(--text-secondary)] mt-1 truncate">{m.snippet}</p>
+                    )}
+                  </div>
+                  {attachingId === m.id ? (
+                    <Loader2 size={14} className="animate-spin text-[var(--text-tertiary)] shrink-0 mt-1" />
+                  ) : (
+                    <Send size={13} className="text-[var(--text-tertiary)] shrink-0 mt-1" />
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-        <div>
-          <label className="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">Snippet / Preview</label>
-          <textarea
-            value={snippet}
-            onChange={(e) => setSnippet(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg text-[13px] text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent)] transition-colors resize-none"
-            style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}
-            rows={3}
-            placeholder="Optional preview text..."
-          />
-        </div>
-        <button
-          onClick={handleSubmit}
-          disabled={!subject.trim() || createEmail.isPending}
-          className="w-full py-2 rounded-lg text-[13px] font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-        >
-          <Send size={13} />
-          {createEmail.isPending ? 'Attaching...' : 'Attach Email'}
-        </button>
-      </div>
+      )}
     </ModalShell>
   )
 }

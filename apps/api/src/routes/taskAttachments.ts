@@ -32,7 +32,19 @@ taskAttachmentRoutes.get('/:taskId/attachments', async (req: Request, res: Respo
       where,
       orderBy: { createdAt: 'desc' },
     })
-    res.json(attachments)
+    // Flatten the JSON payload onto the row so the UI can read the type-specific
+    // fields directly (subject, sender_name, web_link, filename, body_plain, …)
+    // and expose a snake_case timestamp it already expects.
+    const flattened = attachments.map((a) => ({
+      id: a.id,
+      type: a.type,
+      module: a.module,
+      created_at: a.createdAt,
+      updated_at: a.updatedAt,
+      created_by: a.createdBy,
+      ...(a.payload as Record<string, any>),
+    }))
+    res.json(flattened)
   } catch (error) {
     console.error('[task-attachments] GET /:taskId/attachments error:', error)
     res.status(500).json({ error: 'Failed to fetch attachments' })
@@ -50,6 +62,12 @@ const emailPayloadSchema = z.object({
   message_count: z.number().optional().default(1),
   source: z.string().optional().default('forward'),
   forward_content: z.string().optional(),
+  // Deep link that opens the original message in Outlook on the web. Restrict to
+  // http(s) so a stored value can't become a javascript:/data: href.
+  web_link: z
+    .string()
+    .refine((u) => /^https?:\/\//i.test(u), 'web_link must be an http(s) URL')
+    .optional(),
 })
 
 taskAttachmentRoutes.post('/:taskId/attachments/email', async (req: Request, res: Response) => {

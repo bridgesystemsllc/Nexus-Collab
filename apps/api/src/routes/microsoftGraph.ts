@@ -10,6 +10,8 @@ import {
   saveTokensForMember,
   getMicrosoftAccount,
   disconnectMember,
+  graphGet,
+  MicrosoftNotConnectedError,
 } from '../lib/microsoftGraph'
 
 // OAuth state stored server-side in the session: single-use, member-bound.
@@ -133,6 +135,48 @@ microsoftGraphRoutes.get('/callback', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('[microsoft] callback exchange failed:', err)
     res.redirect(APP_REDIRECT('error', 'exchange_failed'))
+  }
+})
+
+// ─── Mail search ─────────────────────────────────────────────
+// Searches the acting member's OWN Outlook mailbox via Graph and returns a
+// trimmed list of messages the UI can attach to a task/project. Returns 412
+// when the member hasn't connected (or the connection lapsed) so the client can
+// show the "connect Microsoft" prompt instead of crashing.
+microsoftGraphRoutes.get('/mail/search', async (req: Request, res: Response) => {
+  const memberId = memberIdOrUnauthorized(req, res)
+  if (!memberId) return
+
+  const q = String(req.query.q ?? '').trim()
+  if (!q) return res.json({ messages: [] })
+
+  try {
+    // Quote the term for Graph KQL ($search), stripping embedded quotes.
+    const search = encodeURIComponent(`"${q.replace(/"/g, '')}"`)
+    const select = encodeURIComponent('id,subject,from,receivedDateTime,bodyPreview,webLink')
+    const data = await graphGet<{ value: any[] }>(
+      memberId,
+      `/me/messages?$search=${search}&$top=20&$select=${select}`,
+    )
+    const messages = (data.value ?? []).map((m) => ({
+      id: m.id,
+      subject: m.subject || '(no subject)',
+      from_name: m.from?.emailAddress?.name ?? null,
+      from_email: m.from?.emailAddress?.address ?? null,
+      received_at: m.receivedDateTime ?? null,
+      snippet: m.bodyPreview ?? '',
+      web_link: m.webLink ?? null,
+    }))
+    res.json({ messages })
+  } catch (err) {
+    if (err instanceof MicrosoftNotConnectedError) {
+      return res.status(412).json({
+        error: 'microsoft_not_connected',
+        message: 'Connect your Microsoft account to search Outlook.',
+      })
+    }
+    console.error('[microsoft] mail search error:', err)
+    res.status(500).json({ error: 'Failed to search Outlook' })
   }
 })
 

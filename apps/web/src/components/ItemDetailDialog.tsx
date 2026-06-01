@@ -16,6 +16,7 @@ import {
 import { Pencil } from 'lucide-react'
 import { Dialog } from './Dialog'
 import { AddToCowork, type AddToCoworkItem } from './shared/AddToCowork'
+import { TaskAttachments } from './shared/TaskAttachments'
 
 interface ItemDetailDialogProps {
   item: any | null
@@ -344,6 +345,13 @@ export function ItemDetailDialog({ item, moduleType, onClose, onEdit, coworkItem
       {moduleType === 'PRODUCTION_TRACKING' && <ProductionDetail d={d} />}
       {['NPD_PIPELINE', 'ARTWORK', 'COMPONENTS', 'BRAND_TRANSITION'].includes(moduleType) && (
         <GenericModuleDetail d={d} />
+      )}
+
+      {/* Attachments (Outlook email, files, comments) for this item. */}
+      {item.id && (
+        <div className="pt-5 mt-5 border-t border-[var(--border-subtle)]">
+          <TaskAttachments taskId={item.id} module={moduleType.toLowerCase()} />
+        </div>
       )}
 
       {showActions && (

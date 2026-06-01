@@ -432,11 +432,35 @@ export function useTaskAttachments(taskId: string, module: string) {
 export function useCreateEmailAttachment() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { taskId: string; module: string; subject: string; sender_name?: string; sender_email?: string; snippet?: string; createdBy?: string }) => {
+    mutationFn: (data: { taskId: string; module: string; subject: string; sender_name?: string; sender_email?: string; received_at?: string; snippet?: string; web_link?: string; source?: string; message_count?: number; createdBy?: string }) => {
       const { taskId, ...body } = data
       return api.post(`/tasks/${taskId}/attachments/email`, body).then(r => r.data)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+// Search the signed-in member's OWN Outlook mailbox via Microsoft Graph.
+// Enabled only when connected and the query is non-trivial. A 412 from the API
+// means the connection lapsed — the caller surfaces the connect prompt.
+export interface MailSearchResult {
+  id: string
+  subject: string
+  from_name: string | null
+  from_email: string | null
+  received_at: string | null
+  snippet: string
+  web_link: string | null
+}
+
+export function useMailSearch(query: string, enabled: boolean) {
+  const q = query.trim()
+  return useQuery<{ messages: MailSearchResult[] }>({
+    queryKey: ['microsoft', 'mail', 'search', q],
+    queryFn: () => api.get(`/integrations/microsoft/mail/search?q=${encodeURIComponent(q)}`).then(r => r.data),
+    enabled: enabled && q.length >= 2,
+    retry: false,
+    staleTime: 30_000,
   })
 }
 
