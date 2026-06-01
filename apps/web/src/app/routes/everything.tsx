@@ -17,8 +17,8 @@ import {
   Rocket,
 } from 'lucide-react'
 import { useEverything } from '@/hooks/useData'
-import { TaskDetailDialog } from '@/components/TaskDetailDialog'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
+import { useAppStore } from '@/stores/appStore'
 
 // ─── Filter Config ─────────────────────────────────────────
 const TYPE_FILTERS: {
@@ -123,8 +123,8 @@ export function EverythingPage() {
   const [typeFilter, setTypeFilter] = useState('ALL')
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
+  const openForm = useAppStore((s) => s.openForm)
 
   // Build filters for the API
   const filters = useMemo(() => {
@@ -320,7 +320,7 @@ export function EverythingPage() {
                     className="clickable-row"
                     onClick={() => {
                       if (record.type === 'TASK') {
-                        setSelectedTaskId(record.sourceId ?? record.id)
+                        openForm({ formType: 'task', mode: 'edit', recordId: record.sourceId ?? record.id })
                       } else {
                         setSelectedItem({ item: { id: record.id, data: record.data ?? record }, type: record.type })
                       }
@@ -377,12 +377,6 @@ export function EverythingPage() {
           Showing {records.length} of {kpis.total} records
         </p>
       )}
-
-      {/* Task Detail Dialog */}
-      <TaskDetailDialog
-        taskId={selectedTaskId}
-        onClose={() => setSelectedTaskId(null)}
-      />
 
       {/* Item Detail Dialog */}
       <ItemDetailDialog

@@ -758,6 +758,7 @@ function DeptDetailDrawer({
 }) {
   const queryClient = useQueryClient()
   const { showToast, ToastEl } = useToast()
+  const openForm = useAppStore((s) => s.openForm)
 
   const [editMode, setEditMode] = useState(false)
   const [editName, setEditName] = useState(dept.name || '')
@@ -1063,7 +1064,12 @@ function DeptDetailDrawer({
                   .filter((t: any) => t.status !== 'COMPLETE')
                   .slice(0, 10)
                   .map((task: any) => (
-                    <div key={task.id} className="flex items-center gap-3 p-2.5 rounded-[8px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                    <button
+                      key={task.id}
+                      type="button"
+                      onClick={() => { onClose(); openForm({ formType: 'task', mode: 'edit', recordId: task.id }) }}
+                      className="w-full text-left flex items-center gap-3 p-2.5 rounded-[8px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--border-default)] transition-colors cursor-pointer"
+                    >
                       <div
                         className="w-1.5 h-8 rounded-full flex-shrink-0"
                         style={{
@@ -1079,7 +1085,7 @@ function DeptDetailDrawer({
                         <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">{task.title}</p>
                         <p className="text-[11px] text-[var(--text-tertiary)]">{task.status?.replace(/_/g, ' ')}</p>
                       </div>
-                    </div>
+                    </button>
                   ))}
               </div>
             ) : (
