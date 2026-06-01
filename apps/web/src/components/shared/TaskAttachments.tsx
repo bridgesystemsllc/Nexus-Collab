@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
-import { Mail, Paperclip, MessageSquare, X, Download, Trash2, ExternalLink, Send, Link, ChevronDown } from 'lucide-react'
+import { Mail, Paperclip, MessageSquare, X, Download, Trash2, ExternalLink, Send, Link, ChevronDown, Loader2 } from 'lucide-react'
 import {
   useTaskAttachments, useCreateEmailAttachment, useCreateFileAttachment,
   useCreateFileFromUrl, useCreateCommentAttachment, useDeleteAttachment,
@@ -61,6 +61,17 @@ function formatBytes(bytes?: number): string {
 function initial(name?: string): string {
   if (!name) return '?'
   return name.charAt(0).toUpperCase()
+}
+
+function attachmentLabel(att: Attachment): string {
+  if (att.type === 'email') return att.subject || 'this email'
+  if (att.type === 'file') return att.filename || 'this file'
+  if (att.type === 'comment') {
+    const body = att.body_plain?.trim() || ''
+    if (!body) return 'this comment'
+    return body.length > 60 ? `${body.slice(0, 60)}\u2026` : body
+  }
+  return 'this attachment'
 }
 
 const borderByType: Record<string, string> = {
@@ -429,6 +440,7 @@ function AddCommentModal({ taskId, module, onClose }: { taskId: string; module: 
 export function TaskAttachments({ taskId, module }: TaskAttachmentsProps) {
   const [expanded, setExpanded] = useState(false)
   const [activeModal, setActiveModal] = useState<ModalType>(null)
+  const [attToDelete, setAttToDelete] = useState<Attachment | null>(null)
   const { data: attachments = [], isLoading } = useTaskAttachments(taskId, module)
   const deleteAttachment = useDeleteAttachment()
 
@@ -438,10 +450,17 @@ export function TaskAttachments({ taskId, module }: TaskAttachmentsProps) {
 
   const count = sorted.length
 
-  const handleDelete = useCallback((id: string) => {
-    if (!window.confirm('Delete this attachment?')) return
-    deleteAttachment.mutate(id)
-  }, [deleteAttachment])
+  const handleDelete = useCallback((att: Attachment) => {
+    setAttToDelete(att)
+  }, [])
+
+  const handleConfirmDelete = useCallback(() => {
+    if (!attToDelete) return
+    deleteAttachment.mutate(attToDelete.id, {
+      onSuccess: () => setAttToDelete(null),
+      onError: () => setAttToDelete(null),
+    })
+  }, [attToDelete, deleteAttachment])
 
   return (
     <div className="mt-2">
@@ -493,7 +512,7 @@ export function TaskAttachments({ taskId, module }: TaskAttachmentsProps) {
             <p className="text-[11px] text-[var(--text-tertiary)] px-3 py-2">No attachments yet</p>
           )}
           {sorted.map((att) => (
-            <AttachmentRow key={att.id} att={att} onDelete={() => handleDelete(att.id)} />
+            <AttachmentRow key={att.id} att={att} onDelete={() => handleDelete(att)} />
           ))}
         </div>
       )}
@@ -507,6 +526,41 @@ export function TaskAttachments({ taskId, module }: TaskAttachmentsProps) {
       )}
       {activeModal === 'comment' && (
         <AddCommentModal taskId={taskId} module={module} onClose={() => setActiveModal(null)} />
+      )}
+
+      {/* Delete confirmation */}
+      {attToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => { if (!deleteAttachment.isPending) setAttToDelete(null) }}
+          />
+          <div className="relative z-10 p-5 rounded-[12px] bg-[var(--bg-elevated)] border border-[var(--border-default)] shadow-xl max-w-sm w-full mx-4">
+            <p className="text-[14px] text-[var(--text-primary)] font-medium mb-1">
+              Delete {attToDelete.type === 'comment' ? 'comment' : attToDelete.type === 'email' ? 'email' : 'attachment'}?
+            </p>
+            <p className="text-[13px] text-[var(--text-secondary)] mb-4">
+              &ldquo;{attachmentLabel(attToDelete)}&rdquo; will be permanently removed. This can&rsquo;t be undone.
+            </p>
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={() => setAttToDelete(null)}
+                disabled={deleteAttachment.isPending}
+                className="px-3 py-1.5 rounded-[6px] text-[12px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={deleteAttachment.isPending}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[12px] font-medium text-white bg-[var(--danger)] hover:opacity-90 transition-colors disabled:opacity-40"
+              >
+                {deleteAttachment.isPending && <Loader2 size={12} className="animate-spin" />}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
