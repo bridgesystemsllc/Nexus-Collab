@@ -18,6 +18,7 @@ import { DeptManagerPage } from '@/app/routes/dept-manager'
 import { PulsePage } from '@/app/routes/pulse'
 import { CustomDeptPage } from '@/app/routes/custom-dept'
 import { FullPageFormHost } from '@/app/formRegistry'
+import { useRealtimePulse } from '@/hooks/useRealtimePulse'
 
 function PageContent() {
   const currentPage = useAppStore((s) => s.currentPage)
@@ -65,6 +66,7 @@ function PageContent() {
 
 export function App() {
   const aiPanelOpen = useAppStore((s) => s.aiPanelOpen)
+  useRealtimePulse()
 
   return (
     <OnboardingGuard>

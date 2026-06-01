@@ -272,6 +272,17 @@ async function notifyTaggedMembers(spaceId: string, activity: any) {
         metadata: { spaceId, activityId: activity.id, taggedBy: activity.authorId ?? null },
       })),
     })
+
+    // Push a live event to each tagged member so their Pulse feed updates
+    // without a manual refresh (if they're currently online).
+    for (const targetId of targetIds) {
+      io.to(`user:${targetId}`).emit('pulse_new', {
+        targetId,
+        spaceId,
+        activityId: activity.id,
+        message,
+      })
+    }
   } catch (error) {
     // Notification failure shouldn't block the activity from being posted.
     console.error('[cowork] notifyTaggedMembers error:', error)

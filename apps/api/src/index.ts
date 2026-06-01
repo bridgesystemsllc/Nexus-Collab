@@ -103,6 +103,15 @@ io.on('connection', (socket) => {
     socket.leave(`space:${spaceId}`)
   })
 
+  // Per-user room so we can push personal notifications (e.g. tag Pulses) live.
+  socket.on('join_user', (userId: string) => {
+    if (userId) socket.join(`user:${userId}`)
+  })
+
+  socket.on('leave_user', (userId: string) => {
+    if (userId) socket.leave(`user:${userId}`)
+  })
+
   socket.on('disconnect', () => {
     console.log(`[WS] Client disconnected: ${socket.id}`)
   })
