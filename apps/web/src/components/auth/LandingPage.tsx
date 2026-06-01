@@ -15,7 +15,17 @@ export function LandingPage() {
     : null
 
   const signIn = () => {
-    window.location.href = '/api/login'
+    // Microsoft's login page refuses to render inside an iframe
+    // (X-Frame-Options: DENY), and the Replit preview is an iframe. When framed,
+    // break out into a top-level browser tab so the OAuth flow can complete;
+    // otherwise navigate in place for the cleanest experience.
+    const url = '/api/login'
+    const isFramed = window.self !== window.top
+    if (isFramed) {
+      window.open(url, '_blank', 'noopener')
+    } else {
+      window.location.href = url
+    }
   }
 
   return (
