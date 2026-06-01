@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useAppStore } from '@/stores/appStore'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
@@ -66,7 +67,15 @@ function PageContent() {
 
 export function App() {
   const aiPanelOpen = useAppStore((s) => s.aiPanelOpen)
+  const setPage = useAppStore((s) => s.setPage)
   useRealtimePulse()
+
+  // After the Microsoft OAuth callback we land at "/?ms=..." — route the user
+  // to the Integrations page so they see the connect result + linked account.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('ms')) setPage('integrations')
+  }, [setPage])
 
   return (
     <OnboardingGuard>

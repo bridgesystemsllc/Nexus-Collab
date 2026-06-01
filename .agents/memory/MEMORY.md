@@ -2,3 +2,5 @@
 - [Prisma client drift](prisma-client-drift.md) — prisma.<model> undefined at runtime means stale generated client; startup now runs prisma generate.
 - [DB schema drift](db-schema-drift-push.md) — P2022 "column does not exist" means env DB lags schema.prisma; fix with prisma db push (startup only runs generate, not migrate).
 - [Replit Auth (OIDC) + Vite proxy](replit-auth-oidc.md) — pick strategy by REPLIT_DOMAINS not req.hostname; cookie.secure=false in dev; Member.clerkUserId stores Replit sub.
+- [OAuth account-linking state](oauth-account-linking-state.md) — per-user connect flows need server-side single-use session-bound state + member match, not stateless HMAC (hijack risk).
+- [prisma db push drops session table](prisma-db-push-drops-session-table.md) — session table isn't in schema; for additive changes use raw CREATE TABLE SQL, never --accept-data-loss.

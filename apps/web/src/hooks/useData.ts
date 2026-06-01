@@ -18,6 +18,22 @@ export function useCreateDepartment() {
   })
 }
 
+// ─── Microsoft account (per-user Graph connection) ──────────
+export function useMicrosoftStatus() {
+  return useQuery({
+    queryKey: ['microsoft', 'status'],
+    queryFn: () => api.get('/integrations/microsoft/me').then((r) => r.data),
+  })
+}
+
+export function useDisconnectMicrosoft() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api.post('/integrations/microsoft/disconnect').then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['microsoft', 'status'] }),
+  })
+}
+
 // ─── Members ───────────────────────────────────────────────
 export function useMembers() {
   return useQuery({ queryKey: ['members'], queryFn: () => api.get('/members').then(r => r.data) })

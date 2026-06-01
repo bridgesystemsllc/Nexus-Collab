@@ -68,6 +68,7 @@ model Member {
   tasksOwned   Task[]       @relation("TaskOwner")
   notes        Note[]
   invitesSent  OrganizationInvite[]
+  microsoftAccount MicrosoftAccount?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -573,4 +574,22 @@ model FormulationProcedureStep {
   durationMinutes Int?
 
   @@index([formulationId])
+}
+
+// ─── Microsoft Account (per-user Graph connection) ──────────
+// Stores one connected Microsoft work account per member so NEXUS can read
+// that user's own Outlook mail + OneDrive files on their behalf. Tokens are
+// encrypted at rest (AES-256-GCM) in `tokenData`.
+model MicrosoftAccount {
+  id           String   @id @default(cuid())
+  memberId     String   @unique
+  member       Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  accountEmail String
+  accountName  String?
+  tokenData    Json     // encrypted { accessToken, refreshToken, expiresAt }
+  scope        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([memberId])
 }

@@ -21,7 +21,9 @@ import {
   Zap,
 } from 'lucide-react'
 import { useIntegrations, useSyncIntegration } from '@/hooks/useData'
+import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { ConnectMicrosoft } from '@/components/shared/ConnectMicrosoft'
 import { formatDistanceToNow } from 'date-fns'
 import { Dialog } from '@/components/Dialog'
 import { ModuleHeader } from '@/components/ModuleHeader'
@@ -660,6 +662,7 @@ function OAuthSetupModal({
 export function IntegrationsPage() {
   const { data: integrations, isLoading, refetch } = useIntegrations()
   const syncMutation = useSyncIntegration()
+  const qc = useQueryClient()
 
   const [settingsDrawer, setSettingsDrawer] = useState<any>(null)
   const [editModal, setEditModal] = useState<any>(null)
@@ -692,7 +695,19 @@ export function IntegrationsPage() {
       setToast({ type: 'error', message: decodeURIComponent(error) })
       window.history.replaceState({}, '', window.location.pathname)
     }
-  }, [refetch])
+
+    // Per-user Microsoft Graph connect flow returns "?ms=connected|error".
+    const ms = params.get('ms')
+    if (ms === 'connected') {
+      setToast({ type: 'success', message: 'Microsoft account connected successfully' })
+      qc.invalidateQueries({ queryKey: ['microsoft', 'status'] })
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (ms === 'error') {
+      const reason = params.get('reason')
+      setToast({ type: 'error', message: `Microsoft connection failed${reason ? `: ${reason}` : ''}` })
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [refetch, qc])
 
   const integrationList = Array.isArray(integrations) ? integrations : []
   const connected = integrationList.filter((i: any) => i.status === 'CONNECTED')
@@ -807,6 +822,9 @@ export function IntegrationsPage() {
           Manage connected services and data sync
         </p>
       </div>
+
+      {/* Per-user Microsoft account connection */}
+      <ConnectMicrosoft variant="card" />
 
       {/* Loading */}
       {isLoading && (

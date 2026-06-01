@@ -14,6 +14,7 @@ import { coworkRoutes } from './routes/cowork'
 import { documentRoutes } from './routes/documents'
 import { everythingRoutes } from './routes/everything'
 import { integrationRoutes, webhookRoutes } from './routes/integrations'
+import { microsoftGraphRoutes } from './routes/microsoftGraph'
 import { aiRoutes } from './routes/ai'
 import { pulseRoutes } from './routes/pulse'
 import { onboardingRoutes } from './routes/onboarding'
@@ -72,6 +73,9 @@ api.use('/tasks', taskRoutes)
 api.use('/cowork', coworkRoutes)
 api.use('/documents', documentRoutes)
 api.use('/everything', everythingRoutes)
+// Per-user Microsoft Graph routes must be mounted BEFORE the org-level
+// integrations router so the specific /microsoft paths take precedence.
+api.use('/integrations/microsoft', microsoftGraphRoutes)
 api.use('/integrations', integrationRoutes)
 api.use('/ai', aiRoutes)
 api.use('/pulse', pulseRoutes)
