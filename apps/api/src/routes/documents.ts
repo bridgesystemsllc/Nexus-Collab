@@ -1,7 +1,21 @@
 import { Router, Request, Response } from 'express'
 import { prisma } from '../index'
+import { ObjectStorageService } from '../lib/objectStorage'
 
 export const documentRoutes: ReturnType<typeof Router> = Router()
+
+const objectStorage = new ObjectStorageService()
+
+async function resolveActingMember(identifier?: string | null) {
+  if (identifier) {
+    const member = await prisma.member.findFirst({
+      where: { OR: [{ id: identifier }, { clerkUserId: identifier }] },
+      select: { id: true },
+    })
+    if (member) return member
+  }
+  return prisma.member.findFirst({ select: { id: true } })
+}
 
 // ─── List documents with filters ────────────────────────────
 documentRoutes.get('/', async (req: Request, res: Response) => {
@@ -30,19 +44,43 @@ documentRoutes.get('/', async (req: Request, res: Response) => {
   }
 })
 
-// ─── Upload document (metadata only — file upload via S3 presigned URL) ──
+// ─── Upload document (real device upload or link) ───────────
+// `objectPath` (e.g. "/objects/uploads/<uuid>") is set when the client has
+// uploaded a real file to object storage via the presigned-URL flow. In that
+// case we mark the object public-readable and expose a download URL served by
+// the API. Otherwise it falls back to a link/metadata-based document.
 documentRoutes.post('/upload', async (req: Request, res: Response) => {
   try {
+    const { name, storageUrl, objectPath, type, mimeType, size } = req.body
+    if (!name) return res.status(400).json({ error: 'File name is required' })
+
+    const org = await prisma.organization.findFirst()
+    if (!org) return res.status(400).json({ error: 'No organization found' })
+    const uploader = await resolveActingMember(req.body.actorId || req.body.uploadedById)
+
+    let docStorageKey: string = req.body.storageKey || `doc-link-${Date.now()}`
+    let docStorageUrl: string | null = storageUrl || null
+
+    if (objectPath) {
+      const normalized = await objectStorage.trySetObjectEntityAclPolicy(objectPath, {
+        owner: uploader?.id ?? '',
+        visibility: 'public',
+      })
+      docStorageKey = normalized
+      // Served through the API so the file is downloadable from the app.
+      docStorageUrl = `/api/v1/uploads${normalized}`
+    }
+
     const doc = await prisma.document.create({
       data: {
-        name: req.body.name,
-        mimeType: req.body.mimeType,
-        size: req.body.size,
-        storageKey: req.body.storageKey,
-        storageUrl: req.body.storageUrl,
-        type: req.body.type || 'OTHER',
-        orgId: req.body.orgId,
-        uploadedById: req.body.uploadedById,
+        name,
+        mimeType: mimeType || 'application/octet-stream',
+        size: size ?? 0,
+        storageKey: docStorageKey,
+        storageUrl: docStorageUrl,
+        type: type || 'OTHER',
+        orgId: org.id,
+        uploadedById: uploader?.id ?? '',
       },
     })
     res.status(201).json(doc)

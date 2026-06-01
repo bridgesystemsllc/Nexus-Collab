@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react'
-import { FileText, Search, File } from 'lucide-react'
-import { useDocuments } from '@/hooks/useData'
+import { useState, useMemo, useRef, type ChangeEvent } from 'react'
+import { FileText, Search, File, Upload, Download, AlertCircle } from 'lucide-react'
+import { useDocuments, useUploadDocument } from '@/hooks/useData'
+import { api } from '@/lib/api'
 
 const DOC_TYPES = [
   'All',
@@ -23,6 +24,49 @@ function formatSize(bytes: number): string {
 export function DocsPage() {
   const [activeType, setActiveType] = useState<string>('All')
   const [search, setSearch] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const uploadDocument = useUploadDocument()
+
+  const handleFileSelected = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setUploading(true)
+    setUploadError(null)
+    try {
+      // 1) Ask the API for a presigned upload URL (metadata only).
+      const { data } = await api.post('/uploads/request-url', {
+        name: file.name,
+        size: file.size,
+        contentType: file.type || 'application/octet-stream',
+      })
+
+      // 2) Upload the file bytes directly to object storage.
+      const putRes = await fetch(data.uploadURL, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      })
+      if (!putRes.ok) throw new Error('Storage upload failed')
+
+      // 3) Record the document (server sets ACL + download URL).
+      await uploadDocument.mutateAsync({
+        name: file.name,
+        objectPath: data.objectPath,
+        mimeType: file.type || 'application/octet-stream',
+        size: file.size,
+        type: activeType !== 'All' ? activeType : 'OTHER',
+      })
+    } catch (err) {
+      console.error('Failed to upload document:', err)
+      setUploadError('Failed to upload document. Please try again.')
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const filters = useMemo(() => {
     const f: Record<string, string> = {}
@@ -51,14 +95,33 @@ export function DocsPage() {
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
-          Document Hub
-        </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-          All documents across cowork spaces and departments
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+            Document Hub
+          </h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+            All documents across cowork spaces and departments
+          </p>
+        </div>
+        <div className="flex-shrink-0">
+          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelected} />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-lg text-sm disabled:opacity-40"
+          >
+            <Upload className="w-4 h-4" /> {uploading ? 'Uploading...' : 'Upload File'}
+          </button>
+        </div>
       </div>
+
+      {uploadError && (
+        <div className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--danger)' }}>
+          <AlertCircle className="w-3.5 h-3.5" />
+          {uploadError}
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative max-w-md">
@@ -109,7 +172,9 @@ export function DocsPage() {
       {/* Document Grid */}
       {!isLoading && filtered.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 stagger">
-          {filtered.map((doc: any) => (
+          {filtered.map((doc: any) => {
+            const isUpload = typeof doc.storageKey === 'string' && doc.storageKey.startsWith('/objects/')
+            return (
             <div key={doc.id} className="data-cell flex flex-col">
               <div className="relative z-10 flex flex-col h-full">
                 <div className="flex items-start gap-3 mb-3">
@@ -129,8 +194,22 @@ export function DocsPage() {
                   </div>
                 </div>
 
+                {doc.storageUrl && (
+                  <a
+                    href={doc.storageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    {...(isUpload ? { download: doc.name } : {})}
+                    className="inline-flex items-center gap-1 mb-3 text-xs"
+                    style={{ color: 'var(--accent)' }}
+                  >
+                    <Download className="w-3 h-3" />
+                    {isUpload ? 'Download' : 'Open link'}
+                  </a>
+                )}
+
                 <div className="mt-auto flex items-center justify-between text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                  {doc.size != null && <span>{formatSize(doc.size)}</span>}
+                  {doc.size != null && doc.size > 0 && <span>{formatSize(doc.size)}</span>}
                   {doc.createdAt && (
                     <span>
                       {new Date(doc.createdAt).toLocaleDateString('en-US', {
@@ -143,7 +222,7 @@ export function DocsPage() {
                 </div>
               </div>
             </div>
-          ))}
+          )})}
         </div>
       )}
 

@@ -4,6 +4,7 @@ import {
   useTaskAttachments, useCreateEmailAttachment, useCreateFileAttachment,
   useCreateFileFromUrl, useCreateCommentAttachment, useDeleteAttachment,
 } from '@/hooks/useData'
+import { api } from '@/lib/api'
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -272,15 +273,48 @@ function AttachFileModal({ taskId, module, onClose }: { taskId: string; module: 
   const [url, setUrl] = useState('')
   const [urlFilename, setUrlFilename] = useState('')
   const [dragOver, setDragOver] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const createFile = useCreateFileAttachment()
   const createFromUrl = useCreateFileFromUrl()
 
-  const handleFileSelect = (file: File) => {
-    createFile.mutate(
-      { taskId, module, filename: file.name, size_bytes: file.size, mime_type: file.type, storage_url: `placeholder://${file.name}`, uploaded_via: 'upload' },
-      { onSuccess: () => onClose() },
-    )
+  const handleFileSelect = async (file: File) => {
+    setUploading(true)
+    setUploadError(null)
+    try {
+      // 1) Ask the API for a presigned upload URL (metadata only).
+      const { data } = await api.post('/uploads/request-url', {
+        name: file.name,
+        size: file.size,
+        contentType: file.type || 'application/octet-stream',
+      })
+
+      // 2) Upload the file bytes directly to object storage.
+      const putRes = await fetch(data.uploadURL, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      })
+      if (!putRes.ok) throw new Error('Storage upload failed')
+
+      // 3) Record the file attachment (server sets ACL + download URL).
+      await createFile.mutateAsync({
+        taskId,
+        module,
+        filename: file.name,
+        size_bytes: file.size,
+        mime_type: file.type || 'application/octet-stream',
+        objectPath: data.objectPath,
+        uploaded_via: 'upload',
+      })
+      onClose()
+    } catch (err) {
+      console.error('Failed to upload file:', err)
+      setUploadError('Failed to upload file. Please try again.')
+    } finally {
+      setUploading(false)
+    }
   }
 
   const handleUrlSubmit = () => {
@@ -298,7 +332,7 @@ function AttachFileModal({ taskId, module, onClose }: { taskId: string; module: 
     if (file) handleFileSelect(file)
   }
 
-  const isPending = createFile.isPending || createFromUrl.isPending
+  const isPending = uploading || createFile.isPending || createFromUrl.isPending
 
   return (
     <ModalShell title="Attach File" onClose={onClose}>
@@ -342,10 +376,15 @@ function AttachFileModal({ taskId, module, onClose }: { taskId: string; module: 
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0]
+              e.target.value = ''
               if (file) handleFileSelect(file)
             }}
           />
         </div>
+      )}
+
+      {tab === 'upload' && uploadError && (
+        <p className="mt-2 text-[12px] text-[var(--danger)]">{uploadError}</p>
       )}
 
       {tab === 'url' && (

@@ -1,8 +1,23 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../index'
+import { ObjectStorageService } from '../lib/objectStorage'
 
 export const taskAttachmentRoutes: ReturnType<typeof Router> = Router()
+
+const objectStorage = new ObjectStorageService()
+
+async function resolveActingMemberId(identifier?: string | null): Promise<string | undefined> {
+  if (identifier) {
+    const member = await prisma.member.findFirst({
+      where: { OR: [{ id: identifier }, { clerkUserId: identifier }] },
+      select: { id: true },
+    })
+    if (member) return member.id
+  }
+  const fallback = await prisma.member.findFirst({ select: { id: true } })
+  return fallback?.id
+}
 
 // ─── List attachments for a task ────────────────────────────
 taskAttachmentRoutes.get('/:taskId/attachments', async (req: Request, res: Response) => {
@@ -74,8 +89,21 @@ const filePayloadSchema = z.object({
 taskAttachmentRoutes.post('/:taskId/attachments/file', async (req: Request, res: Response) => {
   try {
     const { taskId } = req.params
-    const { module, createdBy, ...payloadData } = req.body
+    // `objectPath` is set when the client uploaded a real file to object
+    // storage via the presigned-URL flow. We mark it public-readable and expose
+    // a download URL served by the API.
+    const { module, createdBy, objectPath, ...payloadData } = req.body
     const payload = filePayloadSchema.parse(payloadData)
+
+    if (objectPath) {
+      const ownerId = await resolveActingMemberId(createdBy)
+      const normalized = await objectStorage.trySetObjectEntityAclPolicy(objectPath, {
+        owner: ownerId ?? '',
+        visibility: 'public',
+      })
+      payload.storage_url = `/api/v1/uploads${normalized}`
+      payload.uploaded_via = 'upload'
+    }
 
     const attachment = await prisma.attachment.create({
       data: {

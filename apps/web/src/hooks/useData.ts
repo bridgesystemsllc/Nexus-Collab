@@ -203,6 +203,16 @@ export function useDocuments(filters?: Record<string, string>) {
   return useQuery({ queryKey: ['documents', filters], queryFn: () => api.get(`/documents?${params}`).then(r => r.data) })
 }
 
+export function useUploadDocument() {
+  const qc = useQueryClient()
+  const actorId = useUserStore((s) => s.currentUser?.id)
+  return useMutation({
+    mutationFn: (data: { name: string; objectPath?: string; storageUrl?: string; mimeType?: string; size?: number; type?: string }) =>
+      api.post('/documents/upload', { actorId, ...data }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['documents'] }),
+  })
+}
+
 // ─── Everything ─────────────────────────────────────────────
 export function useEverything(filters?: Record<string, string>) {
   const params = new URLSearchParams(filters || {}).toString()
@@ -418,10 +428,11 @@ export function useCreateEmailAttachment() {
 
 export function useCreateFileAttachment() {
   const qc = useQueryClient()
+  const actorId = useUserStore((s) => s.currentUser?.id)
   return useMutation({
-    mutationFn: (data: { taskId: string; module: string; filename: string; size_bytes?: number; mime_type?: string; storage_url?: string; uploaded_via?: string; createdBy?: string }) => {
+    mutationFn: (data: { taskId: string; module: string; filename: string; size_bytes?: number; mime_type?: string; storage_url?: string; objectPath?: string; uploaded_via?: string; createdBy?: string }) => {
       const { taskId, ...body } = data
-      return api.post(`/tasks/${taskId}/attachments/file`, body).then(r => r.data)
+      return api.post(`/tasks/${taskId}/attachments/file`, { createdBy: actorId, ...body }).then(r => r.data)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
   })
