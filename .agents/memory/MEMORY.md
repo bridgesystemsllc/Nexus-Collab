@@ -1,3 +1,4 @@
 - [Merge-induced duplicate declarations](merge-conflict-duplicates.md) — bad merges leave dup funcs/stale blocks in apps/web; esbuild ignores it, run `tsc --noEmit` to catch.
 - [Prisma client drift](prisma-client-drift.md) — prisma.<model> undefined at runtime means stale generated client; startup now runs prisma generate.
 - [DB schema drift](db-schema-drift-push.md) — P2022 "column does not exist" means env DB lags schema.prisma; fix with prisma db push (startup only runs generate, not migrate).
+- [Replit Auth (OIDC) + Vite proxy](replit-auth-oidc.md) — pick strategy by REPLIT_DOMAINS not req.hostname; cookie.secure=false in dev; Member.clerkUserId stores Replit sub.

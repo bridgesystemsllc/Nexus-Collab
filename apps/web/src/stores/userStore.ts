@@ -14,20 +14,9 @@ interface UserState {
   setCurrentUser: (user: UserState['currentUser']) => void
 }
 
-// Placeholder user until Clerk auth is integrated
-// This will be replaced with actual auth context
-const PLACEHOLDER_USER = {
-  id: 'user_ahmad',
-  name: 'Ahmad G.',
-  firstName: 'Ahmad',
-  email: 'ahmad@kareve.com',
-  role: 'ADMIN',
-  orgId: '',
-  departmentId: null,
-  avatar: null,
-}
-
+// The current user is populated from the authenticated session by AuthGate
+// (GET /api/v1/auth/me). It is null until sign-in completes.
 export const useUserStore = create<UserState>((set) => ({
-  currentUser: PLACEHOLDER_USER,
+  currentUser: null,
   setCurrentUser: (user) => set({ currentUser: user }),
 }))

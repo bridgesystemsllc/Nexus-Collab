@@ -26,6 +26,8 @@ import { taskAttachmentRoutes } from './routes/taskAttachments'
 import { techTransferStageRoutes } from './routes/techTransferStages'
 import { formulationDetailRoutes } from './routes/formulationDetail'
 import { uploadRoutes } from './routes/uploads'
+import { authRoutes } from './routes/auth'
+import { setupAuth, attachMember } from './auth/replitAuth'
 
 export const prisma = new PrismaClient()
 
@@ -62,6 +64,9 @@ app.get('/health', (_req, res) => {
 
 // ─── API Routes ─────────────────────────────────────────────
 const api = express.Router()
+// Resolve the acting Member (if logged in) for every API request.
+api.use(attachMember)
+api.use('/auth', authRoutes)
 api.use('/departments', departmentRoutes)
 api.use('/tasks', taskRoutes)
 api.use('/cowork', coworkRoutes)
@@ -80,18 +85,6 @@ api.use('/tasks', taskAttachmentRoutes)
 api.use('/tech-transfer-stages', techTransferStageRoutes)
 api.use('/formulation-detail', formulationDetailRoutes)
 api.use('/uploads', uploadRoutes)
-
-app.use('/api/v1', api)
-app.use('/api/v1/webhooks', webhookRoutes)
-
-// ─── Serve Frontend (Replit / Production) ───────────────────
-if (isReplit || process.env.NODE_ENV === 'production') {
-  const webDist = path.resolve(__dirname, '../../web/dist')
-  app.use(express.static(webDist))
-  app.get('*', (_req, res) => {
-    res.sendFile(path.join(webDist, 'index.html'))
-  })
-}
 
 // ─── WebSocket ──────────────────────────────────────────────
 io.on('connection', (socket) => {
@@ -122,10 +115,33 @@ io.on('connection', (socket) => {
 // ─── Start ──────────────────────────────────────────────────
 const PORT = parseInt(process.env.PORT || '3000', 10)
 
-httpServer.listen(PORT, () => {
-  console.log(`\n⚡ NEXUS API running on http://localhost:${PORT}`)
-  console.log(`📡 WebSocket ready`)
-  console.log(`🔗 API base: http://localhost:${PORT}/api/v1\n`)
+async function start() {
+  // Auth (session + passport + /api/login,/api/callback,/api/logout) must be
+  // wired before the API router so req.user / req.isAuthenticated are available.
+  await setupAuth(app)
+
+  app.use('/api/v1', api)
+  app.use('/api/v1/webhooks', webhookRoutes)
+
+  // ─── Serve Frontend (Replit / Production) ─────────────────
+  if (isReplit || process.env.NODE_ENV === 'production') {
+    const webDist = path.resolve(__dirname, '../../web/dist')
+    app.use(express.static(webDist))
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(webDist, 'index.html'))
+    })
+  }
+
+  httpServer.listen(PORT, () => {
+    console.log(`\n⚡ NEXUS API running on http://localhost:${PORT}`)
+    console.log(`📡 WebSocket ready`)
+    console.log(`🔗 API base: http://localhost:${PORT}/api/v1\n`)
+  })
+}
+
+start().catch((err) => {
+  console.error('[NEXUS] Failed to start API:', err)
+  process.exit(1)
 })
 
 // Graceful shutdown

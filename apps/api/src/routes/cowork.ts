@@ -213,8 +213,9 @@ coworkRoutes.get('/:id/activity', async (req: Request, res: Response) => {
 coworkRoutes.post('/:id/activity', async (req: Request, res: Response) => {
   try {
     const spaceId = req.params.id as string
-    const author = await resolveActingMember(req.body.authorId || req.body.actorId)
-    if (!author) return res.status(400).json({ error: 'No author found' })
+    // Attribute to the genuinely logged-in member, never a client-supplied id.
+    const author = (req as any).member
+    if (!author) return res.status(401).json({ error: 'Unauthorized' })
     const activity = await prisma.activity.create({
       data: {
         type: req.body.type || 'UPDATE',
@@ -317,10 +318,13 @@ coworkRoutes.get('/:id/tasks', async (req: Request, res: Response) => {
 // ─── Create shared task ─────────────────────────────────────
 coworkRoutes.post('/:id/tasks', async (req: Request, res: Response) => {
   try {
-    // Use the explicitly chosen assignee, otherwise attribute to the acting member.
+    // Use the explicitly chosen assignee, otherwise attribute to the
+    // genuinely logged-in member (never a client-supplied actor id).
+    const acting = (req as any).member
+    if (!acting) return res.status(401).json({ error: 'Unauthorized' })
     const owner = req.body.ownerId
       ? await resolveActingMember(req.body.ownerId)
-      : await resolveActingMember(req.body.actorId)
+      : acting
     const task = await prisma.task.create({
       data: {
         title: req.body.title,
@@ -421,7 +425,9 @@ coworkRoutes.post('/:id/files', async (req: Request, res: Response) => {
 
     const org = await prisma.organization.findFirst()
     if (!org) return res.status(400).json({ error: 'No organization found' })
-    const uploader = await resolveActingMember(req.body.actorId)
+    // Attribute the upload to the genuinely logged-in member.
+    const uploader = (req as any).member
+    if (!uploader) return res.status(401).json({ error: 'Unauthorized' })
 
     let docStorageKey = `cowork-link-${Date.now()}`
     let docStorageUrl: string | null = storageUrl || null

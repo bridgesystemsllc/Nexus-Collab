@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
-import { useUserStore } from '../stores/userStore'
 
 // ─── Departments ────────────────────────────────────────────
 export function useDepartments() {
@@ -169,9 +168,9 @@ export function useUpdateCoworkSpace() {
 
 export function useCreateCoworkTask() {
   const qc = useQueryClient()
-  const actorId = useUserStore((s) => s.currentUser?.id)
   return useMutation({
-    mutationFn: ({ spaceId, ...data }: any) => api.post(`/cowork/${spaceId}/tasks`, { actorId, ...data }).then(r => r.data),
+    // No actorId: the API attributes the task to the authenticated member.
+    mutationFn: ({ spaceId, ...data }: any) => api.post(`/cowork/${spaceId}/tasks`, data).then(r => r.data),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['cowork', vars.spaceId] })
       qc.invalidateQueries({ queryKey: ['cowork'] })
@@ -181,18 +180,16 @@ export function useCreateCoworkTask() {
 
 export function useAttachCoworkFile() {
   const qc = useQueryClient()
-  const actorId = useUserStore((s) => s.currentUser?.id)
   return useMutation({
-    mutationFn: ({ spaceId, ...data }: any) => api.post(`/cowork/${spaceId}/files`, { actorId, ...data }).then(r => r.data),
+    mutationFn: ({ spaceId, ...data }: any) => api.post(`/cowork/${spaceId}/files`, data).then(r => r.data),
     onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['cowork', vars.spaceId] }),
   })
 }
 
 export function usePostActivity() {
   const qc = useQueryClient()
-  const actorId = useUserStore((s) => s.currentUser?.id)
   return useMutation({
-    mutationFn: ({ spaceId, ...data }: any) => api.post(`/cowork/${spaceId}/activity`, { actorId, ...data }).then(r => r.data),
+    mutationFn: ({ spaceId, ...data }: any) => api.post(`/cowork/${spaceId}/activity`, data).then(r => r.data),
     onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['cowork', vars.spaceId] }),
   })
 }
