@@ -16,9 +16,12 @@ import {
   Mail,
   Trash2,
   X,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import { useCoworkSpace, useMembers, useCreateCoworkTask, usePostActivity, useUpdateCoworkSpace, useAttachCoworkFile } from '@/hooks/useData'
+import { useQueryClient } from '@tanstack/react-query'
+import { useCoworkSpace, useMembers, useCreateCoworkTask, usePostActivity, useUpdateCoworkSpace, useAttachCoworkFile, useUpdateTask } from '@/hooks/useData'
 import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/appStore'
 
@@ -500,6 +503,21 @@ function TasksTab({
   const openForm = useAppStore((s) => s.openForm)
   const openTaskDetail = (id: string) => openForm({ formType: 'task', mode: 'edit', recordId: id })
   const createTask = useCreateCoworkTask()
+  const updateTask = useUpdateTask()
+  const qc = useQueryClient()
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  const handleToggleComplete = (task: any) => {
+    const nextStatus = task.status === 'COMPLETE' ? 'IN_PROGRESS' : 'COMPLETE'
+    setTogglingId(task.id)
+    updateTask.mutate(
+      { id: task.id, status: nextStatus },
+      {
+        onSuccess: () => qc.invalidateQueries({ queryKey: ['cowork', spaceId] }),
+        onSettled: () => setTogglingId(null),
+      }
+    )
+  }
   const { data: members } = useMembers()
   const memberList = Array.isArray(members) ? members : []
   const [showAddForm, setShowAddForm] = useState(false)
@@ -668,7 +686,29 @@ function TasksTab({
               <div className="relative z-10">
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center gap-2 flex-1">
-                    <h4 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); handleToggleComplete(task) }}
+                      disabled={togglingId === task.id}
+                      title={task.status === 'COMPLETE' ? 'Mark as incomplete' : 'Mark complete'}
+                      aria-label={task.status === 'COMPLETE' ? 'Mark as incomplete' : 'Mark complete'}
+                      className="flex-shrink-0 flex items-center justify-center transition-colors disabled:opacity-50"
+                      style={{ color: task.status === 'COMPLETE' ? 'var(--success)' : 'var(--text-tertiary)' }}
+                    >
+                      {task.status === 'COMPLETE' ? (
+                        <CheckCircle2 className="w-5 h-5" />
+                      ) : (
+                        <Circle className="w-5 h-5" />
+                      )}
+                    </button>
+                    <h4
+                      className="text-sm font-medium"
+                      style={{
+                        color: 'var(--text-primary)',
+                        textDecoration: task.status === 'COMPLETE' ? 'line-through' : 'none',
+                        opacity: task.status === 'COMPLETE' ? 0.6 : 1,
+                      }}
+                    >
                       {task.title}
                     </h4>
                   </div>
