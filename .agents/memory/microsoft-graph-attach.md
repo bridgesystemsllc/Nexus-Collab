@@ -25,3 +25,16 @@ Microsoft data. They share a foundation and these conventions:
   `storage_url = webUrl` (+ `onedrive_item_id`, `uploaded_via:'onedrive'`); we do
   NOT pull bytes into object storage. The task file-attachment payload schema
   already carries `onedrive_item_id`.
+
+## Why a custom Azure app, NOT the Replit Outlook/OneDrive connector
+NEXUS uses its own Entra/Azure AD app registration (secrets `AZURE_TENANT_ID`,
+`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`) with a per-member OAuth account-linking
+flow — NOT Replit's first-party Microsoft Outlook/OneDrive connectors.
+**Why:** the Replit connectors authorize a single shared (Repl-owner) account; this
+app needs EACH member to connect THEIR OWN Microsoft account so mail/file actions
+stay attributed to the right person. A shared connector account would break that.
+**How to apply:** when asked to "set up Microsoft login/connect", register an Azure
+app, add redirect URI `<REPLIT_DOMAINS host>/api/v1/integrations/microsoft/callback`,
+grant delegated `User.Read Mail.Read Files.Read`, and set the three AZURE_* secrets.
+This is a per-user *connection* layered on top of the primary Replit Auth login —
+not a replacement for the "Sign in with Replit" screen.
