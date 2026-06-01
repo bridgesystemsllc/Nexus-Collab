@@ -1,5 +1,6 @@
 import type { ActiveForm } from '@/stores/appStore'
 import { BriefFormPage } from '@/components/briefs/BriefFormPage'
+import { TaskDetailForm } from '@/components/tasks/TaskDetailForm'
 
 /**
  * Registry of full-page forms.
@@ -14,6 +15,7 @@ import { BriefFormPage } from '@/components/briefs/BriefFormPage'
  */
 export const formRegistry: Record<string, (props: { form: ActiveForm }) => JSX.Element> = {
   brief: BriefFormPage,
+  task: TaskDetailForm,
 }
 
 export function FullPageFormHost({ form }: { form: ActiveForm }) {

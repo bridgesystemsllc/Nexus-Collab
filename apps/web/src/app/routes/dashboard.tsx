@@ -587,6 +587,7 @@ function CoworkerSpacesWidget() {
 // ─── Main Dashboard Page ───────────────────────────────────
 export function DashboardPage() {
   const setPage = useAppStore((s) => s.setPage)
+  const openForm = useAppStore((s) => s.openForm)
   const setSelectedDept = useAppStore((s) => s.setSelectedDept)
   const currentUser = useUserStore((s) => s.currentUser)
   const firstName = currentUser?.firstName || 'User'
@@ -638,8 +639,8 @@ export function DashboardPage() {
   }
 
   function handleTaskNavigate(task: any) {
-    // Navigate to the Everything page where tasks are visible
-    setPage('everything')
+    // Open the full-page task detail form for this exact task
+    openForm({ formType: 'task', mode: 'edit', recordId: task.id })
   }
 
   // ─── Navigation helpers

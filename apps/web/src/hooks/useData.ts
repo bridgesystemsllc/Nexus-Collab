@@ -110,7 +110,11 @@ export function useUpdateTask() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...data }: any) => api.patch(`/tasks/${id}`, data).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    onSuccess: (updated: any, vars: any) => {
+      qc.invalidateQueries({ queryKey: ['tasks'] })
+      if (vars?.id) qc.invalidateQueries({ queryKey: ['task', vars.id] })
+      if (updated?.parentId) qc.invalidateQueries({ queryKey: ['task', updated.parentId] })
+    },
   })
 }
 
