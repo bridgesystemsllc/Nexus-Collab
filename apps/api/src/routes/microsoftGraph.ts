@@ -134,26 +134,40 @@ microsoftGraphRoutes.get('/callback', async (req: Request, res: Response) => {
     // ── Primary login: provision/resolve the member and start a session.
     if (stored!.flow === 'login') {
       const loggedInMember = await upsertMemberFromMicrosoft(profile)
-      ;(req.session as any).userId = loggedInMember.id
       // Signing in also connects Graph (same scopes), so Outlook/OneDrive work
-      // immediately without a separate "connect" step.
+      // immediately without a separate "connect" step. (DB-only; safe to do
+      // before regenerating the session.)
       await saveTokensForMember(loggedInMember.id, tokens, profile)
-      return req.session.save((err) => {
-        if (err) {
-          console.error('[microsoft] failed to persist login session:', err)
+      // Defeat session fixation: issue a brand-new session id before storing
+      // the authenticated identity.
+      return req.session.regenerate((regenErr) => {
+        if (regenErr) {
+          console.error('[microsoft] failed to regenerate session:', regenErr)
           return res.redirect(APP_REDIRECT('error', 'session_persist_failed'))
         }
-        res.redirect('/')
+        ;(req.session as any).userId = loggedInMember.id
+        req.session.save((err) => {
+          if (err) {
+            console.error('[microsoft] failed to persist login session:', err)
+            return res.redirect(APP_REDIRECT('error', 'session_persist_failed'))
+          }
+          res.redirect('/')
+        })
       })
     }
 
     // ── Connect flow: the bound member must still be the acting member.
-    const member = (req as any).member
-    if (!member?.id || member.id !== stored!.memberId) {
-      return res.redirect(APP_REDIRECT('error', 'invalid_state'))
+    if (stored!.flow === 'connect') {
+      const member = (req as any).member
+      if (!member?.id || member.id !== stored!.memberId) {
+        return res.redirect(APP_REDIRECT('error', 'invalid_state'))
+      }
+      await saveTokensForMember(stored!.memberId!, tokens, profile)
+      return res.redirect(APP_REDIRECT('connected'))
     }
-    await saveTokensForMember(stored!.memberId!, tokens, profile)
-    res.redirect(APP_REDIRECT('connected'))
+
+    // Unknown/malformed flow — reject rather than guess.
+    return res.redirect(APP_REDIRECT('error', 'invalid_state'))
   } catch (err) {
     console.error('[microsoft] callback exchange failed:', err)
     const reason = (err as Error)?.message === 'NO_ORGANIZATION' ? 'no_workspace' : 'exchange_failed'

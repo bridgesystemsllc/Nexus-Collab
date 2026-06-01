@@ -12,6 +12,16 @@ import {
 
 const isProd = !!process.env.REPLIT_DEPLOYMENT
 
+// Sessions are the only thing standing between an attacker and a forged login,
+// so a real secret is mandatory — never silently fall back to a known value.
+function getSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET
+  if (!secret) {
+    throw new Error('SESSION_SECRET is required. Set it as a secret before starting the server.')
+  }
+  return secret
+}
+
 // ─── PostgreSQL-backed session store ────────────────────────
 function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000 // 1 week
@@ -22,7 +32,7 @@ function getSession() {
     ttl: sessionTtl,
   })
   return session({
-    secret: process.env.SESSION_SECRET || 'nexus-dev-session-secret',
+    secret: getSessionSecret(),
     store: sessionStore,
     resave: false,
     saveUninitialized: false,

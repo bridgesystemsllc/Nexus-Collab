@@ -36,5 +36,7 @@ stay attributed to the right person. A shared connector account would break that
 **How to apply:** when asked to "set up Microsoft login/connect", register an Azure
 app, add redirect URI `<REPLIT_DOMAINS host>/api/v1/integrations/microsoft/callback`,
 grant delegated `User.Read Mail.Read Files.Read`, and set the three AZURE_* secrets.
-This is a per-user *connection* layered on top of the primary Replit Auth login —
-not a replacement for the "Sign in with Replit" screen.
+Microsoft Entra is now the SOLE login (see microsoft-auth.md) — Replit OIDC was
+removed. Because login requests the full Graph scopes, signing in already saves a
+`MicrosoftAccount`, so most members are connected without a separate connect step;
+the connect flow remains as a fallback for re-consent / lapsed tokens.
