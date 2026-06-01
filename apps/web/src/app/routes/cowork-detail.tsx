@@ -7,7 +7,6 @@ import {
   Clock,
   User,
   Plus,
-  ChevronDown,
   ChevronUp,
   Link2,
   Users,
@@ -22,7 +21,6 @@ import { formatDistanceToNow } from 'date-fns'
 import { useCoworkSpace, useMembers, useCreateCoworkTask, usePostActivity, useUpdateCoworkSpace, useAttachCoworkFile } from '@/hooks/useData'
 import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/appStore'
-import { TaskDetailDialog } from '@/components/TaskDetailDialog'
 
 type Tab = 'activity' | 'tasks' | 'files' | 'emails'
 
@@ -94,7 +92,6 @@ export function CoworkDetailPage() {
   const setSelectedCowork = useAppStore((s) => s.setSelectedCowork)
   const { data: space, isLoading, refetch } = useCoworkSpace(selectedCoworkId ?? '')
   const [activeTab, setActiveTab] = useState<Tab>('activity')
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [showManageMembers, setShowManageMembers] = useState(false)
 
   if (isLoading) {
@@ -270,14 +267,11 @@ export function CoworkDetailPage() {
         <TasksTab
           tasks={space.tasks ?? space.project?.tasks ?? []}
           spaceId={selectedCoworkId!}
-          onSelectTask={setSelectedTaskId}
         />
       )}
       {activeTab === 'files' && <FilesTab documents={space.documents ?? []} spaceId={space.id} onRefresh={refetch} />}
 
       {activeTab === 'emails' && <EmailsTab spaceId={space.id} emails={space.emails ?? []} onRefresh={refetch} />}
-
-      <TaskDetailDialog taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
 
       {showManageMembers && (
         <ManageMembersDialog
@@ -499,17 +493,16 @@ function ActivityTab({ activities, spaceId, members }: { activities: any[]; spac
 function TasksTab({
   tasks,
   spaceId,
-  onSelectTask,
 }: {
   tasks: any[]
   spaceId: string
-  onSelectTask?: (id: string) => void
 }) {
+  const openForm = useAppStore((s) => s.openForm)
+  const openTaskDetail = (id: string) => openForm({ formType: 'task', mode: 'edit', recordId: id })
   const createTask = useCreateCoworkTask()
   const { data: members } = useMembers()
   const memberList = Array.isArray(members) ? members : []
   const [showAddForm, setShowAddForm] = useState(false)
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
 
   // Form state
   const [title, setTitle] = useState('')
@@ -544,10 +537,6 @@ function TasksTab({
         },
       }
     )
-  }
-
-  const toggleExpand = (taskId: string) => {
-    setExpandedTaskId((prev) => (prev === taskId ? null : taskId))
   }
 
   return (
@@ -668,113 +657,56 @@ function TasksTab({
           const bgColor = getAvatarColor(ownerName)
           const dueDateObj = task.dueDate ? new Date(task.dueDate) : null
           const isOverdue = dueDateObj && dueDateObj < new Date() && task.status !== 'COMPLETE'
-          const isExpanded = expandedTaskId === task.id
 
           return (
             <div
               key={task.id}
-              className="data-cell transition-colors"
+              className="data-cell transition-colors cursor-pointer"
               style={{ borderLeftWidth: '3px', borderLeftColor: priorityColor }}
+              onClick={() => openTaskDetail(task.id)}
             >
               <div className="relative z-10">
-                {/* Main row - clickable */}
-                <div
-                  className="cursor-pointer"
-                  onClick={() => toggleExpand(task.id)}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2 flex-1">
-                      <h4 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                        {task.title}
-                      </h4>
-                      {isExpanded ? (
-                        <ChevronUp className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }} />
-                      ) : (
-                        <ChevronDown className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }} />
-                      )}
-                    </div>
-                    <span className={`badge ml-2 flex-shrink-0 ${statusClass}`}>
-                      {task.status?.replace(/_/g, ' ')}
-                    </span>
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex items-center gap-2 flex-1">
+                    <h4 className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {task.title}
+                    </h4>
                   </div>
-
-                  <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                    {/* Owner avatar */}
-                    <span className="flex items-center gap-1.5">
-                      <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-semibold text-white"
-                        style={{ background: bgColor }}
-                      >
-                        {initials}
-                      </div>
-                      {ownerName}
-                    </span>
-
-                    {/* Priority */}
-                    <span className="flex items-center gap-1">
-                      <div className="w-2 h-2 rounded-full" style={{ background: priorityColor }} />
-                      {task.priority}
-                    </span>
-
-                    {/* Due date */}
-                    {dueDateObj && (
-                      <span
-                        className="flex items-center gap-1"
-                        style={{ color: isOverdue ? 'var(--danger)' : 'var(--text-tertiary)' }}
-                      >
-                        <Clock className="w-3 h-3" />
-                        {dueDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        {isOverdue && ' (overdue)'}
-                      </span>
-                    )}
-                  </div>
+                  <span className={`badge ml-2 flex-shrink-0 ${statusClass}`}>
+                    {task.status?.replace(/_/g, ' ')}
+                  </span>
                 </div>
 
-                {/* Expanded section */}
-                {isExpanded && (
-                  <div
-                    className="mt-3 pt-3 space-y-3"
-                    style={{ borderTop: '1px solid var(--border-subtle)' }}
-                  >
-                    {/* Description */}
-                    {task.description && (
-                      <p className="text-[13px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                        {task.description}
-                      </p>
-                    )}
-
-                    {/* Notes */}
-                    {task.notes && task.notes.length > 0 && (
-                      <div className="space-y-1.5">
-                        <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Notes</p>
-                        {task.notes.map((note: any, idx: number) => (
-                          <div key={idx} className="text-[12px] px-2 py-1.5 rounded" style={{ background: 'var(--bg-surface)', color: 'var(--text-secondary)' }}>
-                            {note.content ?? note}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onSelectTask?.(task.id) }}
-                        className="btn-ghost text-xs"
-                      >
-                        Open Full Detail
-                      </button>
-                      {task.status !== 'COMPLETE' && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onSelectTask?.(task.id) }}
-                          className="btn-primary text-xs flex items-center gap-1"
-                        >
-                          <CheckSquare className="w-3 h-3" />
-                          Mark Complete
-                        </button>
-                      )}
+                <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                  {/* Owner avatar */}
+                  <span className="flex items-center gap-1.5">
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-semibold text-white"
+                      style={{ background: bgColor }}
+                    >
+                      {initials}
                     </div>
-                  </div>
-                )}
+                    {ownerName}
+                  </span>
+
+                  {/* Priority */}
+                  <span className="flex items-center gap-1">
+                    <div className="w-2 h-2 rounded-full" style={{ background: priorityColor }} />
+                    {task.priority}
+                  </span>
+
+                  {/* Due date */}
+                  {dueDateObj && (
+                    <span
+                      className="flex items-center gap-1"
+                      style={{ color: isOverdue ? 'var(--danger)' : 'var(--text-tertiary)' }}
+                    >
+                      <Clock className="w-3 h-3" />
+                      {dueDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {isOverdue && ' (overdue)'}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           )
