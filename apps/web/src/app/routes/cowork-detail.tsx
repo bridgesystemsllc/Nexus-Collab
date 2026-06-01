@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import { useCoworkSpace, useMembers, useCreateCoworkTask, usePostActivity } from '@/hooks/useData'
+import { useCoworkSpace, useMembers, useCreateCoworkTask, usePostActivity, useUpdateCoworkSpace, useAttachCoworkFile } from '@/hooks/useData'
 import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/appStore'
 import { TaskDetailDialog } from '@/components/TaskDetailDialog'
@@ -95,6 +95,7 @@ export function CoworkDetailPage() {
   const { data: space, isLoading, refetch } = useCoworkSpace(selectedCoworkId ?? '')
   const [activeTab, setActiveTab] = useState<Tab>('activity')
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [showManageMembers, setShowManageMembers] = useState(false)
 
   if (isLoading) {
     return (
@@ -225,7 +226,10 @@ export function CoworkDetailPage() {
                   {spaceMembers.length} member{spaceMembers.length !== 1 ? 's' : ''}
                 </span>
               )}
-              <button className="btn-ghost text-xs flex items-center gap-1">
+              <button
+                onClick={() => setShowManageMembers(true)}
+                className="btn-ghost text-xs flex items-center gap-1"
+              >
                 <Users className="w-3.5 h-3.5" />
                 Manage Members
               </button>
@@ -259,6 +263,7 @@ export function CoworkDetailPage() {
         <ActivityTab
           activities={space.activities ?? []}
           spaceId={selectedCoworkId!}
+          members={spaceMembers}
         />
       )}
       {activeTab === 'tasks' && (
@@ -268,29 +273,51 @@ export function CoworkDetailPage() {
           onSelectTask={setSelectedTaskId}
         />
       )}
-      {activeTab === 'files' && <FilesTab documents={space.documents ?? []} />}
+      {activeTab === 'files' && <FilesTab documents={space.documents ?? []} spaceId={space.id} onRefresh={refetch} />}
 
       {activeTab === 'emails' && <EmailsTab spaceId={space.id} emails={space.emails ?? []} onRefresh={refetch} />}
 
       <TaskDetailDialog taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} />
+
+      {showManageMembers && (
+        <ManageMembersDialog
+          spaceId={space.id}
+          currentMemberIds={space.memberIds ?? []}
+          onClose={() => setShowManageMembers(false)}
+          onSaved={refetch}
+        />
+      )}
     </div>
   )
 }
 
 /* ─── Activity Tab ─────────────────────────────────────────── */
-function ActivityTab({ activities, spaceId }: { activities: any[]; spaceId: string }) {
+function ActivityTab({ activities, spaceId, members }: { activities: any[]; spaceId: string; members: any[] }) {
   const postActivity = usePostActivity()
   const [showForm, setShowForm] = useState(false)
   const [activityType, setActivityType] = useState<string>('UPDATE')
   const [content, setContent] = useState('')
+  const [taggedMemberIds, setTaggedMemberIds] = useState<string[]>([])
+
+  const toggleTag = (id: string) =>
+    setTaggedMemberIds((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
 
   const handlePostUpdate = () => {
     if (!content.trim()) return
+    const taggedMembers = members
+      .filter((m: any) => taggedMemberIds.includes(m.id))
+      .map((m: any) => ({ id: m.id, name: m.name ?? m.user?.name ?? 'Unknown' }))
     postActivity.mutate(
-      { spaceId, type: activityType, content: content.trim() },
+      {
+        spaceId,
+        type: activityType,
+        content: content.trim(),
+        metadata: taggedMembers.length ? { taggedMembers } : undefined,
+      },
       {
         onSuccess: () => {
           setContent('')
+          setTaggedMemberIds([])
           setShowForm(false)
         },
       }
@@ -334,6 +361,38 @@ function ActivityTab({ activities, spaceId }: { activities: any[]; spaceId: stri
                 className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)] resize-none"
               />
             </div>
+            {members.length > 0 && (
+              <div>
+                <label className="block text-[12px] font-medium text-[var(--text-secondary)] mb-1.5">Tag coworkers</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {members.map((m: any) => {
+                    const mName = m.name ?? m.user?.name ?? 'Unknown'
+                    const active = taggedMemberIds.includes(m.id)
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => toggleTag(m.id)}
+                        className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full transition-colors"
+                        style={{
+                          background: active ? 'var(--accent-subtle)' : 'var(--bg-surface)',
+                          border: `1px solid ${active ? 'var(--accent)' : 'var(--border-subtle)'}`,
+                          color: active ? 'var(--accent)' : 'var(--text-secondary)',
+                        }}
+                      >
+                        <span
+                          className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-semibold text-white"
+                          style={{ background: getAvatarColor(mName) }}
+                        >
+                          {getInitials(mName)}
+                        </span>
+                        {mName}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             <div className="flex items-center justify-end gap-2">
               <button onClick={() => setShowForm(false)} className="btn-ghost text-xs">Cancel</button>
               <button
@@ -407,6 +466,20 @@ function ActivityTab({ activities, spaceId }: { activities: any[]; spaceId: stri
                   <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                     {item.content}
                   </p>
+                  {Array.isArray(item.metadata?.taggedMembers) && item.metadata.taggedMembers.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      {item.metadata.taggedMembers.map((tm: any) => (
+                        <span
+                          key={tm.id}
+                          className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full"
+                          style={{ background: 'var(--accent-subtle)', color: 'var(--accent)', border: '1px solid var(--accent)' }}
+                        >
+                          <User className="w-3 h-3" />
+                          {tm.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {timestamp && (
                     <p className="text-xs mt-1.5" style={{ color: 'var(--text-tertiary)' }}>
                       {timestamp}
@@ -712,41 +785,216 @@ function TasksTab({
 }
 
 /* ─── Files Tab ────────────────────────────────────────────── */
-function FilesTab({ documents }: { documents: any[] }) {
-  if (documents.length === 0) {
-    return (
-      <div className="flex flex-col items-center py-16" style={{ color: 'var(--text-tertiary)' }}>
-        <FileText className="w-10 h-10 mb-3 opacity-40" />
-        <p>No files uploaded</p>
-      </div>
+function FilesTab({ documents, spaceId, onRefresh }: { documents: any[]; spaceId: string; onRefresh: () => void }) {
+  const attachFile = useAttachCoworkFile()
+  const [showForm, setShowForm] = useState(false)
+  const [name, setName] = useState('')
+  const [url, setUrl] = useState('')
+
+  const handleAttach = () => {
+    if (!name.trim()) return
+    attachFile.mutate(
+      { spaceId, name: name.trim(), storageUrl: url.trim() || undefined, type: 'OTHER' },
+      {
+        onSuccess: () => {
+          setName('')
+          setUrl('')
+          setShowForm(false)
+          onRefresh()
+        },
+      }
     )
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 stagger">
-      {documents.map((doc: any) => (
-        <div key={doc.id} className="data-cell">
-          <div className="relative z-10 flex flex-col items-center text-center">
-            <FileText className="w-10 h-10 mb-3" style={{ color: 'var(--accent)' }} />
-            <h4 className="text-sm font-medium truncate w-full" style={{ color: 'var(--text-primary)' }}>
-              {doc.name}
-            </h4>
-            <div className="flex items-center gap-2 mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              {doc.type && <span className="badge badge-accent text-[10px]">{doc.type}</span>}
-              {doc.size != null && <span>{formatSize(doc.size)}</span>}
-            </div>
-            {doc.createdAt && (
-              <p className="text-xs mt-1.5" style={{ color: 'var(--text-tertiary)' }}>
-                {new Date(doc.createdAt).toLocaleDateString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })}
-              </p>
-            )}
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] text-[var(--text-secondary)]">
+          {documents.length} file{documents.length !== 1 ? 's' : ''} linked to this space
+        </p>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="flex items-center gap-1.5 btn-primary px-3 py-2 rounded-lg text-[13px]"
+        >
+          <Plus size={14} /> Add File
+        </button>
+      </div>
+
+      {/* Add Form */}
+      {showForm && (
+        <div className="p-4 rounded-xl border border-[var(--accent)] bg-[var(--accent-subtle)] space-y-3 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <h4 className="text-[14px] font-semibold text-[var(--text-primary)]">Add a File Link</h4>
+            <button onClick={() => setShowForm(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+              <X size={16} />
+            </button>
           </div>
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1">
+              Name <span className="text-[var(--danger)]">*</span>
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Document name"
+              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[14px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1">URL</label>
+            <input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://..."
+              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[14px] text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <button onClick={() => setShowForm(false)} className="btn-ghost text-xs">Cancel</button>
+            <button
+              onClick={handleAttach}
+              disabled={!name.trim() || attachFile.isPending}
+              className="btn-primary text-xs flex items-center gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              {attachFile.isPending ? 'Adding...' : 'Add File'}
+            </button>
+          </div>
+          {attachFile.isError && (
+            <div className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--danger)' }}>
+              <AlertCircle className="w-3.5 h-3.5" />
+              Failed to add file.
+            </div>
+          )}
         </div>
-      ))}
+      )}
+
+      {/* File List */}
+      {documents.length === 0 && !showForm ? (
+        <div className="flex flex-col items-center py-16" style={{ color: 'var(--text-tertiary)' }}>
+          <FileText className="w-10 h-10 mb-3 opacity-40" />
+          <p>No files uploaded</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 stagger">
+          {documents.map((doc: any) => {
+            const Card = (
+              <div className="relative z-10 flex flex-col items-center text-center">
+                <FileText className="w-10 h-10 mb-3" style={{ color: 'var(--accent)' }} />
+                <h4 className="text-sm font-medium truncate w-full" style={{ color: 'var(--text-primary)' }}>
+                  {doc.name}
+                </h4>
+                <div className="flex items-center gap-2 mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                  {doc.type && <span className="badge badge-accent text-[10px]">{doc.type}</span>}
+                  {doc.size != null && doc.size > 0 && <span>{formatSize(doc.size)}</span>}
+                </div>
+                {doc.createdAt && (
+                  <p className="text-xs mt-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                    {new Date(doc.createdAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </p>
+                )}
+              </div>
+            )
+            return doc.storageUrl ? (
+              <a key={doc.id} href={doc.storageUrl} target="_blank" rel="noopener noreferrer" className="data-cell hover:border-[var(--accent)] transition-colors">
+                {Card}
+              </a>
+            ) : (
+              <div key={doc.id} className="data-cell">{Card}</div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─── Manage Members Dialog ─────────────────────────────────── */
+function ManageMembersDialog({
+  spaceId,
+  currentMemberIds,
+  onClose,
+  onSaved,
+}: {
+  spaceId: string
+  currentMemberIds: string[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { data: members } = useMembers()
+  const updateSpace = useUpdateCoworkSpace()
+  const [selected, setSelected] = useState<string[]>(currentMemberIds)
+  const memberList = Array.isArray(members) ? members : []
+
+  const toggle = (id: string) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
+
+  const handleSave = () => {
+    updateSpace.mutate(
+      { spaceId, memberIds: selected },
+      {
+        onSuccess: () => {
+          onSaved()
+          onClose()
+        },
+      }
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.5)' }}>
+      <div className="w-full max-w-md rounded-xl border border-[var(--border-default)] overflow-hidden flex flex-col max-h-[80vh]" style={{ background: 'var(--bg-elevated)' }}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
+          <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Manage Members</h3>
+          <button onClick={onClose} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="p-3 overflow-y-auto space-y-1">
+          {memberList.length === 0 && (
+            <p className="text-sm py-6 text-center" style={{ color: 'var(--text-tertiary)' }}>No members available</p>
+          )}
+          {memberList.map((m: any) => {
+            const mName = m.name ?? m.user?.name ?? 'Unknown'
+            const checked = selected.includes(m.id)
+            return (
+              <label
+                key={m.id}
+                className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition-colors hover:bg-[var(--bg-hover)]"
+              >
+                <input type="checkbox" checked={checked} onChange={() => toggle(m.id)} className="accent-[var(--accent)]" />
+                <span
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-semibold text-white"
+                  style={{ background: getAvatarColor(mName) }}
+                >
+                  {getInitials(mName)}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{mName}</p>
+                  {(m.role || m.department?.name) && (
+                    <p className="text-xs truncate" style={{ color: 'var(--text-tertiary)' }}>
+                      {m.role ?? m.department?.name}
+                    </p>
+                  )}
+                </div>
+              </label>
+            )
+          })}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--border-subtle)]">
+          <button onClick={onClose} className="btn-ghost text-xs">Cancel</button>
+          <button onClick={handleSave} disabled={updateSpace.isPending} className="btn-primary text-xs">
+            {updateSpace.isPending ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

@@ -194,6 +194,7 @@ model CoworkSpace {
   project     Project?   @relation(fields: [projectId], references: [id])
   deptNames   String[]
   memberIds   String[]
+  metadata    Json?
   activities  Activity[]
   tasks       Task[]     @relation("CoworkTasks")
   documents   Document[] @relation("CoworkDocs")

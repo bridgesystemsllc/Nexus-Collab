@@ -147,6 +147,17 @@ export function useCreateCoworkSpace() {
   })
 }
 
+export function useUpdateCoworkSpace() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ spaceId, ...data }: any) => api.patch(`/cowork/${spaceId}`, data).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['cowork', vars.spaceId] })
+      qc.invalidateQueries({ queryKey: ['cowork'] })
+    },
+  })
+}
+
 export function useCreateCoworkTask() {
   const qc = useQueryClient()
   return useMutation({
@@ -155,6 +166,14 @@ export function useCreateCoworkTask() {
       qc.invalidateQueries({ queryKey: ['cowork', vars.spaceId] })
       qc.invalidateQueries({ queryKey: ['cowork'] })
     },
+  })
+}
+
+export function useAttachCoworkFile() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ spaceId, ...data }: any) => api.post(`/cowork/${spaceId}/files`, data).then(r => r.data),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['cowork', vars.spaceId] }),
   })
 }
 

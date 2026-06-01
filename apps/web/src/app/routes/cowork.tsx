@@ -10,6 +10,8 @@ import {
   X,
   Calendar,
   AlertCircle,
+  LayoutGrid,
+  Rows3,
 } from 'lucide-react'
 import {
   useCoworkSpaces,
@@ -21,6 +23,7 @@ import {
 } from '@/hooks/useData'
 import { useAppStore } from '@/stores/appStore'
 import { Dialog } from '@/components/Dialog'
+import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 
 /* ─── Constants ───────────────────────────────────────────── */
 const SPACE_TYPES = ['PROJECT', 'EMERGENCY', 'INITIATIVE', 'DEPARTMENT'] as const
@@ -51,6 +54,7 @@ export function CoworkPage() {
   const [search, setSearch] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [quickTaskSpaceId, setQuickTaskSpaceId] = useState<string | null>(null)
+  const [view, setView] = useState<ViewMode>('table')
 
   const spaceList = Array.isArray(spaces) ? spaces : []
   const filtered = spaceList.filter((s: any) =>
@@ -85,6 +89,11 @@ export function CoworkPage() {
               }}
             />
           </div>
+          <ViewToggle
+            value={view}
+            onChange={setView}
+            icons={{ table: LayoutGrid, list: Rows3 }}
+          />
           <button
             onClick={() => setShowCreateModal(true)}
             className="btn-primary flex items-center gap-2 text-sm"
@@ -105,7 +114,7 @@ export function CoworkPage() {
       )}
 
       {/* Space Cards */}
-      {!isLoading && (
+      {!isLoading && view === 'table' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
           {filtered.map((space: any) => {
             const isEmergency = space.type === 'EMERGENCY'
@@ -220,6 +229,102 @@ export function CoworkPage() {
                     >
                       <Plus className="w-3.5 h-3.5" />
                       Create Task
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Space List / Line view */}
+      {!isLoading && view === 'list' && filtered.length > 0 && (
+        <div className="rounded-xl border border-[var(--border-subtle)] overflow-hidden stagger" style={{ background: 'var(--bg-elevated)' }}>
+          {filtered.map((space: any, idx: number) => {
+            const isEmergency = space.type === 'EMERGENCY'
+            const taskCount = space._count?.tasks ?? space.tasks?.length ?? 0
+            const completeTasks = (space.tasks ?? []).filter((t: any) => t.status === 'COMPLETE').length
+            const pendingTasks = taskCount - completeTasks
+            const linkedMeta = space.linkedItem ?? space.metadata?.linkedItem
+
+            return (
+              <div
+                key={space.id}
+                className="flex items-center gap-4 px-4 py-3 hover:bg-[var(--bg-hover)] transition-colors"
+                style={{
+                  borderTop: idx === 0 ? 'none' : '1px solid var(--border-subtle)',
+                  borderLeft: isEmergency ? '3px solid var(--danger)' : '3px solid transparent',
+                }}
+              >
+                <button
+                  onClick={() => setSelectedCowork(space.id)}
+                  className="flex items-center gap-4 flex-1 min-w-0 text-left cursor-pointer"
+                >
+                  {/* Name + type */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                        {space.name}
+                      </span>
+                      <span className={`badge flex-shrink-0 ${isEmergency ? 'badge-emergency' : 'badge-accent'}`}>
+                        {space.type}
+                      </span>
+                      {linkedMeta && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full flex-shrink-0"
+                          style={{ background: 'var(--accent-subtle)', color: 'var(--accent)', border: '1px solid var(--accent)' }}
+                        >
+                          <Link2 className="w-3 h-3" />
+                          {LINK_CATEGORY_ICONS[linkedMeta.category] ?? ''} {linkedMeta.name}
+                        </span>
+                      )}
+                    </div>
+                    {space.description && (
+                      <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                        {space.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Department tags */}
+                  <div className="hidden lg:flex flex-wrap gap-1 max-w-[200px] justify-end flex-shrink-0">
+                    {(space.deptNames ?? []).slice(0, 3).map((dept: string) => (
+                      <span key={dept} className="badge badge-info">{dept}</span>
+                    ))}
+                  </div>
+
+                  {/* Stats */}
+                  <div className="hidden sm:flex items-center gap-4 text-xs flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>
+                    <span className="flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" />
+                      {space.memberIds?.length ?? 0}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      {space._count?.activities ?? space.activities?.length ?? 0}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <CheckSquare className="w-3.5 h-3.5" />
+                      {completeTasks}/{taskCount}
+                    </span>
+                  </div>
+                </button>
+
+                {/* Quick task */}
+                <div className="flex-shrink-0">
+                  {quickTaskSpaceId === space.id ? (
+                    <div className="w-[320px]">
+                      <QuickAddTask spaceId={space.id} onClose={() => setQuickTaskSpaceId(null)} />
+                    </div>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setQuickTaskSpaceId(space.id) }}
+                      className="btn-ghost flex items-center gap-1.5 text-xs"
+                      title="Create task"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Task
                     </button>
                   )}
                 </div>
@@ -411,11 +516,14 @@ function CreateCoworkModal({ open, onClose }: { open: boolean; onClose: () => vo
 
   const handleSubmit = () => {
     if (!name.trim()) return
+    const deptNames = selectedDepts
+      .map((id) => deptList.find((d: any) => d.id === id)?.name)
+      .filter(Boolean)
     const payload: any = {
       name: name.trim(),
       type,
       description: description.trim(),
-      departmentIds: selectedDepts,
+      deptNames,
       memberIds: selectedMembers,
     }
     if (linkedItem) {
