@@ -52,6 +52,13 @@ NEXUS is a cross-departmental operations platform for Kareve Beauty Group. It pr
 - `/ai` — AI chat, briefings, quick actions (WOSR, escalation, ERP sync)
 - `/pulse` — Notification feed + mark read
 - `/briefs` — PIB (Project Initiation Brief) CRUD stored as moduleItems
+- `/uploads` — Real file uploads to object storage: `POST /uploads/request-url` returns a presigned GCS PUT URL + objectPath; `GET /uploads/objects/*` streams/downloads the stored object
+
+## Object Storage (file uploads)
+- Replit App Storage (Google Cloud Storage backed) via `@google-cloud/storage`; env vars `DEFAULT_OBJECT_STORAGE_BUCKET_ID`, `PUBLIC_OBJECT_SEARCH_PATHS`, `PRIVATE_OBJECT_DIR`
+- Server helpers live in `apps/api/src/lib/objectStorage/` (objectStorage.ts, objectAcl.ts)
+- Upload flow: client requests presigned URL (`/uploads/request-url`) → PUTs file directly to GCS → POSTs `objectPath` to `/cowork/:id/files`, which sets a public ACL and stores `storageKey` + `storageUrl` (`/api/v1/uploads/objects/...`). Falls back to plain link attachment when no `objectPath` is sent.
+- Cowork Files tab (`apps/web/src/app/routes/cowork-detail.tsx`) supports both device upload and "Add Link"; file size/type captured automatically from the selected file
 
 ## API Response Shapes (important for frontend integration)
 - `/tasks` returns `{ tasks, total, page, limit }` (not a plain array)

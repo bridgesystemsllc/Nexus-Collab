@@ -25,6 +25,7 @@ import { brandTransitionRoutes } from './routes/brandTransition'
 import { taskAttachmentRoutes } from './routes/taskAttachments'
 import { techTransferStageRoutes } from './routes/techTransferStages'
 import { formulationDetailRoutes } from './routes/formulationDetail'
+import { uploadRoutes } from './routes/uploads'
 
 export const prisma = new PrismaClient()
 
@@ -78,6 +79,7 @@ api.use('/brand-transition', brandTransitionRoutes)
 api.use('/tasks', taskAttachmentRoutes)
 api.use('/tech-transfer-stages', techTransferStageRoutes)
 api.use('/formulation-detail', formulationDetailRoutes)
+api.use('/uploads', uploadRoutes)
 
 app.use('/api/v1', api)
 app.use('/api/v1/webhooks', webhookRoutes)

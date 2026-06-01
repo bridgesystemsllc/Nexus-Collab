@@ -1,8 +1,11 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma, io } from '../index'
+import { ObjectStorageService } from '../lib/objectStorage'
 
 export const coworkRoutes: ReturnType<typeof Router> = Router()
+
+const objectStorage = new ObjectStorageService()
 
 // ─── Resolve memberIds → member objects ─────────────────────
 async function resolveMembers(memberIds: string[]) {
@@ -406,23 +409,40 @@ coworkRoutes.get('/:id/files', async (req: Request, res: Response) => {
   }
 })
 
-// ─── Attach a file to a space (link-based document) ─────────
+// ─── Attach a file to a space (real upload or link) ─────────
+// `objectPath` (e.g. "/objects/uploads/<uuid>") is set when the client has
+// uploaded a real file to object storage via the presigned-URL flow. In that
+// case we mark the object public-readable and expose a download URL served by
+// the API. Otherwise it falls back to a link-based document (name + URL).
 coworkRoutes.post('/:id/files', async (req: Request, res: Response) => {
   try {
-    const { name, storageUrl, type, mimeType, size } = req.body
+    const { name, storageUrl, objectPath, type, mimeType, size } = req.body
     if (!name) return res.status(400).json({ error: 'File name is required' })
 
     const org = await prisma.organization.findFirst()
     if (!org) return res.status(400).json({ error: 'No organization found' })
     const uploader = await resolveActingMember(req.body.actorId)
 
+    let docStorageKey = `cowork-link-${Date.now()}`
+    let docStorageUrl: string | null = storageUrl || null
+
+    if (objectPath) {
+      const normalized = await objectStorage.trySetObjectEntityAclPolicy(objectPath, {
+        owner: uploader?.id ?? '',
+        visibility: 'public',
+      })
+      docStorageKey = normalized
+      // Served through the API so the file is downloadable from the app.
+      docStorageUrl = `/api/v1/uploads${normalized}`
+    }
+
     const doc = await prisma.document.create({
       data: {
         name,
         mimeType: mimeType || 'application/octet-stream',
         size: size ?? 0,
-        storageKey: `cowork-link-${Date.now()}`,
-        storageUrl: storageUrl || null,
+        storageKey: docStorageKey,
+        storageUrl: docStorageUrl,
         type: type || 'OTHER',
         orgId: org.id,
         uploadedById: uploader?.id ?? '',

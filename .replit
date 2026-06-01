@@ -57,6 +57,7 @@ waitForPort = 5000
 
 [agent]
 expertMode = true
+integrations = ["javascript_object_storage:2.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"

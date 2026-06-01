@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, type ChangeEvent } from 'react'
 import {
   ArrowLeft,
   MessageSquare,
@@ -15,6 +15,8 @@ import {
   Calendar,
   Mail,
   Trash2,
+  Upload,
+  Download,
   X,
   CheckCircle2,
   Circle,
@@ -759,9 +761,12 @@ function TasksTab({
 /* ─── Files Tab ────────────────────────────────────────────── */
 function FilesTab({ documents, spaceId, onRefresh }: { documents: any[]; spaceId: string; onRefresh: () => void }) {
   const attachFile = useAttachCoworkFile()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const handleAttach = () => {
     if (!name.trim()) return
@@ -778,22 +783,81 @@ function FilesTab({ documents, spaceId, onRefresh }: { documents: any[]; spaceId
     )
   }
 
+  const handleFileSelected = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    // Allow re-selecting the same file later
+    e.target.value = ''
+    if (!file) return
+
+    setUploading(true)
+    setUploadError(null)
+    try {
+      // 1) Ask the API for a presigned upload URL (metadata only).
+      const { data } = await api.post('/uploads/request-url', {
+        name: file.name,
+        size: file.size,
+        contentType: file.type || 'application/octet-stream',
+      })
+
+      // 2) Upload the file bytes directly to object storage.
+      const putRes = await fetch(data.uploadURL, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      })
+      if (!putRes.ok) throw new Error('Storage upload failed')
+
+      // 3) Record the document on the space (size/type captured automatically).
+      await attachFile.mutateAsync({
+        spaceId,
+        name: file.name,
+        objectPath: data.objectPath,
+        mimeType: file.type || 'application/octet-stream',
+        size: file.size,
+        type: 'OTHER',
+      })
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to upload file:', err)
+      setUploadError('Failed to upload file. Please try again.')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-[13px] text-[var(--text-secondary)]">
-          {documents.length} file{documents.length !== 1 ? 's' : ''} linked to this space
+          {documents.length} file{documents.length !== 1 ? 's' : ''} in this space
         </p>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-1.5 btn-primary px-3 py-2 rounded-lg text-[13px]"
-        >
-          <Plus size={14} /> Add File
-        </button>
+        <div className="flex items-center gap-2">
+          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelected} />
+          <button
+            onClick={() => setShowForm((s) => !s)}
+            className="flex items-center gap-1.5 btn-ghost px-3 py-2 rounded-lg text-[13px]"
+          >
+            <Link2 size={14} /> Add Link
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-1.5 btn-primary px-3 py-2 rounded-lg text-[13px] disabled:opacity-40"
+          >
+            <Upload size={14} /> {uploading ? 'Uploading...' : 'Upload File'}
+          </button>
+        </div>
       </div>
 
-      {/* Add Form */}
+      {uploadError && (
+        <div className="flex items-center gap-1.5 text-[12px]" style={{ color: 'var(--danger)' }}>
+          <AlertCircle className="w-3.5 h-3.5" />
+          {uploadError}
+        </div>
+      )}
+
+      {/* Add Link Form */}
       {showForm && (
         <div className="p-4 rounded-xl border border-[var(--accent)] bg-[var(--accent-subtle)] space-y-3 animate-fade-in">
           <div className="flex items-center justify-between">
@@ -848,11 +912,13 @@ function FilesTab({ documents, spaceId, onRefresh }: { documents: any[]; spaceId
       {documents.length === 0 && !showForm ? (
         <div className="flex flex-col items-center py-16" style={{ color: 'var(--text-tertiary)' }}>
           <FileText className="w-10 h-10 mb-3 opacity-40" />
-          <p>No files uploaded</p>
+          <p>No files yet</p>
+          <p className="text-[12px] mt-1">Upload a file from your device or add a link.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 stagger">
           {documents.map((doc: any) => {
+            const isUpload = typeof doc.storageKey === 'string' && doc.storageKey.startsWith('/objects/')
             const Card = (
               <div className="relative z-10 flex flex-col items-center text-center">
                 <FileText className="w-10 h-10 mb-3" style={{ color: 'var(--accent)' }} />
@@ -863,6 +929,12 @@ function FilesTab({ documents, spaceId, onRefresh }: { documents: any[]; spaceId
                   {doc.type && <span className="badge badge-accent text-[10px]">{doc.type}</span>}
                   {doc.size != null && doc.size > 0 && <span>{formatSize(doc.size)}</span>}
                 </div>
+                {doc.storageUrl && (
+                  <span className="flex items-center gap-1 mt-2 text-xs" style={{ color: 'var(--accent)' }}>
+                    {isUpload ? <Download className="w-3 h-3" /> : <Link2 className="w-3 h-3" />}
+                    {isUpload ? 'Download' : 'Open link'}
+                  </span>
+                )}
                 {doc.createdAt && (
                   <p className="text-xs mt-1.5" style={{ color: 'var(--text-tertiary)' }}>
                     {new Date(doc.createdAt).toLocaleDateString('en-US', {
@@ -875,7 +947,14 @@ function FilesTab({ documents, spaceId, onRefresh }: { documents: any[]; spaceId
               </div>
             )
             return doc.storageUrl ? (
-              <a key={doc.id} href={doc.storageUrl} target="_blank" rel="noopener noreferrer" className="data-cell hover:border-[var(--accent)] transition-colors">
+              <a
+                key={doc.id}
+                href={doc.storageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                {...(isUpload ? { download: doc.name } : {})}
+                className="data-cell hover:border-[var(--accent)] transition-colors"
+              >
                 {Card}
               </a>
             ) : (
