@@ -13,6 +13,21 @@ async function resolveMembers(memberIds: string[]) {
   })
 }
 
+// ─── Resolve the acting member for attribution ──────────────
+// `identifier` may be a Member.id or a clerkUserId (the frontend's
+// currentUser.id is a clerkUserId until real auth is wired up).
+// Falls back to the first member only when no valid actor is supplied.
+async function resolveActingMember(identifier?: string | null) {
+  if (identifier) {
+    const member = await prisma.member.findFirst({
+      where: { OR: [{ id: identifier }, { clerkUserId: identifier }] },
+      select: { id: true },
+    })
+    if (member) return member
+  }
+  return prisma.member.findFirst({ select: { id: true } })
+}
+
 // ─── List cowork spaces ─────────────────────────────────────
 coworkRoutes.get('/', async (_req: Request, res: Response) => {
   try {
@@ -195,12 +210,14 @@ coworkRoutes.get('/:id/activity', async (req: Request, res: Response) => {
 coworkRoutes.post('/:id/activity', async (req: Request, res: Response) => {
   try {
     const spaceId = req.params.id as string
+    const author = await resolveActingMember(req.body.authorId || req.body.actorId)
+    if (!author) return res.status(400).json({ error: 'No author found' })
     const activity = await prisma.activity.create({
       data: {
         type: req.body.type || 'UPDATE',
         content: req.body.content,
         coworkSpaceId: spaceId,
-        authorId: req.body.authorId,
+        authorId: author.id,
         metadata: req.body.metadata,
       },
       include: { author: { select: { id: true, name: true, avatar: true } } },
@@ -286,13 +303,17 @@ coworkRoutes.get('/:id/tasks', async (req: Request, res: Response) => {
 // ─── Create shared task ─────────────────────────────────────
 coworkRoutes.post('/:id/tasks', async (req: Request, res: Response) => {
   try {
+    // Use the explicitly chosen assignee, otherwise attribute to the acting member.
+    const owner = req.body.ownerId
+      ? await resolveActingMember(req.body.ownerId)
+      : await resolveActingMember(req.body.actorId)
     const task = await prisma.task.create({
       data: {
         title: req.body.title,
         description: req.body.description,
         priority: req.body.priority || 'MEDIUM',
         dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
-        ownerId: req.body.ownerId,
+        ownerId: owner?.id,
         departmentId: req.body.departmentId,
         projectId: req.body.projectId,
         brandNames: req.body.brandNames || [],
@@ -382,7 +403,7 @@ coworkRoutes.post('/:id/files', async (req: Request, res: Response) => {
 
     const org = await prisma.organization.findFirst()
     if (!org) return res.status(400).json({ error: 'No organization found' })
-    const uploader = await prisma.member.findFirst()
+    const uploader = await resolveActingMember(req.body.actorId)
 
     const doc = await prisma.document.create({
       data: {
