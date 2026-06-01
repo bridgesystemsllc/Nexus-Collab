@@ -84,6 +84,7 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
   const [showStatusMenu, setShowStatusMenu] = useState(false)
   const [showPriorityMenu, setShowPriorityMenu] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [subtaskToDelete, setSubtaskToDelete] = useState<any | null>(null)
 
   useEffect(() => {
     if (task) {
@@ -140,12 +141,15 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
     )
   }
 
-  function handleDeleteSubtask(sub: any) {
+  function handleDeleteSubtask() {
+    if (!subtaskToDelete) return
     setSaveError('')
-    deleteTask.mutate(sub.id, {
-      onSuccess: refreshTask,
-      onError: (err: any) =>
-        setSaveError(err?.response?.data?.error || err?.message || 'Failed to delete subtask'),
+    deleteTask.mutate(subtaskToDelete.id, {
+      onSuccess: () => { setSubtaskToDelete(null); refreshTask() },
+      onError: (err: any) => {
+        setSubtaskToDelete(null)
+        setSaveError(err?.response?.data?.error || err?.message || 'Failed to delete subtask')
+      },
     })
   }
 
@@ -414,7 +418,7 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
                         {STATUS_OPTIONS.find((s) => s.value === sub.status)?.label ?? sub.status?.replace(/_/g, ' ')}
                       </span>
                       <button
-                        onClick={() => handleDeleteSubtask(sub)}
+                        onClick={() => setSubtaskToDelete(sub)}
                         disabled={deleteTask.isPending}
                         className="flex-shrink-0 p-1 rounded-md text-[var(--text-tertiary)] opacity-0 group-hover:opacity-100 hover:text-[var(--danger)] hover:bg-[var(--bg-overlay)] transition-all disabled:opacity-40"
                         title="Delete subtask"
@@ -483,6 +487,41 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
               <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">Attachments</h3>
             </div>
             <TaskAttachments taskId={task.id} module="task" />
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Dialog — delete subtask */}
+      {subtaskToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => { if (!deleteTask.isPending) setSubtaskToDelete(null) }}
+          />
+          <div className="relative z-10 p-5 rounded-[12px] bg-[var(--bg-elevated)] border border-[var(--border-default)] shadow-xl max-w-sm w-full mx-4">
+            <p className="text-[14px] text-[var(--text-primary)] font-medium mb-1">
+              Delete subtask?
+            </p>
+            <p className="text-[13px] text-[var(--text-secondary)] mb-4">
+              &ldquo;{subtaskToDelete.title}&rdquo; will be permanently removed. This can&rsquo;t be undone.
+            </p>
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={() => setSubtaskToDelete(null)}
+                disabled={deleteTask.isPending}
+                className="px-3 py-1.5 rounded-[6px] text-[12px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteSubtask}
+                disabled={deleteTask.isPending}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] text-[12px] font-medium text-white bg-[var(--danger)] hover:opacity-90 transition-colors disabled:opacity-40"
+              >
+                {deleteTask.isPending && <Loader2 size={12} className="animate-spin" />}
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
