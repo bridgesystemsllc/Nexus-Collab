@@ -10,7 +10,9 @@ import {
   type MsProfile,
 } from '../lib/microsoftGraph'
 
-const isProd = !!process.env.REPLIT_DEPLOYMENT
+// True for both the Replit dev preview and a real deployment — in both the
+// public edge is HTTPS and the app is embedded as a cross-site iframe.
+const onReplit = !!(process.env.REPL_SLUG || process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DEPLOYMENT)
 
 // Sessions are the only thing standing between an attacker and a forged login,
 // so a real secret is mandatory — never silently fall back to a known value.
@@ -38,10 +40,12 @@ function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      // Internal dev traffic reaches the API over http (via the Vite proxy),
-      // so only require Secure cookies in a real deployment behind TLS.
-      secure: isProd,
-      sameSite: 'lax',
+      // The Replit preview embeds the app as a cross-site iframe; browsers only
+      // send cookies into that context when they are SameSite=None + Secure.
+      // index.ts shims x-forwarded-proto=https on Replit so this Secure cookie
+      // is actually issued over the (always-https) public edge.
+      secure: onReplit,
+      sameSite: (onReplit ? 'none' : 'lax') as 'none' | 'lax',
       maxAge: sessionTtl,
     },
   })

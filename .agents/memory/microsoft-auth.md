@@ -41,10 +41,27 @@ The SOLE login is "Sign in with Microsoft" (Azure Entra ID). Replit OIDC
   consumed (`delete req.session.msOAuth`) before any processing. The connect flow
   additionally requires `req.member.id === stored.memberId`.
 
-## Still-true env/proxy gotchas (carried over)
-- `cookie.secure` must be gated on `!!process.env.REPLIT_DEPLOYMENT` (false in
-  dev): the Vite proxy → Express hop is plain http, so a Secure cookie never
-  persists in dev. Also `app.set('trust proxy', 1)` + `sameSite:'lax'`.
+## Cookie must be SameSite=None+Secure to survive the Replit preview iframe
+The Replit workspace embeds the running app as a CROSS-SITE iframe (top = replit.com,
+frame = *.replit.dev). Browsers refuse to send a `SameSite=lax` cookie in that
+context, so the app looks "logged out" in the preview even after a successful
+login (the new tab where OAuth completed shows logged-in; the iframe doesn't).
+**Fix:** session cookie must be `sameSite:'none'` + `secure:true` on Replit (both
+dev preview AND deployment — gate on `REPL_SLUG||REPLIT_DEV_DOMAIN||REPLIT_DEPLOYMENT`,
+not just `REPLIT_DEPLOYMENT`).
+**Catch:** the internal Vite-proxy→Express hop is plain http and doesn't forward
+the proto, so express-session won't emit a Secure cookie. The public edge is
+ALWAYS https on Replit, so in index.ts (Replit only) `app.set('trust proxy',1)`
+and a middleware that sets `req.headers['x-forwarded-proto']='https'` before the
+session middleware. Then express-session sees req.secure=true and issues the
+cookie. Verify with `curl -sD- https://$REPLIT_DEV_DOMAIN/api/login` → Set-Cookie
+should read `HttpOnly; Secure; SameSite=None`.
+**Why this supersedes the old "secure must be false in dev" rule:** that rule kept
+login working in a full tab but left the preview iframe logged-out; the proto shim
+gets both. Microsoft's own login page still can't be framed (X-Frame-Options), so
+the sign-in CLICK must still break out to a top-level tab (LandingPage opens
+`/api/login` via `window.open(..,'_blank')` when `window.self!==window.top`); once
+the SameSite=None cookie is set, the preview reflects login on refresh.
 - `connect-pg-simple`: use `createTableIfMissing:true` and the DEFAULT table name
   (`session`); a custom `tableName` won't be auto-created.
 - The public redirect URI comes from `REPLIT_DOMAINS` (request host is localhost

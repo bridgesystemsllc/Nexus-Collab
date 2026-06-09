@@ -46,6 +46,18 @@ export const io = new SocketServer(httpServer, {
 })
 
 // ─── Middleware ──────────────────────────────────────────────
+// On Replit the public edge is always HTTPS, but the internal Vite-proxy hop
+// reaches us over plain HTTP and doesn't forward the original proto. Trust the
+// proxy and assert https so express-session will actually emit Secure /
+// SameSite=None session cookies — required for the app to stay logged in inside
+// the cross-site preview iframe.
+if (isReplit) {
+  app.set('trust proxy', 1)
+  app.use((req, _res, next) => {
+    req.headers['x-forwarded-proto'] = 'https'
+    next()
+  })
+}
 app.use(helmet({
   contentSecurityPolicy: false,
   frameguard: false,
