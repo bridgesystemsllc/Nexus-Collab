@@ -86,6 +86,8 @@ To add a new full-page form: build a component taking `{ form: ActiveForm }` tha
 - Auth module: `apps/api/src/auth/session.ts` (`setupAuth` wires session + `GET /api/login` + `GET /api/logout`; `attachMember`, `isAuthenticated`, `upsertMemberFromMicrosoft`). The OAuth callback itself lives in `apps/api/src/routes/microsoftGraph.ts` and branches on `msOAuth.flow` (`'login'` vs `'connect'`).
 - Identity mapping: Entra object id is stored in `Member.clerkUserId`; new logins match by that id, then adopt by email, else create a member in the first Organization.
 - Signing in uses the full Graph scopes (incl. `offline_access`, `Mail.Read`, `Files.Read`), so login also connects the member's Microsoft account — Outlook/OneDrive attach features work without a separate connect step.
+- **Preview iframe cookies:** the session cookie is `SameSite=None; Secure` on Replit (gated on `REPL_SLUG||REPLIT_DEV_DOMAIN||REPLIT_DEPLOYMENT`) so it survives the cross-site preview iframe; `index.ts` sets `trust proxy` + shims `x-forwarded-proto=https` (the internal Vite-proxy hop is http) so express-session actually issues the Secure cookie. Microsoft's login page can't be framed, so the sign-in button breaks out to a top-level tab when embedded.
+- **Dev-only sign-in:** `GET /api/dev-login` (disabled when `REPLIT_DEPLOYMENT` is set) signs in as the first member; a "Developer sign-in" button renders on the landing page only under `import.meta.env.DEV`. This is for using the app inside the preview when browsers block third-party cookies — production remains Microsoft-only.
 
 ## Features
 - Dark/light theme toggle (persisted to localStorage)

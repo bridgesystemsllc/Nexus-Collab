@@ -108,6 +108,16 @@ export function LandingPage() {
             Sign in with your Microsoft work account so every action in NEXUS is
             attributed to the right person.
           </p>
+
+          {import.meta.env.DEV && (
+            <button
+              onClick={() => { window.location.href = '/api/dev-login' }}
+              className="mt-4 w-full text-[12px] underline transition-opacity hover:opacity-80"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              Developer sign-in (preview only — not on your live site)
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -62,6 +62,11 @@ gets both. Microsoft's own login page still can't be framed (X-Frame-Options), s
 the sign-in CLICK must still break out to a top-level tab (LandingPage opens
 `/api/login` via `window.open(..,'_blank')` when `window.self!==window.top`); once
 the SameSite=None cookie is set, the preview reflects login on refresh.
+**Escape hatch:** because some browsers block third-party cookies entirely (Safari
+ITP), even SameSite=None can fail in the preview. There is a DEV-ONLY `/api/dev-login`
+(signs in as the first member; gated `if (!REPLIT_DEPLOYMENT)`) + a `import.meta.env.DEV`
+button on LandingPage. Production stays Microsoft-only. If asked to "make the preview
+log in", point here — don't weaken the real auth.
 - `connect-pg-simple`: use `createTableIfMissing:true` and the DEFAULT table name
   (`session`); a custom `tableName` won't be auto-created.
 - The public redirect URI comes from `REPLIT_DOMAINS` (request host is localhost

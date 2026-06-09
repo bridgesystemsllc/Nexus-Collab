@@ -122,6 +122,32 @@ export async function setupAuth(app: Express) {
       res.redirect('/')
     })
   })
+
+  // ── Development-only sign-in ────────────────────────────────
+  // Browsers frequently block the login cookie inside Replit's embedded preview
+  // iframe (third-party cookie restrictions), which leaves the preview stuck on
+  // the Microsoft login screen. This shortcut signs in as the first member so
+  // the app is usable in the preview while building. It is HARD-disabled in a
+  // real deployment — production stays Microsoft-only.
+  if (!process.env.REPLIT_DEPLOYMENT) {
+    app.get('/api/dev-login', async (req: Request, res: Response) => {
+      try {
+        const member = await prisma.member.findFirst({ orderBy: { createdAt: 'asc' } })
+        if (!member) return res.redirect('/?ms=error&reason=no_workspace')
+        req.session.regenerate((regenErr) => {
+          if (regenErr) return res.redirect('/?ms=error&reason=session_persist_failed')
+          ;(req.session as any).userId = member.id
+          req.session.save((err) => {
+            if (err) return res.redirect('/?ms=error&reason=session_persist_failed')
+            res.redirect('/')
+          })
+        })
+      } catch (err) {
+        console.error('[auth] dev-login failed:', err)
+        res.redirect('/?ms=error&reason=exchange_failed')
+      }
+    })
+  }
 }
 
 // ─── Attach the acting Member (if logged in) to every request ──
