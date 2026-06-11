@@ -19,6 +19,7 @@ import {
 import { useEverything } from '@/hooks/useData'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 import { useAppStore } from '@/stores/appStore'
+import { BRIEF_STATUS_COLORS } from '@/lib/briefStatus'
 
 // ─── Filter Config ─────────────────────────────────────────
 const TYPE_FILTERS: {
@@ -82,6 +83,16 @@ function TypeBadge({ type }: { type: string }) {
 function StatusDisplay({ status }: { status: string | null }) {
   if (!status) return <span className="text-[var(--text-tertiary)]">--</span>
 
+  // Brief statuses use the shared color source of truth
+  const briefColors = BRIEF_STATUS_COLORS[status]
+  if (briefColors) {
+    return (
+      <span className="badge" style={{ background: briefColors.bg, color: briefColors.text }}>
+        {status}
+      </span>
+    )
+  }
+
   const statusMap: Record<string, string> = {
     emergency: 'badge-emergency',
     critical: 'badge-critical',
@@ -90,18 +101,14 @@ function StatusDisplay({ status }: { status: string | null }) {
     overstock: 'badge-info',
     COMPLETE: 'badge-healthy',
     Complete: 'badge-healthy',
-    'Formula Approved': 'badge-healthy',
     Approved: 'badge-healthy',
     Pass: 'badge-healthy',
     IN_PROGRESS: 'badge-info',
     'In Progress': 'badge-info',
-    'In Formulation': 'badge-info',
     'In Review': 'badge-info',
     IN_REVIEW: 'badge-info',
     NOT_STARTED: 'badge-accent',
     BLOCKED: 'badge-emergency',
-    'Brief Submitted': 'badge-accent',
-    'Stability Testing': 'badge-critical',
     Draft: 'badge-accent',
     Planning: 'badge-critical',
     active: 'badge-healthy',

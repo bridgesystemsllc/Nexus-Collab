@@ -16,6 +16,7 @@ import {
   EMPTY_FORM,
   type BriefFormData,
 } from './NewBriefModal'
+import { DEFAULT_BRIEF_STATUS } from '@/lib/briefStatus'
 
 interface BriefFormContext {
   /** Module id required to create a new brief item. */
@@ -73,7 +74,7 @@ export function BriefFormPage({ form: activeForm }: { form: ActiveForm }) {
     try {
       const briefData = {
         ...form,
-        briefStatus: isDraft ? 'Draft' : form.briefStatus || 'Brief Submitted',
+        briefStatus: isDraft ? 'Draft' : form.briefStatus || DEFAULT_BRIEF_STATUS,
         phase: form.phase || 1,
       }
       if (isEdit && activeForm.recordId && ctx.moduleId) {

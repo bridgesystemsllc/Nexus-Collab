@@ -13,6 +13,7 @@ import type { BriefFormData } from './NewBriefModal'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 import { generateBriefPDF } from '@/utils/generateBriefPDF'
+import { BRIEF_STATUS_COLORS } from '@/lib/briefStatus'
 
 interface BriefDetailViewProps {
   open: boolean
@@ -50,10 +51,7 @@ function DetailField({ label, value }: { label: string; value?: string | number 
 function StatusBadge({ status }: { status: string }) {
   const colorMap: Record<string, { bg: string; text: string }> = {
     Draft: { bg: 'var(--bg-hover)', text: '#6B7280' },
-    'Brief Submitted': { bg: 'var(--info-light)', text: '#3B82F6' },
-    'In Formulation': { bg: 'var(--warning-light)', text: '#F59E0B' },
-    'Stability Testing': { bg: 'var(--danger-light)', text: '#EF4444' },
-    'Formula Approved': { bg: 'var(--success-light)', text: '#10B981' },
+    ...BRIEF_STATUS_COLORS,
   }
   const colors = colorMap[status] || colorMap['Draft']
   return (

@@ -52,6 +52,17 @@ const supportingDocSchema = z.object({
   source: z.string(),
 })
 
+const BRIEF_STATUSES = [
+  'Start Brief',
+  'Brief Submitted',
+  'In Formulation',
+  'Stability Testing',
+  'Formula Approved',
+  'Completed',
+] as const
+
+const DEFAULT_BRIEF_STATUS = 'Start Brief'
+
 const briefDataSchema = z.object({
   companyName: z.string().optional(),
   dateOfRequest: z.string().optional(),
@@ -59,7 +70,7 @@ const briefDataSchema = z.object({
   brand: z.string().optional(),
   subBrand: z.string().optional(),
   contractManufacturer: z.string().optional(),
-  briefStatus: z.string().optional(),
+  briefStatus: z.enum(BRIEF_STATUSES).optional(),
   phase: z.string().optional(),
   projectContacts: z.array(projectContactSchema).optional(),
   projectObjective: z.string().optional(),
@@ -114,7 +125,7 @@ briefRoutes.post('/', async (req: Request, res: Response) => {
     const brief = await prisma.moduleItem.create({
       data: {
         moduleId: parsed.moduleId,
-        data: parsed.data,
+        data: { ...parsed.data, briefStatus: parsed.data.briefStatus ?? DEFAULT_BRIEF_STATUS },
         status: parsed.status,
         sortOrder: parsed.sortOrder || 0,
       },
