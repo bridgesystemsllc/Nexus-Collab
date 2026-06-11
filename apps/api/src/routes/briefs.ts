@@ -164,7 +164,23 @@ briefRoutes.patch('/:id', async (req: Request, res: Response) => {
       })
       if (!existing) return res.status(404).json({ error: 'Brief not found' })
       const existingData = (existing.data as Record<string, unknown>) || {}
-      updatePayload.data = { ...existingData, ...parsed.data }
+      const mergedData: Record<string, unknown> = { ...existingData, ...parsed.data }
+
+      // Server-side status change tracking: timestamp the change and
+      // append to statusHistory (capped at the 50 most recent entries).
+      const incomingStatus = parsed.data.briefStatus
+      const previousStatus = existingData.briefStatus
+      if (incomingStatus !== undefined && incomingStatus !== previousStatus) {
+        const at = new Date().toISOString()
+        mergedData.statusUpdatedAt = at
+        const history = Array.isArray(existingData.statusHistory)
+          ? [...(existingData.statusHistory as unknown[])]
+          : []
+        history.push({ from: previousStatus ?? null, to: incomingStatus, at })
+        mergedData.statusHistory = history.slice(-50)
+      }
+
+      updatePayload.data = mergedData
     }
 
     const brief = await prisma.moduleItem.update({

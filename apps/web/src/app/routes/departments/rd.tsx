@@ -602,6 +602,12 @@ function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, fo
         open={!!viewingBrief}
         brief={viewingBrief}
         onClose={() => setViewingBrief(null)}
+        onStatusChange={(briefStatus, statusUpdatedAt) => {
+          setViewingBrief((prev) =>
+            prev ? { ...prev, briefStatus, ...(statusUpdatedAt ? { statusUpdatedAt } : {}) } : prev,
+          )
+          onRefresh()
+        }}
         onEdit={() => {
           if (viewingBrief) { const b = viewingBrief; setViewingBrief(null); openBriefForm('edit', { brief: b }) }
         }}
