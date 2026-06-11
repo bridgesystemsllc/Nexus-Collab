@@ -2,10 +2,11 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   X, Beaker, FileText, DollarSign, ClipboardList, History, Layers,
   ChevronDown, ChevronRight, Plus, Trash2, Edit3, CheckCircle2, AlertTriangle,
-  Thermometer, Timer, Gauge,
+  Thermometer, Timer, Gauge, FolderOpen, Check,
 } from 'lucide-react'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { AddToCowork } from '@/components/shared/AddToCowork'
+import { SharePointFolderModal } from '@/components/rd/SharePointFolderModal'
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -127,6 +128,11 @@ export function FormulationDetailDrawer({
 }: FormulationDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('composition')
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set())
+  // SharePoint folder URL (single canonical folder per formulation)
+  const [spEditing, setSpEditing] = useState(false)
+  const [spDraft, setSpDraft] = useState('')
+  const [spError, setSpError] = useState('')
+  const [spModalOpen, setSpModalOpen] = useState(false)
 
   // Escape key handler
   const handleKeyDown = useCallback(
@@ -151,6 +157,10 @@ export function FormulationDetailDrawer({
     if (open) {
       setActiveTab('composition')
       setCollapsedPhases(new Set())
+      setSpEditing(false)
+      setSpDraft('')
+      setSpError('')
+      setSpModalOpen(false)
     }
   }, [open, formulation?.id])
 
@@ -265,6 +275,28 @@ export function FormulationDetailDrawer({
     ? STABILITY_PILL_STYLES[stability] ?? { bg: 'var(--bg-hover)', text: '#6B7280' }
     : null
 
+  // ── SharePoint folder handlers ─────────────────────────
+
+  const sharepointFolderUrl: string = f.sharepointFolderUrl || ''
+
+  function saveSharepointUrl() {
+    const trimmed = spDraft.trim()
+    if (!trimmed) {
+      setSpError('Enter a folder URL.')
+      return
+    }
+    try {
+      const parsedUrl = new URL(trimmed)
+      if (parsedUrl.protocol !== 'https:') throw new Error('not https')
+    } catch {
+      setSpError('Must be a valid https:// URL.')
+      return
+    }
+    setSpError('')
+    setSpEditing(false)
+    onUpdate({ sharepointFolderUrl: trimmed })
+  }
+
   // ── Running index for ingredient table ─────────────────
 
   let globalIndex = 0
@@ -323,6 +355,73 @@ export function FormulationDetailDrawer({
               .filter(Boolean)
               .join(' \u00B7 ')}
           </p>
+
+          {/* SharePoint folder row */}
+          <div className="mt-2.5">
+            <div className="flex items-center gap-2">
+              <FolderOpen size={14} style={{ color: '#0078D4' }} className="flex-shrink-0" />
+              <span className="text-[11px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider flex-shrink-0">
+                SharePoint Folder
+              </span>
+              {spEditing || !sharepointFolderUrl ? (
+                <>
+                  <input
+                    type="url"
+                    value={spDraft}
+                    onChange={(e) => {
+                      setSpDraft(e.target.value)
+                      if (spError) setSpError('')
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveSharepointUrl()
+                    }}
+                    placeholder="https://yourtenant.sharepoint.com/sites/\u2026/folder"
+                    className="flex-1 min-w-0 px-2.5 py-1 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+                  />
+                  <button
+                    onClick={saveSharepointUrl}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium btn-primary flex-shrink-0"
+                  >
+                    <Check size={12} />
+                    Save
+                  </button>
+                  {spEditing && sharepointFolderUrl && (
+                    <button
+                      onClick={() => {
+                        setSpEditing(false)
+                        setSpError('')
+                      }}
+                      className="p-1 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors flex-shrink-0"
+                      aria-label="Cancel"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setSpModalOpen(true)}
+                    className="flex-1 min-w-0 text-left text-[12px] text-[var(--accent)] hover:underline truncate"
+                    title="View folder contents"
+                  >
+                    {sharepointFolderUrl}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSpDraft(sharepointFolderUrl)
+                      setSpEditing(true)
+                    }}
+                    className="p-1 rounded-md text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors flex-shrink-0"
+                    aria-label="Edit SharePoint folder URL"
+                  >
+                    <Edit3 size={12} />
+                  </button>
+                </>
+              )}
+            </div>
+            {spError && <p className="text-[11px] text-[var(--danger)] mt-1 ml-6">{spError}</p>}
+          </div>
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 mt-3">
@@ -840,6 +939,13 @@ export function FormulationDetailDrawer({
           )}
         </div>
       </div>
+
+      {/* SharePoint folder viewer */}
+      <SharePointFolderModal
+        open={spModalOpen}
+        url={sharepointFolderUrl}
+        onClose={() => setSpModalOpen(false)}
+      />
 
       {/* Inline keyframes for slide animation */}
       <style>{`
