@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { type BriefFormData, EMPTY_FORM } from '@/components/briefs/NewBriefModal'
+import { BRIEF_STATUS_COLORS, DEFAULT_BRIEF_STATUS } from '@/lib/briefStatus'
 import { useAppStore } from '@/stores/appStore'
 import { BriefDetailView } from '@/components/briefs/BriefDetailView'
 import { generateBriefPDF } from '@/utils/generateBriefPDF'
@@ -156,11 +157,16 @@ function PhaseBar({ phase, total }: { phase: number; total: number }) {
 
 // ─── Status Badge ──────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
+  // Brief statuses use the shared color source of truth
+  const briefColors = BRIEF_STATUS_COLORS[status]
+  if (briefColors) {
+    return (
+      <span className="badge" style={{ background: briefColors.bg, color: briefColors.text }}>
+        {status}
+      </span>
+    )
+  }
   const map: Record<string, string> = {
-    'Formula Approved': 'badge-healthy',
-    'In Formulation': 'badge-info',
-    'Stability Testing': 'badge-critical',
-    'Brief Submitted': 'badge-accent',
     'Approved': 'badge-healthy',
     'In Review': 'badge-info',
     'Draft': 'badge-accent',
@@ -304,7 +310,7 @@ function ImportBriefModal({
       const briefData: BriefFormData = {
         ...EMPTY_FORM,
         ...data.briefData,
-        briefStatus: 'Brief Submitted',
+        briefStatus: DEFAULT_BRIEF_STATUS,
         phase: 1,
         // Ensure arrays are arrays
         markets: Array.isArray(data.briefData.markets) ? data.briefData.markets : [],

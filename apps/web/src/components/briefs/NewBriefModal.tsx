@@ -12,6 +12,7 @@ import {
   CloudOff,
   Image,
 } from 'lucide-react'
+import { BRIEF_STATUSES, DEFAULT_BRIEF_STATUS } from '../../lib/briefStatus'
 
 // ─── Types ─────────────────────────────────────────────────
 export interface BriefFormData {
@@ -76,7 +77,7 @@ const EMPTY_FORM: BriefFormData = {
   brand: '',
   subBrand: '',
   contractManufacturer: '',
-  briefStatus: 'Brief Submitted',
+  briefStatus: DEFAULT_BRIEF_STATUS,
   phase: 1,
   projectContacts: [{ name: '', role: '', email: '' }],
   projectObjective: '',
@@ -119,7 +120,7 @@ const EMPTY_FORM: BriefFormData = {
 }
 
 const BRANDS = ["Carol's Daughter", 'Dermablend', 'Baxter of California', 'Ambi', 'AcneFree']
-const STATUSES = ['Brief Submitted', 'In Formulation', 'Stability Testing', 'Formula Approved']
+const STATUSES = [...BRIEF_STATUSES]
 const MARKET_OPTIONS = ['USA', 'Asia', 'Global', 'UK', 'Other']
 const LABEL_OPTIONS = ['Label', 'Screen Print', 'Wrap Label', 'Front & Back', 'Other']
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Search, ChevronDown, FileText } from 'lucide-react'
+import { BRIEF_STATUS_COLORS } from '@/lib/briefStatus'
 
 interface BriefAutocompleteProps {
   value: { briefId: string; briefTitle: string }
@@ -12,6 +13,7 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   'In Progress': { bg: 'rgba(99,102,241,0.15)', text: 'rgb(79,70,229)' },
   Approved: { bg: 'rgba(34,197,94,0.15)', text: 'rgb(22,163,74)' },
   Draft: { bg: 'rgba(156,163,175,0.15)', text: 'rgb(107,114,128)' },
+  ...BRIEF_STATUS_COLORS,
 }
 
 function StatusPill({ status }: { status: string }) {
