@@ -4,8 +4,15 @@ import { BRIEF_STATUS_COLORS } from '@/lib/briefStatus'
 
 interface BriefAutocompleteProps {
   value: { briefId: string; briefTitle: string }
-  onChange: (val: { briefId: string; briefTitle: string }) => void
+  /** Called with the selection (or empty values on clear). The second
+   *  argument is the raw selected item so callers can read extra fields
+   *  (e.g. brand) for autofill. */
+  onChange: (val: { briefId: string; briefTitle: string }, item?: any) => void
   briefItems?: any[]
+  /** Statuses to hide from the dropdown (matched against
+   *  item.data.briefStatus ?? item.data.status). */
+  excludeStatuses?: string[]
+  placeholder?: string
 }
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
@@ -28,10 +35,34 @@ function StatusPill({ status }: { status: string }) {
   )
 }
 
-export function BriefAutocomplete({ value, onChange, briefItems }: BriefAutocompleteProps) {
+// Brief items arrive either as raw ModuleItems ({ id, data: {...} }) or as
+// pre-flattened objects. Normalize so both shapes render correctly.
+function briefData(item: any): any {
+  return item?.data ?? item ?? {}
+}
+
+function briefName(item: any): string {
+  const d = briefData(item)
+  return d.projectName || d.name || d.title || 'Untitled Brief'
+}
+
+function briefStatus(item: any): string {
+  const d = briefData(item)
+  return d.briefStatus ?? d.status ?? ''
+}
+
+export function BriefAutocomplete({
+  value,
+  onChange,
+  briefItems,
+  excludeStatuses,
+  placeholder = 'Search open briefs...',
+}: BriefAutocompleteProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [highlighted, setHighlighted] = useState(0)
   const ref = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   // Close on outside click
   useEffect(() => {
@@ -46,19 +77,30 @@ export function BriefAutocomplete({ value, onChange, briefItems }: BriefAutocomp
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  const items = briefItems ?? []
+  const items = (briefItems ?? []).filter((item: any) => {
+    if (!excludeStatuses || excludeStatuses.length === 0) return true
+    return !excludeStatuses.includes(briefStatus(item))
+  })
 
-  const filtered = items.filter((b: any) => {
+  const filtered = items.filter((item: any) => {
     const q = search.toLowerCase()
+    if (!q) return true
+    const d = briefData(item)
     return (
-      (b.title ?? '').toLowerCase().includes(q) ||
-      (b.productName ?? '').toLowerCase().includes(q) ||
-      (b.ownerName ?? '').toLowerCase().includes(q)
+      briefName(item).toLowerCase().includes(q) ||
+      (d.brand ?? '').toLowerCase().includes(q) ||
+      (d.productName ?? '').toLowerCase().includes(q) ||
+      (d.ownerName ?? '').toLowerCase().includes(q)
     )
   })
 
-  const handleSelect = (b: any) => {
-    onChange({ briefId: b.id, briefTitle: b.title })
+  // Keep highlight within bounds as the filtered list changes
+  useEffect(() => {
+    setHighlighted((h) => Math.min(h, Math.max(filtered.length - 1, 0)))
+  }, [filtered.length])
+
+  const handleSelect = (item: any) => {
+    onChange({ briefId: item.id, briefTitle: briefName(item) }, item)
     setOpen(false)
     setSearch('')
   }
@@ -68,12 +110,42 @@ export function BriefAutocomplete({ value, onChange, briefItems }: BriefAutocomp
     onChange({ briefId: '', briefTitle: '' })
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlighted((h) => Math.min(h + 1, filtered.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlighted((h) => Math.max(h - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (filtered[highlighted]) handleSelect(filtered[highlighted])
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      setOpen(false)
+      setSearch('')
+    }
+  }
+
+  // Keep the highlighted option scrolled into view
+  useEffect(() => {
+    if (!open) return
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-index="${highlighted}"]`)
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [highlighted, open])
+
   return (
     <div ref={ref} className="relative">
       {/* Trigger */}
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen(!open)
+          setHighlighted(0)
+        }}
         className={`w-full flex items-center justify-between bg-[var(--bg-input)] border rounded-lg px-3.5 py-2.5 text-[14px] text-left transition-all ${
           open
             ? 'border-[var(--accent)] shadow-[0_0_0_3px_rgba(47,128,237,0.12)]'
@@ -86,16 +158,25 @@ export function BriefAutocomplete({ value, onChange, briefItems }: BriefAutocomp
               <FileText size={12} className="text-[var(--text-tertiary)] shrink-0" />
               {value.briefTitle}
             </span>
-            <button
-              type="button"
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="Clear linked brief"
               onClick={handleClear}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onChange({ briefId: '', briefTitle: '' })
+                }
+              }}
               className="ml-auto p-0.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors shrink-0"
             >
               <X size={14} />
-            </button>
+            </span>
           </div>
         ) : (
-          <span className="text-[var(--text-tertiary)]">Search briefs...</span>
+          <span className="text-[var(--text-tertiary)]">{placeholder}</span>
         )}
         <ChevronDown size={16} className="text-[var(--text-tertiary)] shrink-0 ml-2" />
       </button>
@@ -109,38 +190,56 @@ export function BriefAutocomplete({ value, onChange, briefItems }: BriefAutocomp
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by title, product, or owner..."
+              onChange={(e) => {
+                setSearch(e.target.value)
+                setHighlighted(0)
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder}
               autoFocus
               className="flex-1 bg-transparent text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none"
             />
           </div>
 
           {/* Brief list */}
-          <div className="max-h-[240px] overflow-y-auto">
+          <div ref={listRef} role="listbox" className="max-h-[240px] overflow-y-auto">
             {items.length === 0 ? (
-              <p className="px-3 py-3 text-[13px] text-[var(--text-tertiary)]">No briefs available</p>
+              <p className="px-3 py-3 text-[13px] text-[var(--text-tertiary)]">No open briefs available</p>
             ) : filtered.length === 0 ? (
               <p className="px-3 py-3 text-[13px] text-[var(--text-tertiary)]">No briefs found</p>
             ) : (
-              filtered.map((b: any) => (
-                <button
-                  key={b.id}
-                  type="button"
-                  onClick={() => handleSelect(b)}
-                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-[var(--bg-hover)] transition-colors"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">{b.title}</p>
-                      {b.status && <StatusPill status={b.status} />}
+              filtered.map((item: any, i: number) => {
+                const d = briefData(item)
+                const status = briefStatus(item)
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="option"
+                    aria-selected={item.id === value.briefId}
+                    data-index={i}
+                    onClick={() => handleSelect(item)}
+                    onMouseEnter={() => setHighlighted(i)}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${
+                      i === highlighted ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">
+                          {briefName(item)}
+                        </p>
+                        {status && <StatusPill status={status} />}
+                      </div>
+                      {(d.brand || d.ownerName) && (
+                        <p className="text-[11px] text-[var(--text-tertiary)] truncate">
+                          {[d.brand, d.ownerName].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
                     </div>
-                    <p className="text-[11px] text-[var(--text-tertiary)] truncate">
-                      {[b.productName, b.ownerName].filter(Boolean).join(' \u00b7 ')}
-                    </p>
-                  </div>
-                </button>
-              ))
+                  </button>
+                )
+              })
             )}
           </div>
         </div>

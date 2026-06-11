@@ -443,8 +443,12 @@ function ImportBriefModal({
 }
 
 // ─── Active Briefs Tab ─────────────────────────────────────
-function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, formulationItems }: {
+function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, formulationItems, openBriefId, onOpenBriefHandled }: {
   items: any[]; moduleId: string | null; departmentId: string | null; onRefresh: () => void; transferItems: any[]; formulationItems: any[]
+  /** When set, open this brief's detail view (used for cross-tab navigation, e.g. from a tech transfer's linked brief). */
+  openBriefId?: string | null
+  /** Called once openBriefId has been consumed so the parent can clear it. */
+  onOpenBriefHandled?: () => void
 }) {
   const openForm = useAppStore((s) => s.openForm)
   const [viewingBrief, setViewingBrief] = useState<(BriefFormData & { id: string }) | null>(null)
@@ -453,6 +457,16 @@ function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, fo
   const [view, setView] = useState<ViewMode>('table')
 
   const briefs = useMemo(() => items.map((item: any) => ({ id: item.id, moduleId: item.moduleId, ...item.data })), [items])
+
+  // Cross-tab navigation: open a specific brief's detail when requested
+  // (e.g. clicking a tech transfer's linked brief). No-ops safely if the
+  // brief no longer exists.
+  useEffect(() => {
+    if (!openBriefId) return
+    const target = briefs.find((b: any) => b.id === openBriefId)
+    if (target) setViewingBrief(target)
+    onOpenBriefHandled?.()
+  }, [openBriefId, briefs, onOpenBriefHandled])
 
   // Cross-module linking indicators
   const briefHasTransfer = (briefId: string, briefName: string) =>
@@ -1890,6 +1904,16 @@ export function RDPage() {
   const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
   const [viewingTransfer, setViewingTransfer] = useState<any>(null)
   const [viewingFormulation, setViewingFormulation] = useState<any>(null)
+  // Brief id queued for cross-tab navigation (e.g. clicking a tech
+  // transfer's linked brief). Consumed by BriefsTab once it opens the brief.
+  const [pendingBriefId, setPendingBriefId] = useState<string | null>(null)
+
+  const handleOpenBrief = (briefId: string) => {
+    if (!briefId) return
+    setViewingTransfer(null)
+    setActiveTab('briefs')
+    setPendingBriefId(briefId)
+  }
 
   const { data: departments, isLoading: deptsLoading } = useDepartments()
 
@@ -2006,7 +2030,7 @@ export function RDPage() {
           {isLoading ? (
             activeTab === 'cm' ? <CardsSkeleton /> : <TableSkeleton />
           ) : activeTab === 'briefs' ? (
-            <BriefsTab items={moduleData.briefs} moduleId={moduleData.briefsModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} transferItems={moduleData.transfers} formulationItems={moduleData.formulations} />
+            <BriefsTab items={moduleData.briefs} moduleId={moduleData.briefsModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} transferItems={moduleData.transfers} formulationItems={moduleData.formulations} openBriefId={pendingBriefId} onOpenBriefHandled={() => setPendingBriefId(null)} />
           ) : activeTab === 'cm' ? (
             <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} productionItems={productionItems} />
           ) : activeTab === 'transfers' ? (
@@ -2030,6 +2054,7 @@ export function RDPage() {
         open={!!viewingTransfer}
         transfer={viewingTransfer?.data || viewingTransfer}
         onClose={() => setViewingTransfer(null)}
+        onOpenBrief={handleOpenBrief}
         onUpdate={async (updates) => {
           if (viewingTransfer?.id && viewingTransfer?.moduleId) {
             await api.patch(`/departments/_/modules/${viewingTransfer.moduleId}/items/${viewingTransfer.id}`, {

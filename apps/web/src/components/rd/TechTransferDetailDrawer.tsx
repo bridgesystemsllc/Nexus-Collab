@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   X, ChevronRight, ChevronDown, CheckCircle2, Clock, AlertTriangle,
   Play, SkipForward, Lock, Users, FileText, MessageSquare, Plus, Trash2,
+  ArrowUpRight,
 } from 'lucide-react'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { AddToCowork } from '@/components/shared/AddToCowork'
@@ -13,6 +14,8 @@ interface TechTransferDetailDrawerProps {
   transfer: any
   onClose: () => void
   onUpdate: (updates: any) => void
+  /** Navigate to the linked brief's detail view (closes the drawer first). */
+  onOpenBrief?: (briefId: string) => void
 }
 
 interface StageTask {
@@ -206,6 +209,7 @@ export function TechTransferDetailDrawer({
   transfer,
   onClose,
   onUpdate,
+  onOpenBrief,
 }: TechTransferDetailDrawerProps) {
   const [stages, setStages] = useState<Stage[]>([])
   const [selectedStageIndex, setSelectedStageIndex] = useState(0)
@@ -448,17 +452,29 @@ export function TechTransferDetailDrawer({
                 )}
               </p>
 
-              {/* Linked brief chip */}
-              {(transfer.linkedBriefId || transfer.linkedBriefName) && (
-                <div className="mt-2">
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[var(--accent)]/20 bg-[var(--accent-subtle)] cursor-pointer hover:bg-[var(--accent)]/10 transition-colors">
-                    <FileText size={13} className="text-[var(--accent)]" />
-                    <span className="text-[12px] font-medium text-[var(--accent)]">
-                      {transfer.linkedBriefName || 'Linked Brief'}
-                    </span>
-                  </div>
-                </div>
-              )}
+              {/* Linked brief */}
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider font-medium">
+                  Linked Brief
+                </span>
+                {transfer.linkedBriefId ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenBrief?.(transfer.linkedBriefId)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[var(--accent)]/20 bg-[var(--accent-subtle)] text-[12px] font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:underline transition-colors"
+                  >
+                    <FileText size={13} />
+                    {transfer.linkedBriefName || 'Linked Brief'}
+                    <ArrowUpRight size={12} />
+                  </button>
+                ) : transfer.linkedBriefName ? (
+                  <span className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[var(--accent)]">
+                    <FileText size={13} /> {transfer.linkedBriefName}
+                  </span>
+                ) : (
+                  <span className="text-[12px] text-[var(--text-tertiary)]">&mdash;</span>
+                )}
+              </div>
             </div>
 
             {/* Action buttons */}
@@ -540,9 +556,20 @@ export function TechTransferDetailDrawer({
                   {(transfer.linkedBriefName || transfer.linkedBriefId) && (
                     <div>
                       <p className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5 font-medium">Linked Brief</p>
-                      <span className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--accent)]">
-                        <FileText size={11} /> {transfer.linkedBriefName || 'Linked Brief'}
-                      </span>
+                      {transfer.linkedBriefId ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenBrief?.(transfer.linkedBriefId)}
+                          className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--accent)] hover:underline"
+                        >
+                          <FileText size={11} /> {transfer.linkedBriefName || 'Linked Brief'}
+                          <ArrowUpRight size={11} />
+                        </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--accent)]">
+                          <FileText size={11} /> {transfer.linkedBriefName}
+                        </span>
+                      )}
                     </div>
                   )}
                   {(transfer.targetCompletionDate || transfer.targetDate || transfer.target) && (

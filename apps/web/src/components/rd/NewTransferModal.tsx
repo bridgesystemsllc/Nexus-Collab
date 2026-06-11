@@ -10,6 +10,7 @@ import {
   FileText,
   ExternalLink,
 } from 'lucide-react'
+import { BriefAutocomplete } from '@/components/shared/BriefAutocomplete'
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -289,34 +290,6 @@ interface StepProps {
 // ─── Step 1 — Basic Info ───────────────────────────────────
 
 export function Step1({ form, setForm, errors, briefItems }: StepProps) {
-  const [briefSearch, setBriefSearch] = useState('')
-  const [showBriefDropdown, setShowBriefDropdown] = useState(false)
-
-  const filteredBriefs = (briefItems || []).filter((b: any) =>
-    b.projectName?.toLowerCase().includes(briefSearch.toLowerCase())
-  )
-
-  const handleBriefSelect = (brief: any) => {
-    setForm({
-      ...form,
-      linkedBriefId: brief.id,
-      linkedBriefName: brief.projectName || '',
-      product: brief.projectName || form.product,
-      brand: brief.brand || form.brand,
-    })
-    setBriefSearch(brief.projectName || '')
-    setShowBriefDropdown(false)
-  }
-
-  const clearBrief = () => {
-    setForm({
-      ...form,
-      linkedBriefId: '',
-      linkedBriefName: '',
-    })
-    setBriefSearch('')
-  }
-
   return (
     <div className="space-y-5">
       <FormField label="Product Name" required error={errors.product}>
@@ -377,50 +350,25 @@ export function Step1({ form, setForm, errors, briefItems }: StepProps) {
 
       {/* Linked Brief */}
       <FormField label="Linked Brief (optional)">
-        <div className="relative">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={form.linkedBriefId ? form.linkedBriefName : briefSearch}
-              onChange={(e) => {
-                setBriefSearch(e.target.value)
-                setShowBriefDropdown(true)
-                if (form.linkedBriefId) clearBrief()
-              }}
-              onFocus={() => setShowBriefDropdown(true)}
-              placeholder="Search briefs..."
-              className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none transition-all focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(47,128,237,0.12)]"
-            />
-            {form.linkedBriefId && (
-              <button
-                type="button"
-                onClick={clearBrief}
-                className="px-2 text-[var(--text-tertiary)] hover:text-[var(--danger)]"
-              >
-                <X size={16} />
-              </button>
-            )}
-          </div>
-          {showBriefDropdown && filteredBriefs.length > 0 && !form.linkedBriefId && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowBriefDropdown(false)} />
-              <div className="absolute top-full left-0 right-0 mt-1 z-20 max-h-48 overflow-y-auto rounded-lg border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-xl">
-                {filteredBriefs.map((b: any) => (
-                  <button
-                    key={b.id}
-                    onClick={() => handleBriefSelect(b)}
-                    className="w-full text-left px-3 py-2 text-[13px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
-                  >
-                    <span className="font-medium">{b.projectName}</span>
-                    {b.brand && (
-                      <span className="ml-2 text-[var(--text-tertiary)]">{b.brand}</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
+        <BriefAutocomplete
+          value={{ briefId: form.linkedBriefId, briefTitle: form.linkedBriefName }}
+          onChange={(val, item) => {
+            if (!val.briefId) {
+              setForm({ ...form, linkedBriefId: '', linkedBriefName: '' })
+              return
+            }
+            const data = item?.data ?? item ?? {}
+            setForm({
+              ...form,
+              linkedBriefId: val.briefId,
+              linkedBriefName: val.briefTitle,
+              product: data.projectName || data.name || form.product,
+              brand: data.brand || form.brand,
+            })
+          }}
+          briefItems={briefItems}
+          excludeStatuses={['Completed']}
+        />
       </FormField>
 
       <div className="grid grid-cols-2 gap-4">
