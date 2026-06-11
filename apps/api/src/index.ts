@@ -26,6 +26,8 @@ import { brandTransitionRoutes } from './routes/brandTransition'
 import { taskAttachmentRoutes } from './routes/taskAttachments'
 import { techTransferStageRoutes } from './routes/techTransferStages'
 import { formulationDetailRoutes } from './routes/formulationDetail'
+import { formulationsGateRoutes, requireFormulationsUnlock } from './routes/formulationsGate'
+import { sharepointRoutes } from './routes/sharepoint'
 import { uploadRoutes } from './routes/uploads'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
@@ -99,7 +101,11 @@ api.use('/products', productRoutes)
 api.use('/brand-transition', brandTransitionRoutes)
 api.use('/tasks', taskAttachmentRoutes)
 api.use('/tech-transfer-stages', techTransferStageRoutes)
-api.use('/formulation-detail', formulationDetailRoutes)
+// Formulations are password-gated per session when FORMULATIONS_PASSWORD_HASH
+// is set; the gate routes themselves stay open so the UI can prompt.
+api.use('/formulations-gate', formulationsGateRoutes)
+api.use('/formulation-detail', requireFormulationsUnlock, formulationDetailRoutes)
+api.use('/sharepoint', requireFormulationsUnlock, sharepointRoutes)
 api.use('/uploads', uploadRoutes)
 
 // ─── WebSocket ──────────────────────────────────────────────

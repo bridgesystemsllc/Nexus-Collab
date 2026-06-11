@@ -38,6 +38,7 @@ import { TechTransferDetailDrawer } from '@/components/rd/TechTransferDetailDraw
 import { NewTransferModal, type TransferFormData } from '@/components/rd/NewTransferModal'
 import { FormulationDetailModal } from '@/components/rd/FormulationDetailModal'
 import { FormulationDetailDrawer } from '@/components/rd/FormulationDetailDrawer'
+import { FormulationsGate } from '@/components/rd/FormulationsGate'
 import { NewFormulationModal, type FormulationFormData } from '@/components/rd/NewFormulationModal'
 import { api } from '@/lib/api'
 import { NewComponentModal } from '@/components/rd/components/NewComponentModal'
@@ -2005,7 +2006,9 @@ export function RDPage() {
           ) : activeTab === 'transfers' ? (
             <TransfersTab items={moduleData.transfers} moduleId={moduleData.transfersModuleId} departmentId={rdDept?.id || null} briefs={moduleData.briefs} cmItems={moduleData.cm} onRefresh={() => refetchDept()} onSelect={(item) => setViewingTransfer(item)} />
           ) : activeTab === 'formulations' ? (
-            <FormulationsTab items={tabContent.formulations} moduleId={moduleData.formulationsModuleId} departmentId={rdDept?.id || null} briefItems={moduleData.briefs} onRefresh={() => refetchDept()} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
+            <FormulationsGate>
+              <FormulationsTab items={tabContent.formulations} moduleId={moduleData.formulationsModuleId} departmentId={rdDept?.id || null} briefItems={moduleData.briefs} onRefresh={() => refetchDept()} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
+            </FormulationsGate>
           ) : activeTab === 'npd' ? (
             <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} skuItems={skuItems} />
           ) : activeTab === 'artwork' ? (
