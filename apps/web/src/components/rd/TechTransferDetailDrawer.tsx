@@ -23,6 +23,7 @@ interface StageTask {
 }
 
 interface Stage {
+  id?: string
   name: string
   status: 'pending' | 'in_progress' | 'complete' | 'blocked' | 'skipped'
   assignee: string
