@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { BRIEF_STATUSES, DEFAULT_BRIEF_STATUS } from '../../lib/briefStatus'
 import { UserPicker, type PickedMember } from '../shared/UserPicker'
+import { CMPicker } from '../shared/CMPicker'
 
 // ─── Types ─────────────────────────────────────────────────
 export interface ProjectContact {
@@ -33,6 +34,8 @@ export interface BriefFormData {
   brand: string
   subBrand: string
   contractManufacturer: string
+  /** Id of the linked CM_PRODUCTIVITY profile; contractManufacturer keeps the denormalized name. */
+  cmId?: string
   briefStatus: string
   phase: number
   // Step 2 — Project Contacts
@@ -87,6 +90,7 @@ const EMPTY_FORM: BriefFormData = {
   brand: '',
   subBrand: '',
   contractManufacturer: '',
+  cmId: '',
   briefStatus: DEFAULT_BRIEF_STATUS,
   phase: 1,
   projectContacts: [{ name: '', role: '', email: '' }],
@@ -358,12 +362,10 @@ export function Step1({ form, setForm, errors }: StepProps) {
       </div>
       <div className="grid grid-cols-2 gap-4">
         <FormField label="Contract Manufacturer (CM)">
-          <Select
-            value={form.contractManufacturer}
-            onChange={(v) => setForm({ ...form, contractManufacturer: v })}
-            options={['Kolmar', 'Cosway', 'Omnibus', 'Schwan Cosmetics', 'Mana Products']}
+          <CMPicker
+            value={{ cmId: form.cmId || '', cmName: form.contractManufacturer || (form as any).cm || '' }}
+            onChange={(v) => setForm({ ...form, cmId: v.cmId, contractManufacturer: v.cmName })}
             placeholder="Select CM"
-            allowCustom
           />
         </FormField>
         <FormField label="Project Status">

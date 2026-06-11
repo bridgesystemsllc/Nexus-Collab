@@ -19,6 +19,7 @@ import { aiRoutes } from './routes/ai'
 import { pulseRoutes } from './routes/pulse'
 import { onboardingRoutes } from './routes/onboarding'
 import { briefRoutes } from './routes/briefs'
+import { cmRoutes } from './routes/cms'
 import { memberRoutes } from './routes/members'
 import { emailAgentRoutes } from './routes/emailAgent'
 import { productRoutes } from './routes/products'
@@ -95,6 +96,7 @@ api.use('/ai', aiRoutes)
 api.use('/pulse', pulseRoutes)
 api.use('/onboarding', onboardingRoutes)
 api.use('/briefs', briefRoutes)
+api.use('/cms', cmRoutes)
 api.use('/members', memberRoutes)
 api.use('/email-agent', emailAgentRoutes)
 api.use('/products', productRoutes)

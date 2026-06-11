@@ -73,6 +73,9 @@ const briefDataSchema = z.object({
   brand: z.string().optional(),
   subBrand: z.string().optional(),
   contractManufacturer: z.string().optional(),
+  // Id of the linked CM_PRODUCTIVITY ModuleItem (contractManufacturer keeps
+  // the denormalized display name for backward compatibility).
+  cmId: z.string().optional(),
   briefStatus: z.enum(BRIEF_STATUSES).optional(),
   phase: z.string().optional(),
   projectContacts: z.array(projectContactSchema).optional(),

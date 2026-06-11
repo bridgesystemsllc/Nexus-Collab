@@ -35,6 +35,18 @@ export function useDisconnectMicrosoft() {
   })
 }
 
+// ─── Contract Manufacturers (CM Productivity profiles) ──────
+export interface CMOption {
+  id: string
+  name: string
+  status: string | null
+  brands: string[]
+}
+
+export function useCMs() {
+  return useQuery<CMOption[]>({ queryKey: ['cms'], queryFn: () => api.get('/cms').then(r => r.data) })
+}
+
 // ─── Members ───────────────────────────────────────────────
 export function useMembers() {
   return useQuery({ queryKey: ['members'], queryFn: () => api.get('/members').then(r => r.data) })
