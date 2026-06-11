@@ -199,10 +199,12 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
     onUpdate({ ...data, issues: [...(data.issues || []), newIssue] })
   }
 
-  const handleResolveIssue = (id: string) => {
+  const handleResolveIssue = (id: string, resolutionNotes?: string) => {
     if (!onUpdate) return
     const updated = (data.issues || []).map((iss: any, i: number) =>
-      (iss.id || `issue-${i}`) === id ? { ...iss, status: 'Resolved' } : iss,
+      (iss.id || `issue-${i}`) === id
+        ? { ...iss, status: 'Resolved', ...(resolutionNotes ? { resolutionNotes } : {}) }
+        : iss,
     )
     onUpdate({ ...data, issues: updated })
   }

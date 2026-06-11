@@ -15,7 +15,7 @@ export interface Issue {
 export interface IssueLoggerProps {
   issues: Issue[]
   onAdd: (issue: Omit<Issue, 'id' | 'reportedDate' | 'status'>) => void
-  onResolve: (id: string) => void
+  onResolve: (id: string, resolutionNotes?: string) => void
   categories?: string[]
   title?: string
 }
@@ -84,7 +84,7 @@ export function IssueLogger({
   }
 
   const handleResolve = (id: string) => {
-    onResolve(id)
+    onResolve(id, resolutionNotes.trim() || undefined)
     setResolvingId(null)
     setResolutionNotes('')
   }
