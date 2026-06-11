@@ -1061,6 +1061,7 @@ function NPDTab({
   briefItems = [],
   formulationItems = [],
   skuItems = [],
+  onOpenCm,
 }: {
   items: any[]
   moduleId: string | null
@@ -1069,6 +1070,8 @@ function NPDTab({
   briefItems?: any[]
   formulationItems?: any[]
   skuItems?: any[]
+  /** Cross-tab navigation: opens a CM profile in the CM Productivity tab. */
+  onOpenCm?: (cmId: string) => void
 }) {
   const openForm = useAppStore((s) => s.openForm)
   const [viewingProject, setViewingProject] = useState<any>(null)
@@ -1432,6 +1435,7 @@ function NPDTab({
         onTaskUpdate={handleTaskUpdate}
         onGateApprove={handleGateApprove}
         onProjectUpdate={handleProjectUpdate}
+        onOpenCm={(cmId) => { setViewingProject(null); onOpenCm?.(cmId) }}
       />
 
       {/* Delete Confirmation */}
@@ -1865,7 +1869,7 @@ export function RDPage() {
               <FormulationsTab items={tabContent.formulations} moduleId={moduleData.formulationsModuleId} departmentId={rdDept?.id || null} briefItems={moduleData.briefs} onRefresh={() => refetchDept()} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
             </FormulationsGate>
           ) : activeTab === 'npd' ? (
-            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} skuItems={skuItems} />
+            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} skuItems={skuItems} onOpenCm={handleOpenCm} />
           ) : (
             <ComponentsTab items={moduleData.components} moduleId={moduleData.componentsModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} />
           )}
