@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import {
   Download,
   Edit3,
@@ -12,15 +13,34 @@ import {
 import type { BriefFormData } from './NewBriefModal'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { AddToCowork } from '@/components/shared/AddToCowork'
+import { Toast, type ToastData } from '@/components/shared/Toast'
+import { BriefStatusSelect } from './BriefStatusSelect'
 import { generateBriefPDF } from '@/utils/generateBriefPDF'
-import { BRIEF_STATUS_COLORS } from '@/lib/briefStatus'
+import { api } from '@/lib/api'
+
+type BriefDetail = BriefFormData & { id: string; statusUpdatedAt?: string }
 
 interface BriefDetailViewProps {
   open: boolean
-  brief: (BriefFormData & { id: string }) | null
+  brief: BriefDetail | null
   onClose: () => void
   onEdit: () => void
   onDelete: () => void
+  /** Notifies the parent after a successful status PATCH so the list stays in sync. */
+  onStatusChange?: (briefStatus: string, statusUpdatedAt?: string) => void
+}
+
+function formatStatusUpdated(iso: string): string {
+  const date = new Date(iso)
+  if (isNaN(date.getTime())) return iso
+  const mins = Math.floor((Date.now() - date.getTime()) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 function SectionHeader({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
@@ -48,22 +68,6 @@ function DetailField({ label, value }: { label: string; value?: string | number 
   )
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const colorMap: Record<string, { bg: string; text: string }> = {
-    Draft: { bg: 'var(--bg-hover)', text: '#6B7280' },
-    ...BRIEF_STATUS_COLORS,
-  }
-  const colors = colorMap[status] || colorMap['Draft']
-  return (
-    <span
-      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-semibold"
-      style={{ background: colors.bg, color: colors.text }}
-    >
-      {status}
-    </span>
-  )
-}
-
 function PhaseBar({ phase }: { phase: number }) {
   return (
     <div className="flex items-center gap-1.5">
@@ -79,11 +83,44 @@ function PhaseBar({ phase }: { phase: number }) {
   )
 }
 
-export function BriefDetailView({ open, brief, onClose, onEdit, onDelete }: BriefDetailViewProps) {
+export function BriefDetailView({ open, brief, onClose, onEdit, onDelete, onStatusChange }: BriefDetailViewProps) {
+  const [status, setStatus] = useState(brief?.briefStatus ?? '')
+  const [statusUpdatedAt, setStatusUpdatedAt] = useState<string | undefined>(brief?.statusUpdatedAt)
+  const [savingStatus, setSavingStatus] = useState(false)
+  const [toast, setToast] = useState<ToastData | null>(null)
+
+  // Keep local status in sync when a (different) brief is opened or updated.
+  useEffect(() => {
+    setStatus(brief?.briefStatus ?? '')
+    setStatusUpdatedAt(brief?.statusUpdatedAt)
+  }, [brief?.id, brief?.briefStatus, brief?.statusUpdatedAt])
+
   if (!open || !brief) return null
 
   const handleDownload = () => {
     generateBriefPDF(brief)
+  }
+
+  const handleStatusChange = async (next: string) => {
+    if (savingStatus || next === status) return
+    const previous = status
+    setStatus(next) // optimistic
+    setSavingStatus(true)
+    try {
+      const { data: updated } = await api.patch(`/briefs/${brief.id}`, {
+        data: { briefStatus: next },
+      })
+      const updatedAt = (updated?.data as { statusUpdatedAt?: string } | undefined)?.statusUpdatedAt
+      setStatusUpdatedAt(updatedAt)
+      setToast({ message: 'Status updated', type: 'success' })
+      onStatusChange?.(next, updatedAt)
+    } catch (err) {
+      console.error('Failed to update brief status:', err)
+      setStatus(previous) // revert
+      setToast({ message: 'Failed to update status', type: 'error' })
+    } finally {
+      setSavingStatus(false)
+    }
   }
 
   return (
@@ -99,8 +136,13 @@ export function BriefDetailView({ open, brief, onClose, onEdit, onDelete }: Brie
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-semibold text-[var(--text-primary)] truncate">{brief.projectName}</h2>
             <div className="flex items-center gap-2 mt-1">
-              <StatusBadge status={brief.briefStatus} />
+              <BriefStatusSelect value={status} onChange={handleStatusChange} disabled={savingStatus} />
               <span className="text-[13px] text-[var(--text-tertiary)]">{brief.brand}</span>
+              {statusUpdatedAt && (
+                <span className="text-[11px] text-[var(--text-tertiary)]">
+                  · Status updated {formatStatusUpdated(statusUpdatedAt)}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 ml-4">
@@ -320,6 +362,8 @@ export function BriefDetailView({ open, brief, onClose, onEdit, onDelete }: Brie
           )}
         </div>
       </div>
+
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
   )
 }
