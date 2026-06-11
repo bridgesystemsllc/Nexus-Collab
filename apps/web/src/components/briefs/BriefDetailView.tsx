@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import {
+  ArrowUpRight,
   Download,
   Edit3,
+  Factory,
   Trash2,
   FileText,
   Users,
@@ -28,6 +30,8 @@ interface BriefDetailViewProps {
   onDelete: () => void
   /** Notifies the parent after a successful status PATCH so the list stays in sync. */
   onStatusChange?: (briefStatus: string, statusUpdatedAt?: string) => void
+  /** Opens the linked CM's profile in the CM Productivity tab (cross-tab navigation). */
+  onOpenCm?: (cmId: string) => void
 }
 
 function formatStatusUpdated(iso: string): string {
@@ -83,7 +87,7 @@ function PhaseBar({ phase }: { phase: number }) {
   )
 }
 
-export function BriefDetailView({ open, brief, onClose, onEdit, onDelete, onStatusChange }: BriefDetailViewProps) {
+export function BriefDetailView({ open, brief, onClose, onEdit, onDelete, onStatusChange, onOpenCm }: BriefDetailViewProps) {
   const [status, setStatus] = useState(brief?.briefStatus ?? '')
   const [statusUpdatedAt, setStatusUpdatedAt] = useState<string | undefined>(brief?.statusUpdatedAt)
   const [savingStatus, setSavingStatus] = useState(false)
@@ -187,7 +191,35 @@ export function BriefDetailView({ open, brief, onClose, onEdit, onDelete, onStat
               <DetailField label="Date of Request" value={brief.dateOfRequest} />
               <DetailField label="Brand" value={brief.brand} />
               <DetailField label="Sub-Brand" value={brief.subBrand} />
-              <DetailField label="Contract Manufacturer" value={brief.contractManufacturer} />
+              <div>
+                <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5">Contract Manufacturer</p>
+                {(() => {
+                  const cmId = brief.cmId
+                  const cmName = brief.contractManufacturer || (brief as any).cm || ''
+                  if (cmId) {
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => onOpenCm?.(cmId)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[var(--accent)]/20 bg-[var(--accent-subtle)] text-[12px] font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:underline transition-colors"
+                      >
+                        <Factory size={13} />
+                        {cmName || 'CM Profile'}
+                        <ArrowUpRight size={12} />
+                      </button>
+                    )
+                  }
+                  if (cmName) {
+                    return (
+                      <p className="text-[14px] text-[var(--text-primary)]">
+                        {cmName}{' '}
+                        <span className="text-[11px] text-[var(--text-tertiary)]">(unlinked)</span>
+                      </p>
+                    )
+                  }
+                  return <p className="text-[14px] text-[var(--text-primary)]">—</p>
+                })()}
+              </div>
               <div>
                 <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Phase Progress</p>
                 <PhaseBar phase={brief.phase} />

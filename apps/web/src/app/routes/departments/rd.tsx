@@ -443,12 +443,14 @@ function ImportBriefModal({
 }
 
 // ─── Active Briefs Tab ─────────────────────────────────────
-function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, formulationItems, openBriefId, onOpenBriefHandled }: {
+function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, formulationItems, openBriefId, onOpenBriefHandled, onOpenCm }: {
   items: any[]; moduleId: string | null; departmentId: string | null; onRefresh: () => void; transferItems: any[]; formulationItems: any[]
   /** When set, open this brief's detail view (used for cross-tab navigation, e.g. from a tech transfer's linked brief). */
   openBriefId?: string | null
   /** Called once openBriefId has been consumed so the parent can clear it. */
   onOpenBriefHandled?: () => void
+  /** Navigates to the CM Productivity tab and opens this CM's profile (cross-tab navigation). */
+  onOpenCm?: (cmId: string) => void
 }) {
   const openForm = useAppStore((s) => s.openForm)
   const [viewingBrief, setViewingBrief] = useState<(BriefFormData & { id: string }) | null>(null)
@@ -625,6 +627,7 @@ function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, fo
         onEdit={() => {
           if (viewingBrief) { const b = viewingBrief; setViewingBrief(null); openBriefForm('edit', { brief: b }) }
         }}
+        onOpenCm={(cmId) => { setViewingBrief(null); onOpenCm?.(cmId) }}
         onDelete={() => {
           if (viewingBrief) {
             setDeletingItem({ id: viewingBrief.id, name: viewingBrief.projectName })
@@ -655,7 +658,13 @@ function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, fo
 }
 
 // ─── CM Productivity Tab (Expanded) ────────────────────────
-function CMTab({ items, moduleId, departmentId, onRefresh, briefItems, productionItems = [] }: { items: any[]; moduleId: string | null; departmentId: string | null; onRefresh: () => void; briefItems: any[]; productionItems?: any[] }) {
+function CMTab({ items, moduleId, departmentId, onRefresh, briefItems, productionItems = [], openCmId, onOpenCmHandled }: {
+  items: any[]; moduleId: string | null; departmentId: string | null; onRefresh: () => void; briefItems: any[]; productionItems?: any[]
+  /** When set, open this CM's profile (used for cross-tab navigation, e.g. from a brief's linked CM). */
+  openCmId?: string | null
+  /** Called once openCmId has been consumed so the parent can clear it. */
+  onOpenCmHandled?: () => void
+}) {
   const openForm = useAppStore((s) => s.openForm)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [viewingCM, setViewingCM] = useState<any>(null)
@@ -670,6 +679,16 @@ function CMTab({ items, moduleId, departmentId, onRefresh, briefItems, productio
       .sort((a: any, b: any) => productivityScore(b) - productivityScore(a)),
     [items, productionItems]
   )
+
+  // Cross-tab navigation: open a specific CM's profile when requested
+  // (e.g. clicking a brief's linked CM). No-ops safely if the CM no
+  // longer exists.
+  useEffect(() => {
+    if (!openCmId) return
+    const target = cmList.find((cm: any) => cm.id === openCmId)
+    if (target) setViewingCM(target)
+    onOpenCmHandled?.()
+  }, [openCmId, cmList, onOpenCmHandled])
 
   const openCMForm = (mode: 'create' | 'edit', cm?: any) => {
     openForm({
@@ -1907,12 +1926,21 @@ export function RDPage() {
   // Brief id queued for cross-tab navigation (e.g. clicking a tech
   // transfer's linked brief). Consumed by BriefsTab once it opens the brief.
   const [pendingBriefId, setPendingBriefId] = useState<string | null>(null)
+  // CM id queued for cross-tab navigation (e.g. clicking a brief's linked
+  // CM). Consumed by CMTab once it opens the CM's profile.
+  const [pendingCmId, setPendingCmId] = useState<string | null>(null)
 
   const handleOpenBrief = (briefId: string) => {
     if (!briefId) return
     setViewingTransfer(null)
     setActiveTab('briefs')
     setPendingBriefId(briefId)
+  }
+
+  const handleOpenCm = (cmId: string) => {
+    if (!cmId) return
+    setActiveTab('cm')
+    setPendingCmId(cmId)
   }
 
   const { data: departments, isLoading: deptsLoading } = useDepartments()
@@ -2030,9 +2058,9 @@ export function RDPage() {
           {isLoading ? (
             activeTab === 'cm' ? <CardsSkeleton /> : <TableSkeleton />
           ) : activeTab === 'briefs' ? (
-            <BriefsTab items={moduleData.briefs} moduleId={moduleData.briefsModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} transferItems={moduleData.transfers} formulationItems={moduleData.formulations} openBriefId={pendingBriefId} onOpenBriefHandled={() => setPendingBriefId(null)} />
+            <BriefsTab items={moduleData.briefs} moduleId={moduleData.briefsModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} transferItems={moduleData.transfers} formulationItems={moduleData.formulations} openBriefId={pendingBriefId} onOpenBriefHandled={() => setPendingBriefId(null)} onOpenCm={handleOpenCm} />
           ) : activeTab === 'cm' ? (
-            <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} productionItems={productionItems} />
+            <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} productionItems={productionItems} openCmId={pendingCmId} onOpenCmHandled={() => setPendingCmId(null)} />
           ) : activeTab === 'transfers' ? (
             <TransfersTab items={moduleData.transfers} moduleId={moduleData.transfersModuleId} departmentId={rdDept?.id || null} briefs={moduleData.briefs} cmItems={moduleData.cm} onRefresh={() => refetchDept()} onSelect={(item) => setViewingTransfer(item)} />
           ) : activeTab === 'formulations' ? (
