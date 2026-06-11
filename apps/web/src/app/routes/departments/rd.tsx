@@ -14,7 +14,6 @@ import {
   Loader2,
   MoreHorizontal,
   Package,
-  Palette,
   Plus,
   Repeat2,
   Rocket,
@@ -47,14 +46,11 @@ import { COMPONENT_TYPE_COLORS, FEASIBILITY_STATUS_COLORS, getWorstCompatibility
 import { NewNPDProjectModal, type NPDFormData } from '@/components/rd/npd/NewNPDProjectModal'
 import { NPDProjectDetail } from '@/components/rd/npd/NPDProjectDetail'
 import { STAGE_CONFIG, createDefaultTasks, getStageProgress, getOverallProgress, getCurrentStage, isStageUnlocked, type NPDTask } from '@/components/rd/npd/npdChecklist'
-import { NewArtworkModal } from '@/components/rd/artwork/NewArtworkModal'
-import { ArtworkProjectDetail } from '@/components/rd/artwork/ArtworkProjectDetail'
-import { ARTWORK_STATUS_COLORS, DEFAULT_COMPLIANCE_ITEMS, generateRetailerComplianceItems, getApprovalChainSummary } from '@/components/rd/artwork/artworkData'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 
 // ─── Types ─────────────────────────────────────────────────
-type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd' | 'artwork' | 'components'
+type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd' | 'components'
 
 const TABS: { key: RDTab; label: string; icon: React.ElementType }[] = [
   { key: 'briefs', label: 'Active Briefs', icon: FileText },
@@ -62,7 +58,6 @@ const TABS: { key: RDTab; label: string; icon: React.ElementType }[] = [
   { key: 'transfers', label: 'Tech Transfers', icon: Repeat2 },
   { key: 'formulations', label: 'Formulations', icon: FlaskConical },
   { key: 'npd', label: 'NPD Pipeline', icon: Rocket },
-  { key: 'artwork', label: 'Artwork', icon: Palette },
   { key: 'components', label: 'Components', icon: Boxes },
 ]
 
@@ -178,7 +173,6 @@ function StatusBadge({ status }: { status: string }) {
     'Testing': 'badge-critical',
     'Pending': 'badge-accent',
     'Active': 'badge-healthy',
-    'Awaiting Artwork': 'badge-info',
     'Component Sourcing': 'badge-info',
     'Formula Pending': 'badge-critical',
     'MOQ Pending': 'badge-critical',
@@ -1173,7 +1167,7 @@ function NPDTab({
 
     const newLog = {
       user: 'You',
-      action: `Approved ${gate === '1/2' ? 'Gate 1/2 (Pipe/Launch)' : 'Gate 2/3 (Artwork)'}`,
+      action: `Approved ${gate === '1/2' ? 'Gate 1/2 (Pipe/Launch)' : 'Gate 2/3'}`,
       timestamp: new Date().toISOString(),
       stage: gate,
     }
@@ -1446,200 +1440,6 @@ function NPDTab({
         itemName={deletingProject?.name || ''}
         onConfirm={handleDelete}
         onCancel={() => setDeletingProject(null)}
-      />
-    </div>
-  )
-}
-
-// ─── Artwork Tab ──────────────────────────────────────────
-function ArtworkTab({
-  items,
-  moduleId,
-  departmentId,
-  briefs,
-  onRefresh,
-}: {
-  items: any[]
-  moduleId: string | null
-  departmentId: string | null
-  briefs: any[]
-  onRefresh: () => void
-}) {
-  const openForm = useAppStore((s) => s.openForm)
-  const [viewingArtwork, setViewingArtwork] = useState<any>(null)
-  const [view, setView] = useState<ViewMode>('table')
-
-  const projects = useMemo(() => {
-    return items.map((item: any) => ({
-      id: item.id,
-      moduleId: item.moduleId,
-      ...item.data,
-    }))
-  }, [items])
-
-  const openArtworkForm = () => {
-    openForm({
-      formType: 'artwork',
-      mode: 'create',
-      recordId: null,
-      context: {
-        moduleId,
-        departmentId,
-        initialData: null,
-        briefs,
-      },
-    })
-  }
-
-  const handleProjectUpdate = async (updates: any) => {
-    if (!viewingArtwork) return
-    const item = items.find((i: any) => i.id === viewingArtwork.id)
-    if (!item) return
-
-    const updatedProject = { ...viewingArtwork, ...updates }
-    try {
-      await api.patch(`/departments/_/modules/${item.moduleId}/items/${viewingArtwork.id}`, {
-        data: updatedProject,
-      })
-      setViewingArtwork(updatedProject)
-      onRefresh()
-    } catch (err) {
-      console.error('Failed to update artwork project:', err)
-    }
-  }
-
-  const formatDate = (d: string) => {
-    if (!d) return '—'
-    try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) } catch { return d }
-  }
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <ViewToggle value={view} onChange={setView} />
-        <button
-          onClick={openArtworkForm}
-          className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]"
-        >
-          <Plus size={15} /> New Artwork Project
-        </button>
-      </div>
-
-      {projects.length === 0 ? (
-        <div className="text-center py-12">
-          <Palette size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
-          <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No artwork projects yet</p>
-          <button onClick={openArtworkForm} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">
-            Create Your First Artwork Project
-          </button>
-        </div>
-      ) : view === 'table' ? (
-        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
-          <table className="nexus-table">
-            <thead>
-              <tr>
-                <th>Artwork Name</th>
-                <th>Brand</th>
-                <th>Channel</th>
-                <th>Version</th>
-                <th>Status</th>
-                <th>Approval</th>
-                <th>Due Date</th>
-                <th>Last Updated</th>
-                <th className="w-12">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((proj: any) => {
-                const statusColor = ARTWORK_STATUS_COLORS[proj.status] || '#6B7280'
-                const latestVersion = (proj.versions || [])[(proj.versions || []).length - 1]
-                const approvals = latestVersion?.approvals || proj.approvalChain?.map((a: any) => ({ ...a, status: 'pending' })) || []
-                const { approved, total } = getApprovalChainSummary(approvals)
-
-                return (
-                  <tr key={proj.id} className="clickable-row" onClick={() => setViewingArtwork(proj)}>
-                    <td className="font-medium text-[var(--text-primary)]">{proj.artworkName || '—'}</td>
-                    <td><span className="badge badge-accent text-[11px]">{proj.brand || '—'}</span></td>
-                    <td>
-                      <div className="flex gap-1 flex-wrap">
-                        {(proj.channels || []).map((ch: string) => (
-                          <span key={ch} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-surface)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">{ch}</span>
-                        ))}
-                      </div>
-                    </td>
-                    <td>
-                      <span className="text-[12px] font-mono px-1.5 py-0.5 rounded" style={{ background: 'rgba(124,58,237,0.12)', color: '#7C3AED' }}>
-                        {proj.currentVersion || 'v1.0'}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="badge text-[11px]" style={{ background: `${statusColor}18`, color: statusColor }}>{proj.status || 'Draft'}</span>
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-1">
-                        {approvals.slice(0, 5).map((a: any, i: number) => (
-                          <div
-                            key={i}
-                            className="w-2 h-2 rounded-full"
-                            style={{
-                              background: a.status === 'approved' ? '#10B981' : a.status === 'rejected' ? '#EF4444' : 'var(--border-strong)',
-                            }}
-                            title={`${a.role}: ${a.status}`}
-                          />
-                        ))}
-                        <span className="text-[10px] text-[var(--text-tertiary)] ml-1">{approved}/{total}</span>
-                      </div>
-                    </td>
-                    <td className="text-[13px] text-[var(--text-secondary)]">{formatDate(proj.submissionDueDate)}</td>
-                    <td className="text-[13px] text-[var(--text-secondary)]">{formatDate(proj.createdAt)}</td>
-                    <td>
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <AddToCowork item={{ name: proj.artworkName || 'Untitled Artwork', type: 'Artwork', id: proj.id, description: `Artwork — ${proj.brand || '—'}${proj.currentVersion ? ` · ${proj.currentVersion}` : ''}` }} variant="icon" />
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {projects.map((proj: any) => {
-            const statusColor = ARTWORK_STATUS_COLORS[proj.status] || '#6B7280'
-            const latestVersion = (proj.versions || [])[(proj.versions || []).length - 1]
-            const approvals = latestVersion?.approvals || proj.approvalChain?.map((a: any) => ({ ...a, status: 'pending' })) || []
-            const { approved, total } = getApprovalChainSummary(approvals)
-            return (
-              <div
-                key={proj.id}
-                className="clickable-row flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors cursor-pointer"
-                onClick={() => setViewingArtwork(proj)}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-[14px] text-[var(--text-primary)] truncate">{proj.artworkName || '—'}</span>
-                    <span className="badge badge-accent text-[11px]">{proj.brand || '—'}</span>
-                    <span className="badge text-[11px]" style={{ background: `${statusColor}18`, color: statusColor }}>{proj.status || 'Draft'}</span>
-                  </div>
-                  <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5 truncate">
-                    {proj.currentVersion || 'v1.0'} · {approved}/{total} approvals · Due {formatDate(proj.submissionDueDate)}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                  <AddToCowork item={{ name: proj.artworkName || 'Untitled Artwork', type: 'Artwork', id: proj.id, description: `Artwork — ${proj.brand || '—'}${proj.currentVersion ? ` · ${proj.currentVersion}` : ''}` }} variant="icon" />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      <ArtworkProjectDetail
-        open={!!viewingArtwork}
-        project={viewingArtwork}
-        onClose={() => setViewingArtwork(null)}
-        onProjectUpdate={handleProjectUpdate}
       />
     </div>
   )
@@ -1973,10 +1773,10 @@ export function RDPage() {
   const moduleData = useMemo(() => {
     if (!deptDetail?.modules) {
       return {
-        briefs: [], cm: [], transfers: [], formulations: [], npd: [], artwork: [], components: [],
+        briefs: [], cm: [], transfers: [], formulations: [], npd: [], components: [],
         briefsModuleId: null, cmModuleId: null, transfersModuleId: null,
         formulationsModuleId: null,
-        npdModuleId: null, artworkModuleId: null, componentsModuleId: null,
+        npdModuleId: null, componentsModuleId: null,
       }
     }
     const modules = deptDetail.modules as any[]
@@ -1991,13 +1791,11 @@ export function RDPage() {
       transfers: find('TECH_TRANSFERS'),
       formulations: find('FORMULATIONS'),
       npd: find('NPD_PIPELINE'),
-      artwork: find('ARTWORK'),
       components: find('COMPONENTS'),
       briefsModuleId: findModuleId('BRIEFS'),
       cmModuleId: findModuleId('CM_PRODUCTIVITY'),
       transfersModuleId: findModuleId('TECH_TRANSFERS'),
       npdModuleId: findModuleId('NPD_PIPELINE'),
-      artworkModuleId: findModuleId('ARTWORK'),
       componentsModuleId: findModuleId('COMPONENTS'),
       formulationsModuleId: findModuleId('FORMULATIONS'),
     }
@@ -2009,7 +1807,6 @@ export function RDPage() {
     transfers: moduleData.transfers,
     formulations: moduleData.formulations,
     npd: moduleData.npd,
-    artwork: moduleData.artwork,
     components: moduleData.components,
   }
 
@@ -2069,8 +1866,6 @@ export function RDPage() {
             </FormulationsGate>
           ) : activeTab === 'npd' ? (
             <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} skuItems={skuItems} />
-          ) : activeTab === 'artwork' ? (
-            <ArtworkTab items={moduleData.artwork} moduleId={moduleData.artworkModuleId} departmentId={rdDept?.id || null} briefs={moduleData.briefs} onRefresh={() => refetchDept()} />
           ) : (
             <ComponentsTab items={moduleData.components} moduleId={moduleData.componentsModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} />
           )}
