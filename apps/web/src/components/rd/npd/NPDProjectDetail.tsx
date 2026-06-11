@@ -3,12 +3,14 @@ import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 import {
   AlertTriangle,
+  ArrowUpRight,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock,
   Edit3,
+  Factory,
   FileText,
   Link2,
   Lock,
@@ -57,7 +59,14 @@ export interface NPDProject {
   targetCOGS: string
   markets: string[]
   targetRetailers: string
+  /** Canonical CM link: id of the CM_PRODUCTIVITY ModuleItem (from CMPicker / migration). */
+  cmId?: string
+  /** Denormalized CM display name written alongside cmId. */
+  cmName?: string
+  /** Legacy free-text CM field (mirrors cmName on new saves; old items may hold typed text). */
   contractManufacturerId: string
+  /** Legacy seed-data CM text key. */
+  cm?: string
   pipeQuantity: string
   teamAssignments: { role: string; memberId: string; assignedName: string }[]
   stageDates: Record<string, string>
@@ -74,6 +83,13 @@ interface Props {
   onTaskUpdate: (taskId: string, updates: Partial<NPDTask>) => void
   onGateApprove: (gate: string, notes: string) => void
   onProjectUpdate: (updates: Partial<NPDProject>) => void
+  /** Opens the linked CM's profile in the CM Productivity tab. */
+  onOpenCm?: (cmId: string) => void
+}
+
+/** Best-available CM display name across canonical and legacy keys. */
+function cmDisplayName(project: NPDProject): string {
+  return project.cmName || project.contractManufacturerId || project.cm || ''
 }
 
 /* ───────────────────────────── Constants ────────────────────────────── */
@@ -810,9 +826,11 @@ function ChecklistTab({
 function OverviewTab({
   project,
   onProjectUpdate,
+  onOpenCm,
 }: {
   project: NPDProject
   onProjectUpdate: Props['onProjectUpdate']
+  onOpenCm?: Props['onOpenCm']
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState({ ...project })
@@ -967,7 +985,29 @@ function OverviewTab({
             </div>
           </div>
           <Field label="Target Retailers" value={project.targetRetailers} />
-          <Field label="Contract Manufacturer" value={project.contractManufacturerId} />
+          <div>
+            <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider mb-0.5">
+              Contract Manufacturer
+            </p>
+            {project.cmId ? (
+              <button
+                type="button"
+                onClick={() => onOpenCm?.(project.cmId!)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[var(--accent)]/20 bg-[var(--accent-subtle)] text-[12px] font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:underline transition-colors"
+              >
+                <Factory size={13} />
+                {cmDisplayName(project) || 'CM Profile'}
+                <ArrowUpRight size={12} />
+              </button>
+            ) : cmDisplayName(project) ? (
+              <p className="text-[14px] text-[var(--text-primary)]">
+                {cmDisplayName(project)}{' '}
+                <span className="text-[11px] text-[var(--text-tertiary)]">(unlinked)</span>
+              </p>
+            ) : (
+              <p className="text-[14px] text-[var(--text-primary)]">--</p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1167,6 +1207,7 @@ export function NPDProjectDetail({
   onTaskUpdate,
   onGateApprove,
   onProjectUpdate,
+  onOpenCm,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('checklist')
   const stageRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -1244,7 +1285,18 @@ export function NPDProjectDetail({
           <div className="flex items-center gap-3 text-[13px] text-[var(--text-secondary)]">
             <span>{project.category}</span>
             <span className="text-[var(--border-strong)]">&#183;</span>
-            <span>CM: {project.contractManufacturerId || '--'}</span>
+            {project.cmId ? (
+              <button
+                type="button"
+                onClick={() => onOpenCm?.(project.cmId!)}
+                className="inline-flex items-center gap-1 text-[var(--accent)] hover:underline transition-colors"
+              >
+                CM: {cmDisplayName(project) || 'CM Profile'}
+                <ArrowUpRight size={12} />
+              </button>
+            ) : (
+              <span>CM: {cmDisplayName(project) || '--'}</span>
+            )}
             <span className="text-[var(--border-strong)]">&#183;</span>
             <span>Launch: {formatDate(project.targetLaunchDate)}</span>
           </div>
@@ -1357,11 +1409,21 @@ export function NPDProjectDetail({
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer transition-colors">
             <Link2 size={10} /> Formulation
           </span>
-          {project.contractManufacturerId && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)]">
-              <Link2 size={10} /> CM: {project.contractManufacturerId}
+          {project.cmId ? (
+            <button
+              type="button"
+              onClick={() => onOpenCm?.(project.cmId!)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[var(--accent-subtle)] border border-[var(--accent)]/20 text-[var(--accent)] hover:underline transition-colors"
+            >
+              <Factory size={10} /> CM: {cmDisplayName(project) || 'CM Profile'}
+              <ArrowUpRight size={10} />
+            </button>
+          ) : cmDisplayName(project) ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-tertiary)]">
+              <Link2 size={10} /> CM: {cmDisplayName(project)}
+              <span className="text-[10px]">(unlinked)</span>
             </span>
-          )}
+          ) : null}
         </div>
 
         {/* ─── Tabs ─── */}
@@ -1395,7 +1457,7 @@ export function NPDProjectDetail({
             />
           )}
           {activeTab === 'overview' && (
-            <OverviewTab project={project} onProjectUpdate={onProjectUpdate} />
+            <OverviewTab project={project} onProjectUpdate={onProjectUpdate} onOpenCm={onOpenCm} />
           )}
           {activeTab === 'documents' && <DocumentsTab project={project} />}
           {activeTab === 'activity' && <ActivityLogTab project={project} />}

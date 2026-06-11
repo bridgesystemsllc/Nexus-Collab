@@ -13,6 +13,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { useMembers, useCreateMember } from '@/hooks/useData'
+import { CMPicker } from '@/components/shared/CMPicker'
 
 // ─── Types ─────────────────────────────────────────────────
 export interface NPDFormData {
@@ -34,6 +35,15 @@ export interface NPDFormData {
   targetCOGS: string
   markets: string[]
   targetRetailers: string
+  /** Canonical CM link: id of the CM_PRODUCTIVITY ModuleItem (set by CMPicker). */
+  cmId: string
+  /** Denormalized CM display name (kept in sync with cmId by CMPicker). */
+  cmName: string
+  /**
+   * Legacy field. Historically a free-text input; now mirrored to the CM
+   * display name on every pick so existing readers (e.g. older NPD detail
+   * renderers / seeded data paths) keep showing a name, never a raw id.
+   */
   contractManufacturerId: string
   pipeQuantity: string
   teamAssignments: { role: string; memberId: string; assignedName: string }[]
@@ -90,6 +100,8 @@ export const EMPTY_NPD_FORM: NPDFormData = {
   targetCOGS: '',
   markets: [],
   targetRetailers: '',
+  cmId: '',
+  cmName: '',
   contractManufacturerId: '',
   pipeQuantity: '',
   teamAssignments: DEFAULT_TEAM.map((t) => ({
@@ -512,10 +524,17 @@ export function StepBusinessCommercial({ form, setForm }: StepProps) {
       </FormField>
 
       <FormField label="Contract Manufacturer">
-        <TextInput
-          value={form.contractManufacturerId}
-          onChange={(v) => setForm({ ...form, contractManufacturerId: v })}
-          placeholder="Search or enter CM name / ID"
+        <CMPicker
+          // Legacy projects may carry only free text (contractManufacturerId
+          // or seeded `cm`); show it as an unlinked label until re-picked.
+          value={{
+            cmId: form.cmId || '',
+            cmName: form.cmName || form.contractManufacturerId || (form as any).cm || '',
+          }}
+          onChange={(v) =>
+            setForm({ ...form, cmId: v.cmId, cmName: v.cmName, contractManufacturerId: v.cmName })
+          }
+          placeholder="Select CM from CM Productivity"
         />
       </FormField>
     </div>
