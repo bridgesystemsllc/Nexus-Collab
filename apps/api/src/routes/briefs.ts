@@ -39,6 +39,9 @@ const projectContactSchema = z.object({
   name: z.string(),
   role: z.string(),
   email: z.string(),
+  phone: z.string().optional(),
+  memberId: z.string().optional(),
+  source: z.enum(['nexus', 'manual']).optional(),
 })
 
 const teamMemberSchema = z.object({
