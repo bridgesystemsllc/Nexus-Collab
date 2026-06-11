@@ -164,14 +164,25 @@ export function BriefDetailView({ open, brief, onClose, onEdit, onDelete }: Brie
                       <th>Name</th>
                       <th>Title / Role</th>
                       <th>Email</th>
+                      <th>Phone</th>
                     </tr>
                   </thead>
                   <tbody>
                     {brief.projectContacts.map((c, i) => (
                       <tr key={i}>
-                        <td className="font-medium">{c.name || '—'}</td>
+                        <td className="font-medium">
+                          <span className="inline-flex items-center gap-1.5">
+                            {c.name || '—'}
+                            {c.source === 'nexus' && (
+                              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-[var(--accent-light)] text-[var(--accent)]">
+                                Nexus
+                              </span>
+                            )}
+                          </span>
+                        </td>
                         <td>{c.role || '—'}</td>
                         <td className="text-[var(--accent)]">{c.email || '—'}</td>
+                        <td>{c.phone || '—'}</td>
                       </tr>
                     ))}
                   </tbody>

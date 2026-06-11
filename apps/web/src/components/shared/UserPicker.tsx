@@ -2,14 +2,23 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Search, ChevronDown } from 'lucide-react'
 import { useMembers } from '@/hooks/useData'
 
+export interface PickedMember {
+  id: string
+  name: string
+  email?: string
+  role?: string
+}
+
 interface UserPickerProps {
   value: { userId: string; userName: string; userRole?: string }
   onChange: (val: { userId: string; userName: string; userRole?: string }) => void
   label?: string
   placeholder?: string
+  /** Optional: surfaces the full member object on select (null on clear). */
+  onSelectMember?: (member: PickedMember | null) => void
 }
 
-export function UserPicker({ value, onChange, label, placeholder }: UserPickerProps) {
+export function UserPicker({ value, onChange, label, placeholder, onSelectMember }: UserPickerProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [highlightIdx, setHighlightIdx] = useState(0)
@@ -45,6 +54,7 @@ export function UserPicker({ value, onChange, label, placeholder }: UserPickerPr
 
   const handleSelect = (m: any) => {
     onChange({ userId: m.id, userName: m.name, userRole: m.role })
+    onSelectMember?.({ id: m.id, name: m.name, email: m.email, role: m.role })
     setOpen(false)
     setSearch('')
   }
@@ -52,6 +62,7 @@ export function UserPicker({ value, onChange, label, placeholder }: UserPickerPr
   const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation()
     onChange({ userId: '', userName: '', userRole: undefined })
+    onSelectMember?.(null)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

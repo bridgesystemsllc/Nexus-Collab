@@ -13,8 +13,18 @@ import {
   Image,
 } from 'lucide-react'
 import { BRIEF_STATUSES, DEFAULT_BRIEF_STATUS } from '../../lib/briefStatus'
+import { UserPicker, type PickedMember } from '../shared/UserPicker'
 
 // ─── Types ─────────────────────────────────────────────────
+export interface ProjectContact {
+  name: string
+  role: string
+  email: string
+  phone?: string
+  memberId?: string
+  source?: 'nexus' | 'manual'
+}
+
 export interface BriefFormData {
   // Step 1 — Project Overview
   companyName: string
@@ -26,7 +36,7 @@ export interface BriefFormData {
   briefStatus: string
   phase: number
   // Step 2 — Project Contacts
-  projectContacts: { name: string; role: string; email: string }[]
+  projectContacts: ProjectContact[]
   // Step 3 — Objective & Business
   projectObjective: string
   ingredients: string
@@ -385,10 +395,51 @@ export function Step1({ form, setForm, errors }: StepProps) {
   )
 }
 
+/** Derive the entry mode for a contact. Legacy contacts (no source) with data are manual; empty ones default to the Nexus picker. */
+function contactMode(c: ProjectContact): 'nexus' | 'manual' {
+  if (c.source) return c.source
+  if (c.memberId) return 'nexus'
+  return (c.name ?? '').trim() || (c.email ?? '').trim() ? 'manual' : 'nexus'
+}
+
+function ContactModeToggle({ mode, onChange }: { mode: 'nexus' | 'manual'; onChange: (m: 'nexus' | 'manual') => void }) {
+  return (
+    <div className="flex items-center rounded-lg border border-[var(--border-default)] bg-[var(--bg-input)] p-0.5">
+      {(['nexus', 'manual'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => onChange(m)}
+          className={`px-2.5 py-1 rounded-md text-[12px] font-medium transition-all ${
+            mode === m
+              ? 'bg-[var(--accent)] text-white'
+              : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          {m === 'nexus' ? 'Nexus User' : 'Manual'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function ReadOnlyInput({ value, placeholder }: { value: string; placeholder?: string }) {
+  return (
+    <input
+      type="text"
+      value={value}
+      readOnly
+      tabIndex={-1}
+      placeholder={placeholder}
+      className="w-full bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-lg px-3.5 py-2.5 text-[14px] text-[var(--text-secondary)] placeholder:text-[var(--text-tertiary)] outline-none cursor-default"
+    />
+  )
+}
+
 export function Step2({ form, setForm, errors }: StepProps) {
   const addContact = () => {
     if (form.projectContacts.length < 10) {
-      setForm({ ...form, projectContacts: [...form.projectContacts, { name: '', role: '', email: '' }] })
+      setForm({ ...form, projectContacts: [...form.projectContacts, { name: '', role: '', email: '', source: 'nexus' }] })
     }
   }
   const removeContact = (i: number) => {
@@ -396,38 +447,106 @@ export function Step2({ form, setForm, errors }: StepProps) {
       setForm({ ...form, projectContacts: form.projectContacts.filter((_, idx) => idx !== i) })
     }
   }
-  const updateContact = (i: number, field: string, value: string) => {
+  const patchContact = (i: number, patch: Partial<ProjectContact>) => {
     const contacts = [...form.projectContacts]
-    contacts[i] = { ...contacts[i], [field]: value }
+    contacts[i] = { ...contacts[i], ...patch }
     setForm({ ...form, projectContacts: contacts })
+  }
+
+  const setMode = (i: number, mode: 'nexus' | 'manual') => {
+    if (mode === 'manual') {
+      // Keep any auto-filled values editable, drop the member link
+      patchContact(i, { source: 'manual', memberId: undefined })
+    } else {
+      patchContact(i, { source: 'nexus' })
+    }
+  }
+
+  const handleMemberSelect = (i: number, m: PickedMember | null) => {
+    if (m) {
+      const current = form.projectContacts[i]
+      patchContact(i, {
+        name: m.name,
+        email: m.email ?? '',
+        role: (current?.role ?? '').trim() ? current.role : m.role ?? '',
+        memberId: m.id,
+        source: 'nexus',
+      })
+    } else {
+      patchContact(i, { name: '', email: '', memberId: undefined, source: 'nexus' })
+    }
   }
 
   return (
     <div className="space-y-4">
       {errors.contacts && <p className="text-[12px] text-[var(--danger)]">{errors.contacts}</p>}
-      {form.projectContacts.map((c, i) => (
-        <div key={i} className="p-4 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] font-medium text-[var(--text-secondary)]">Contact {i + 1}</span>
-            {form.projectContacts.length > 1 && (
-              <button onClick={() => removeContact(i)} className="p-1 text-[var(--text-tertiary)] hover:text-[var(--danger)]">
-                <Trash2 size={14} />
-              </button>
+      {form.projectContacts.map((c, i) => {
+        const mode = contactMode(c)
+        return (
+          <div key={i} className="p-4 rounded-xl border border-[var(--border-default)] bg-[var(--bg-surface)] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[13px] font-medium text-[var(--text-secondary)]">Contact {i + 1}</span>
+              <div className="flex items-center gap-2">
+                <ContactModeToggle mode={mode} onChange={(m) => setMode(i, m)} />
+                {form.projectContacts.length > 1 && (
+                  <button onClick={() => removeContact(i)} className="p-1 text-[var(--text-tertiary)] hover:text-[var(--danger)]">
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {mode === 'nexus' ? (
+              <div className="space-y-3">
+                <FormField label="Select from Nexus Users" required error={errors[`contact_${i}_name`]}>
+                  <UserPicker
+                    value={{ userId: c.memberId ?? '', userName: c.name, userRole: c.role || undefined }}
+                    onChange={() => {}}
+                    placeholder="Search members by name or email..."
+                    onSelectMember={(m) => handleMemberSelect(i, m)}
+                  />
+                </FormField>
+                {c.memberId ? (
+                  <div className="grid grid-cols-3 gap-3">
+                    <FormField label="Email">
+                      <ReadOnlyInput value={c.email} placeholder="—" />
+                    </FormField>
+                    <FormField label="Title / Role">
+                      <TextInput value={c.role} onChange={(v) => patchContact(i, { role: v })} placeholder="e.g. R&D Manager" />
+                    </FormField>
+                    <FormField label="Phone (optional)">
+                      <TextInput type="tel" value={c.phone ?? ''} onChange={(v) => patchContact(i, { phone: v })} placeholder="e.g. 555-1212" />
+                    </FormField>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setMode(i, 'manual')}
+                    className="text-[12px] text-[var(--accent)] hover:underline"
+                  >
+                    or enter contact manually instead
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Name" required error={errors[`contact_${i}_name`]}>
+                  <TextInput value={c.name} onChange={(v) => patchContact(i, { name: v, source: 'manual' })} placeholder="Full name" error={!!errors[`contact_${i}_name`]} />
+                </FormField>
+                <FormField label="Email">
+                  <TextInput type="email" value={c.email} onChange={(v) => patchContact(i, { email: v, source: 'manual' })} placeholder="email@company.com" />
+                </FormField>
+                <FormField label="Phone (optional)">
+                  <TextInput type="tel" value={c.phone ?? ''} onChange={(v) => patchContact(i, { phone: v, source: 'manual' })} placeholder="e.g. 555-1212" />
+                </FormField>
+                <FormField label="Title / Role (optional)">
+                  <TextInput value={c.role} onChange={(v) => patchContact(i, { role: v, source: 'manual' })} placeholder="e.g. R&D Manager" />
+                </FormField>
+              </div>
             )}
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <FormField label="Name" required error={errors[`contact_${i}_name`]}>
-              <TextInput value={c.name} onChange={(v) => updateContact(i, 'name', v)} placeholder="Full name" error={!!errors[`contact_${i}_name`]} />
-            </FormField>
-            <FormField label="Title / Role">
-              <TextInput value={c.role} onChange={(v) => updateContact(i, 'role', v)} placeholder="e.g. R&D Manager" />
-            </FormField>
-            <FormField label="Email">
-              <TextInput type="email" value={c.email} onChange={(v) => updateContact(i, 'email', v)} placeholder="email@company.com" />
-            </FormField>
-          </div>
-        </div>
-      ))}
+        )
+      })}
       {form.projectContacts.length < 10 && (
         <button onClick={addContact} className="flex items-center gap-1.5 text-[13px] text-[var(--accent)] font-medium hover:underline">
           <Plus size={14} /> Add Contact
