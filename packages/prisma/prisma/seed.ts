@@ -37,11 +37,11 @@ async function main() {
   const frmMod = await prisma.departmentModule.create({ data: { name: 'Formulations', type: 'FORMULATIONS', departmentId: rd.id, sortOrder: 3 } })
   const npdMod = await prisma.departmentModule.create({ data: { name: 'NPD Pipeline', type: 'NPD_PIPELINE', departmentId: rd.id, sortOrder: 4 } })
   const artworkMod = await prisma.departmentModule.create({ data: { name: 'Artwork', type: 'ARTWORK', departmentId: rd.id, sortOrder: 5 } })
-  const componentsMod = await prisma.departmentModule.create({ data: { name: 'Components', type: 'COMPONENTS', departmentId: rd.id, sortOrder: 6 } })
   const skuMod = await prisma.departmentModule.create({ data: { name: 'SKU Pipeline', type: 'SKU_PIPELINE', departmentId: ops.id, sortOrder: 0 } })
   const invMod = await prisma.departmentModule.create({ data: { name: 'Inventory Health', type: 'INVENTORY_HEALTH', departmentId: ops.id, sortOrder: 1 } })
   const prodMod = await prisma.departmentModule.create({ data: { name: 'Production Tracking', type: 'PRODUCTION_TRACKING', departmentId: ops.id, sortOrder: 2 } })
   const brandMod = await prisma.departmentModule.create({ data: { name: 'Brand Transition', type: 'BRAND_TRANSITION', departmentId: ops.id, sortOrder: 3 } })
+  const componentsMod = await prisma.departmentModule.create({ data: { name: 'Components', type: 'COMPONENTS', departmentId: ops.id, sortOrder: 4 } })
   console.log('✅ Modules: 11')
 
   // ─── Members

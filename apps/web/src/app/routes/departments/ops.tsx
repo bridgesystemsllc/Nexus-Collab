@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import {
   AlertTriangle,
   Box,
+  Boxes,
   Cog,
   DollarSign,
   Factory,
@@ -17,16 +18,18 @@ import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowork'
 import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
+import { ComponentsTab } from '@/components/ops/ComponentsTab'
 import { useAppStore } from '@/stores/appStore'
 
 // ─── Types ─────────────────────────────────────────────────
-type OpsTab = 'sku' | 'inventory' | 'production' | 'brand'
+type OpsTab = 'sku' | 'inventory' | 'production' | 'brand' | 'components'
 
 const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'sku', label: 'SKU Pipeline', icon: Package },
   { key: 'inventory', label: 'Inventory Health', icon: Box },
   { key: 'production', label: 'Production Tracking', icon: Factory },
   { key: 'brand', label: 'Brand Transition', icon: TrendingUp },
+  { key: 'components', label: 'Components', icon: Boxes },
 ]
 
 interface TabProps {
@@ -652,6 +655,7 @@ const MODULE_TYPE_BY_TAB: Record<OpsTab, string> = {
   inventory: 'INVENTORY_HEALTH',
   production: 'PRODUCTION_TRACKING',
   brand: 'BRAND_TRANSITION',
+  components: 'COMPONENTS',
 }
 
 const FORM_TYPE_BY_MODULE: Record<string, string> = {
@@ -659,6 +663,7 @@ const FORM_TYPE_BY_MODULE: Record<string, string> = {
   INVENTORY_HEALTH: 'opsInventory',
   PRODUCTION_TRACKING: 'opsProduction',
   BRAND_TRANSITION: 'opsBrand',
+  COMPONENTS: 'component',
 }
 
 const COWORK_TYPE_BY_MODULE: Record<string, string> = {
@@ -666,6 +671,7 @@ const COWORK_TYPE_BY_MODULE: Record<string, string> = {
   INVENTORY_HEALTH: 'Inventory',
   PRODUCTION_TRACKING: 'Production Order',
   BRAND_TRANSITION: 'Brand Transition',
+  COMPONENTS: 'Component',
 }
 
 export function OpsPage() {
@@ -680,7 +686,7 @@ export function OpsPage() {
     return departments.find((d: any) => d.type === 'BUILTIN_OPS') || null
   }, [departments])
 
-  const { data: deptDetail, isLoading: detailLoading } = useDepartment(opsDept?.id || '')
+  const { data: deptDetail, isLoading: detailLoading, refetch: refetchDept } = useDepartment(opsDept?.id || '')
 
   const isLoading = deptsLoading || detailLoading
 
@@ -694,6 +700,7 @@ export function OpsPage() {
       inventory: find('INVENTORY_HEALTH'),
       production: find('PRODUCTION_TRACKING'),
       brand: find('BRAND_TRANSITION'),
+      components: find('COMPONENTS'),
     }
   }, [deptDetail])
 
@@ -702,6 +709,7 @@ export function OpsPage() {
     inventory: moduleByType('INVENTORY_HEALTH')?.id ?? null,
     production: moduleByType('PRODUCTION_TRACKING')?.id ?? null,
     brand: moduleByType('BRAND_TRANSITION')?.id ?? null,
+    components: moduleByType('COMPONENTS')?.id ?? null,
   }
 
   const emergencyCount = useMemo(
@@ -790,6 +798,8 @@ export function OpsPage() {
             <InventoryHealthTab items={moduleData.inventory} moduleId={moduleIds.inventory} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
           ) : activeTab === 'production' ? (
             <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} />
+          ) : activeTab === 'components' ? (
+            <ComponentsTab items={moduleData.components} moduleId={moduleIds.components} departmentId={deptId} onRefresh={() => refetchDept()} />
           ) : (
             <BrandTransitionTab items={moduleData.brand} moduleId={moduleIds.brand} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'BRAND_TRANSITION' })} />
           )}

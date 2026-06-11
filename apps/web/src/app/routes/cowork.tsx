@@ -429,12 +429,20 @@ function CreateCoworkModal({ open, onClose }: { open: boolean; onClose: () => vo
   // Find R&D department for linked items
   const rdDept = deptList.find((d: any) => d.type === 'BUILTIN_RD')
   const { data: rdDetail } = useDepartment(rdDept?.id ?? '')
+  // Components live under Operations now — pull that module in too so
+  // components stay linkable from cowork spaces.
+  const opsDept = deptList.find((d: any) => d.type === 'BUILTIN_OPS')
+  const { data: opsDetail } = useDepartment(opsDept?.id ?? '')
 
-  // Build linkable items from R&D modules
+  // Build linkable items from R&D modules (+ the Operations Components module)
   const linkOptions = useMemo(() => {
-    if (!rdDetail) return []
+    if (!rdDetail && !opsDetail) return []
     const options: { category: string; label: string; id: string; name: string }[] = []
-    const modules = rdDetail.modules ?? rdDetail.rdModules ?? []
+    const rdModules = rdDetail?.modules ?? rdDetail?.rdModules ?? []
+    const opsComponentModules = ((opsDetail?.modules ?? []) as any[]).filter(
+      (m: any) => (m.key ?? m.type ?? m.name ?? '').toLowerCase().includes('component'),
+    )
+    const modules = [...rdModules, ...opsComponentModules]
 
     for (const mod of modules) {
       const items = mod.items ?? mod.data ?? []
@@ -460,7 +468,7 @@ function CreateCoworkModal({ open, onClose }: { open: boolean; onClose: () => vo
       }
     }
     return options
-  }, [rdDetail])
+  }, [rdDetail, opsDetail])
 
   // Form state
   const [name, setName] = useState('')
