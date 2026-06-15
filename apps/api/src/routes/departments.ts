@@ -1,8 +1,23 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../index'
+import { syncErpSkuPipeline } from '../lib/erpSync'
 
 export const departmentRoutes: ReturnType<typeof Router> = Router()
+
+// ─── SKU Pipeline ← ERP sync ────────────────────────────────
+// Direct trigger for pulling the ERP SKU/product master feed into the
+// Operations SKU Pipeline module. Mirrors /sku-pipeline/sync-from-npd and
+// runs request-driven (no Redis / Bull worker required).
+departmentRoutes.post('/sku-pipeline/sync-from-erp', async (_req: Request, res: Response) => {
+  try {
+    const result = await syncErpSkuPipeline(prisma)
+    res.json(result)
+  } catch (error) {
+    console.error('[departments] POST /sku-pipeline/sync-from-erp error:', error)
+    res.status(500).json({ error: 'Failed to sync SKU pipeline from ERP' })
+  }
+})
 
 // ─── SKU Pipeline ← NPD linkage ─────────────────────────────
 // When an NPD project completes a Stage-3 task, create or progress the
