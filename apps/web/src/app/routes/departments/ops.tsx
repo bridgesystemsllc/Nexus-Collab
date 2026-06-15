@@ -228,7 +228,24 @@ function SyncFromErpButton({ departmentId }: { departmentId: string | null }) {
     setSyncing(true)
     setNote('')
     try {
-      await api.post('/integrations/ERP_KAREVE_SYNC/sync')
+      const res = await api.post('/integrations/ERP_KAREVE_SYNC/sync')
+      // The sync runs asynchronously on the server (records are written a beat
+      // after the request returns), so poll the log until it completes before
+      // invalidating — otherwise the refetch races ahead of the fresh data and
+      // the table keeps showing the pre-sync snapshot.
+      const logId: string | undefined = res?.data?.syncLogId
+      if (logId) {
+        for (let i = 0; i < 15; i++) {
+          await new Promise((r) => setTimeout(r, 700))
+          try {
+            const logs = await api.get('/integrations/ERP_KAREVE_SYNC/logs')
+            const log = (logs?.data || []).find((l: any) => l.id === logId)
+            if (log && log.status !== 'RUNNING') break
+          } catch {
+            break
+          }
+        }
+      }
       if (departmentId) await qc.invalidateQueries({ queryKey: ['department', departmentId] })
       setNote('Synced from ERP')
       setTimeout(() => setNote(''), 4000)
