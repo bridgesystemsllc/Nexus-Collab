@@ -7,6 +7,7 @@ import { FormulationFormPage } from '@/components/rd/FormulationFormPage'
 import { NPDFormPage } from '@/components/rd/npd/NPDFormPage'
 import { ArtworkFormPage } from '@/components/rd/artwork/ArtworkFormPage'
 import { ComponentFormPage } from '@/components/rd/components/ComponentFormPage'
+import { BOMFormPage } from '@/components/ops/bom/BOMFormPage'
 import {
   SkuPipelineFormPage,
   InventoryFormPage,
@@ -34,6 +35,7 @@ export const formRegistry: Record<string, (props: { form: ActiveForm }) => JSX.E
   npd: NPDFormPage,
   artwork: ArtworkFormPage,
   component: ComponentFormPage,
+  bom: BOMFormPage,
   opsSku: SkuPipelineFormPage,
   opsInventory: InventoryFormPage,
   opsProduction: ProductionFormPage,
