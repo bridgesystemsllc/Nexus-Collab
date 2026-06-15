@@ -610,6 +610,39 @@ export function useCreateStageTask() {
   })
 }
 
+// ─── Finance (costing hub — read-only aggregation) ─────────
+export function useFinanceSummary() {
+  return useQuery({ queryKey: ['finance', 'summary'], queryFn: () => api.get('/finance/summary').then(r => r.data) })
+}
+
+export function useProductCosts() {
+  return useQuery({
+    queryKey: ['finance', 'product-costs'],
+    queryFn: () => api.get('/finance/product-costs').then(r => Array.isArray(r.data) ? r.data : []),
+  })
+}
+
+export function useComponentCosts() {
+  return useQuery({
+    queryKey: ['finance', 'component-costs'],
+    queryFn: () => api.get('/finance/component-costs').then(r => Array.isArray(r.data) ? r.data : []),
+  })
+}
+
+export function useMoqCosts() {
+  return useQuery({
+    queryKey: ['finance', 'moq-costs'],
+    queryFn: () => api.get('/finance/moq-costs').then(r => Array.isArray(r.data) ? r.data : []),
+  })
+}
+
+export function useCostAnalysis() {
+  return useQuery({
+    queryKey: ['finance', 'cost-analysis'],
+    queryFn: () => api.get('/finance/cost-analysis').then(r => Array.isArray(r.data) ? r.data : []),
+  })
+}
+
 // ─── Formulation Detail ────────────────────────────────────
 export function useFormulationIngredients(formulationId: string) {
   return useQuery({
