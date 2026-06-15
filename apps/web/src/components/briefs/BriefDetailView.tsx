@@ -88,14 +88,14 @@ function PhaseBar({ phase }: { phase: number }) {
 }
 
 export function BriefDetailView({ open, brief, onClose, onEdit, onDelete, onStatusChange, onOpenCm }: BriefDetailViewProps) {
-  const [status, setStatus] = useState(brief?.briefStatus ?? '')
+  const [status, setStatus] = useState(brief?.briefStatus || (brief as any)?.status || '')
   const [statusUpdatedAt, setStatusUpdatedAt] = useState<string | undefined>(brief?.statusUpdatedAt)
   const [savingStatus, setSavingStatus] = useState(false)
   const [toast, setToast] = useState<ToastData | null>(null)
 
   // Keep local status in sync when a (different) brief is opened or updated.
   useEffect(() => {
-    setStatus(brief?.briefStatus ?? '')
+    setStatus(brief?.briefStatus || (brief as any)?.status || '')
     setStatusUpdatedAt(brief?.statusUpdatedAt)
   }, [brief?.id, brief?.briefStatus, brief?.statusUpdatedAt])
 
@@ -138,7 +138,7 @@ export function BriefDetailView({ open, brief, onClose, onEdit, onDelete, onStat
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)]">
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg font-semibold text-[var(--text-primary)] truncate">{brief.projectName}</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)] truncate">{brief.projectName || (brief as any).name}</h2>
             <div className="flex items-center gap-2 mt-1">
               <BriefStatusSelect value={status} onChange={handleStatusChange} disabled={savingStatus} />
               <span className="text-[13px] text-[var(--text-tertiary)]">{brief.brand}</span>
