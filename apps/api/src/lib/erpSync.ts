@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client'
+import { fetchErpSkus } from './erpClient'
 
 // Simulated ERP master inventory feed for Kareve Beauty Group.
 // In production this would be fetched from the ERP API; here we model a
@@ -106,6 +107,91 @@ export async function syncErpInventory(prisma: PrismaClient): Promise<ErpSyncRes
     } else {
       await prisma.moduleItem.create({
         data: { moduleId: invModule.id, data, status },
+      })
+      created++
+    }
+  }
+
+  return { recordsProcessed: created + updated, created, updated }
+}
+
+/**
+ * Pull the ERP SKU / product master feed and upsert it into the Operations
+ * SKU_PIPELINE module. Matches existing items by SKU and MERGES the ERP
+ * fields (sku/name/brand/upc/onHand/committed/available/unitPrice/category)
+ * into them while PRESERVING local pipeline fields (step/totalSteps/owner/
+ * blocker/status/linkedNpdId). New SKUs are created with sensible pipeline
+ * defaults. Mirrors the syncErpInventory pattern.
+ */
+export async function syncErpSkuPipeline(prisma: PrismaClient): Promise<ErpSyncResult> {
+  const skuModule = await prisma.departmentModule.findFirst({
+    where: { type: 'SKU_PIPELINE' },
+  })
+  if (!skuModule) {
+    return { recordsProcessed: 0, created: 0, updated: 0 }
+  }
+
+  const existing = await prisma.moduleItem.findMany({ where: { moduleId: skuModule.id } })
+  const bySku = new Map<string, (typeof existing)[number]>()
+  for (const item of existing) {
+    const sku = (item.data as any)?.sku
+    if (sku) bySku.set(sku, item)
+  }
+
+  const erpSkus = await fetchErpSkus(prisma)
+  const now = new Date().toISOString()
+
+  let created = 0
+  let updated = 0
+
+  for (const rec of erpSkus) {
+    // ERP-supplied fields, applied on every sync.
+    const erpFields = {
+      sku: rec.sku,
+      name: rec.name,
+      brand: rec.brand,
+      upc: rec.upc,
+      onHand: rec.onHand,
+      committed: rec.committed,
+      available: rec.available,
+      unitPrice: rec.unitPrice,
+      category: rec.category,
+      lastErpUpdate: rec.lastErpUpdate,
+      source: 'ERP_KAREVE' as const,
+      lastSyncedAt: now,
+    }
+
+    const match = bySku.get(rec.sku)
+    if (match) {
+      const prev = (match.data as any) || {}
+      // Preserve local pipeline fields; ERP only supplies master/stock data.
+      const data = {
+        ...prev,
+        ...erpFields,
+        // Keep existing pipeline progress + ownership if already set.
+        step: prev.step ?? 1,
+        totalSteps: prev.totalSteps ?? 6,
+        owner: prev.owner ?? 'ERP',
+        blocker: prev.blocker ?? null,
+        status: prev.status ?? rec.status,
+      }
+      await prisma.moduleItem.update({
+        where: { id: match.id },
+        data: { data, status: data.status },
+      })
+      updated++
+    } else {
+      const data = {
+        ...erpFields,
+        status: rec.status,
+        step: 1,
+        totalSteps: 6,
+        owner: 'ERP',
+        blocker: null,
+        linkedNpdId: null,
+      }
+      await prisma.moduleItem.create({
+        data: { moduleId: skuModule.id, data, status: rec.status },
       })
       created++
     }
