@@ -4,6 +4,7 @@ import { Save, Loader2, Package, Box, Factory, Repeat2 } from 'lucide-react'
 import { FullPageForm } from '@/components/shared/FullPageForm'
 import { useAppStore, type ActiveForm } from '@/stores/appStore'
 import { api } from '@/lib/api'
+import { BRAND_OPTIONS } from '@/components/ops/brandLabel'
 
 // ─── Shared context shape ───────────────────────────────────
 interface OpsFormContext {
@@ -172,7 +173,7 @@ export function SkuPipelineFormPage({ form: activeForm }: { form: ActiveForm }) 
           <Field label="UPC"><TextInput value={d.upc} onChange={(v) => set('upc', v)} placeholder="0885221006011" mono /></Field>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Brand"><TextInput value={d.brand} onChange={(v) => set('brand', v)} placeholder="cd" /></Field>
+          <Field label="Brand"><SelectInput value={d.brand} onChange={(v) => set('brand', v)} options={BRAND_OPTIONS} /></Field>
           <Field label="Owner"><TextInput value={d.owner} onChange={(v) => set('owner', v)} placeholder="Operations" /></Field>
         </div>
         <Field label="Status"><SelectInput value={d.status} onChange={(v) => set('status', v)} options={SKU_STATUSES} /></Field>

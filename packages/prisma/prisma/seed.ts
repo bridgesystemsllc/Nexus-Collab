@@ -249,11 +249,13 @@ async function main() {
 
   // ─── SKU Pipeline
   for (const s of [
-    { name: 'CD Scalp Detox Shampoo 8oz', sku: 'K6001100', upc: '0885221006011', status: 'Awaiting Artwork', brand: 'cd', step: 3, totalSteps: 6, owner: 'Operations', blocker: null },
-    { name: 'CD Scalp Cleansing Oil 6oz', sku: 'K6001200', upc: '0885221006028', status: 'Component Sourcing', brand: 'cd', step: 2, totalSteps: 6, owner: 'Vendor Mgmt', blocker: 'TricorBraun MOQ pending' },
-    { name: 'CD Scalp Renew Serum 2oz', sku: 'K6001300', upc: '0885221006035', status: 'Formula Pending', brand: 'cd', step: 1, totalSteps: 6, owner: 'R&D', blocker: 'Stability testing' },
+    { name: 'CD Scalp Detox Shampoo 8oz', sku: 'K6001100', upc: '0885221006011', status: 'Awaiting Artwork', brand: "Carol's Daughter", step: 3, totalSteps: 6, owner: 'Operations', blocker: null },
+    { name: 'CD Scalp Cleansing Oil 6oz', sku: 'K6001200', upc: '0885221006028', status: 'Component Sourcing', brand: "Carol's Daughter", step: 2, totalSteps: 6, owner: 'Vendor Mgmt', blocker: 'TricorBraun MOQ pending' },
+    { name: 'CD Scalp Renew Serum 2oz', sku: 'K6001300', upc: '0885221006035', status: 'Formula Pending', brand: "Carol's Daughter", step: 1, totalSteps: 6, owner: 'R&D', blocker: 'Stability testing' },
+    { name: 'Ambi Fade Cream Normal Skin 2oz', sku: 'K7102200', upc: '0309978061204', status: 'Pre-Production', brand: 'Ambi', step: 4, totalSteps: 6, owner: 'Operations', blocker: null },
+    { name: 'AcneFree Oil-Free Acne Cleanser 8oz', sku: 'K8203100', upc: '0688815001207', status: 'In Production', brand: 'AcneFree', step: 5, totalSteps: 6, owner: 'Operations', blocker: null },
   ]) await prisma.moduleItem.create({ data: { moduleId: skuMod.id, data: s, status: s.status } })
-  console.log('✅ SKU Pipeline: 3')
+  console.log('✅ SKU Pipeline: 5')
 
   // ─── Inventory
   for (const i of [

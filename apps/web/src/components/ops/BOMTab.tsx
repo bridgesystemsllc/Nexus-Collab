@@ -17,6 +17,8 @@ interface BOMTabProps {
   onRefresh: () => void
   /** Part-master items from the COMPONENTS module, passed to the line picker. */
   components: any[]
+  /** SKU_PIPELINE items, passed to the finished-good SKU picker. */
+  skuItems?: any[]
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -61,7 +63,7 @@ function ActionsMenu({ actions }: { actions: { label: string; icon: React.Elemen
 }
 
 /** Operations → Bill of Materials list view. */
-export function BOMTab({ items, moduleId, departmentId, onRefresh, components }: BOMTabProps) {
+export function BOMTab({ items, moduleId, departmentId, onRefresh, components, skuItems = [] }: BOMTabProps) {
   const openForm = useAppStore((s) => s.openForm)
   const qc = useQueryClient()
   const componentsModuleId = components?.[0]?.moduleId ?? null
@@ -75,7 +77,7 @@ export function BOMTab({ items, moduleId, departmentId, onRefresh, components }:
     openForm({
       formType: 'bom',
       mode: 'create',
-      context: { moduleId, departmentId, components, componentsModuleId },
+      context: { moduleId, departmentId, components, componentsModuleId, skuItems },
     })
 
   const openEdit = (item: any) =>
@@ -83,7 +85,7 @@ export function BOMTab({ items, moduleId, departmentId, onRefresh, components }:
       formType: 'bom',
       mode: 'edit',
       recordId: item.id,
-      context: { moduleId, departmentId, initialData: item.data, components, componentsModuleId },
+      context: { moduleId, departmentId, initialData: item.data, components, componentsModuleId, skuItems },
     })
 
   const duplicate = async (bom: Bom) => {
