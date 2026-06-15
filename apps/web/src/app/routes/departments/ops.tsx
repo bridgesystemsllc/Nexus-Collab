@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
   Box,
@@ -7,21 +8,39 @@ import {
   Cog,
   DollarSign,
   Factory,
+  Loader2,
   Package,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   TrendingUp,
   Users,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
+import { api } from '@/lib/api'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowork'
 import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
 import { ComponentsTab } from '@/components/ops/ComponentsTab'
 import { BOMTab } from '@/components/ops/BOMTab'
+import { brandLabel } from '@/components/ops/brandLabel'
 import { useAppStore } from '@/stores/appStore'
+
+// Relative "synced 5m ago" label for ERP-sourced rows.
+function relativeTime(dateStr: string): string {
+  const then = new Date(dateStr).getTime()
+  if (!Number.isFinite(then)) return ''
+  const diffMs = Date.now() - then
+  if (diffMs < 60_000) return 'just now'
+  const mins = Math.floor(diffMs / 60_000)
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
+}
 
 // ─── Types ─────────────────────────────────────────────────
 type OpsTab = 'sku' | 'inventory' | 'production' | 'brand' | 'components' | 'bom'
@@ -167,6 +186,77 @@ function EmptyState({ text }: { text: string }) {
   return <p className="text-sm text-[var(--text-tertiary)] py-8 text-center">{text}</p>
 }
 
+// ─── SKU Pipeline: brand badge + ERP surfacing ─────────────
+function BrandBadge({ brand }: { brand?: string }) {
+  if (!brand) return <span className="text-[var(--text-tertiary)]">—</span>
+  return <span className="badge badge-accent whitespace-nowrap">{brandLabel(brand)}</span>
+}
+
+function isErp(d: any): boolean {
+  return d?.source === 'ERP_KAREVE'
+}
+
+/** Compact On-Hand / Available + "ERP · synced …" chip. Hidden when no ERP data. */
+function ErpCell({ d }: { d: any }) {
+  const hasStock = d?.onHand != null || d?.available != null
+  if (!isErp(d) && !hasStock) return <span className="text-[var(--text-tertiary)]">—</span>
+  return (
+    <div className="flex flex-col gap-0.5">
+      {hasStock && (
+        <span className="text-xs tabular-nums text-[var(--text-secondary)]">
+          {d.onHand != null && <>OH <strong className="text-[var(--text-primary)]">{Number(d.onHand).toLocaleString()}</strong></>}
+          {d.onHand != null && d.available != null && <span className="text-[var(--text-tertiary)]"> · </span>}
+          {d.available != null && <>Avail <strong className="text-[var(--text-primary)]">{Number(d.available).toLocaleString()}</strong></>}
+        </span>
+      )}
+      {isErp(d) && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-[var(--text-tertiary)]">
+          <span className="badge badge-info px-1.5 py-0">ERP</span>
+          {d.lastSyncedAt && <span>synced {relativeTime(d.lastSyncedAt)}</span>}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function SyncFromErpButton({ departmentId }: { departmentId: string | null }) {
+  const qc = useQueryClient()
+  const [syncing, setSyncing] = useState(false)
+  const [note, setNote] = useState('')
+
+  const onSync = async () => {
+    setSyncing(true)
+    setNote('')
+    try {
+      await api.post('/integrations/ERP_KAREVE_SYNC/sync')
+      if (departmentId) await qc.invalidateQueries({ queryKey: ['department', departmentId] })
+      setNote('Synced from ERP')
+      setTimeout(() => setNote(''), 4000)
+    } catch (err: any) {
+      const status = err?.response?.status
+      setNote(status === 404 || status === 400 ? 'ERP not configured' : 'Sync failed')
+      setTimeout(() => setNote(''), 4000)
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {note && <span className="text-xs text-[var(--text-tertiary)] whitespace-nowrap">{note}</span>}
+      <button
+        onClick={onSync}
+        disabled={syncing}
+        title="Pull on-hand / availability from the KarEve ERP"
+        className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50 w-fit"
+      >
+        {syncing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+        Sync from ERP
+      </button>
+    </div>
+  )
+}
+
 // ─── SKU Pipeline Tab ──────────────────────────────────────
 function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
   const openForm = useAppStore((s) => s.openForm)
@@ -186,7 +276,9 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
 
   return (
     <div className="space-y-4">
-      <TabHeader title="SKUs in pipeline" count={items.length} view={view} onView={setView} onNew={openCreate} newLabel="New SKU" />
+      <TabHeader title="SKUs in pipeline" count={items.length} view={view} onView={setView} onNew={openCreate} newLabel="New SKU">
+        <SyncFromErpButton departmentId={departmentId} />
+      </TabHeader>
 
       {items.length === 0 ? (
         <EmptyState text="No SKUs in pipeline." />
@@ -196,10 +288,12 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
             <thead>
               <tr>
                 <th>Product</th>
+                <th>Brand</th>
                 <th>SKU</th>
                 <th>UPC</th>
                 <th>Status</th>
                 <th>Progress</th>
+                <th>ERP</th>
                 <th>Owner</th>
                 <th className="text-right">Actions</th>
               </tr>
@@ -210,10 +304,12 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
                 return (
                   <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
                     <td className="font-medium text-[var(--text-primary)]">{d.name}</td>
+                    <td><BrandBadge brand={d.brand} /></td>
                     <td className="font-mono text-xs text-[var(--text-secondary)]">{d.sku}</td>
                     <td className="font-mono text-xs text-[var(--text-tertiary)]">{d.upc}</td>
                     <td><span className="badge badge-info">{d.status}</span></td>
                     <td><StepProgression step={d.step} total={d.totalSteps} /></td>
+                    <td><ErpCell d={d} /></td>
                     <td className="text-[var(--text-secondary)]">{d.owner}</td>
                     <td><div className="flex justify-end"><RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} /></div></td>
                   </tr>
@@ -238,11 +334,19 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
                   </div>
                   <RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} />
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="badge badge-info">{d.status}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <BrandBadge brand={d.brand} />
+                    <span className="badge badge-info">{d.status}</span>
+                  </div>
                   <span className="text-xs text-[var(--text-tertiary)]">{d.owner}</span>
                 </div>
                 <StepProgression step={d.step} total={d.totalSteps} />
+                {(isErp(d) || d.onHand != null || d.available != null) && (
+                  <div className="pt-1 border-t border-[var(--border-subtle)]">
+                    <ErpCell d={d} />
+                  </div>
+                )}
                 {d.blocker && (
                   <div className="flex items-start gap-2 p-2 rounded-lg bg-[var(--danger-light)] border border-[var(--danger)]">
                     <AlertTriangle size={13} className="text-[var(--danger)] mt-0.5 flex-shrink-0" />
@@ -809,7 +913,7 @@ export function OpsPage() {
           ) : activeTab === 'components' ? (
             <ComponentsTab items={moduleData.components} moduleId={moduleIds.components} departmentId={deptId} onRefresh={() => refetchDept()} />
           ) : activeTab === 'bom' ? (
-            <BOMTab items={moduleData.bom} moduleId={moduleIds.bom} departmentId={deptId} onRefresh={() => refetchDept()} components={moduleData.components} />
+            <BOMTab items={moduleData.bom} moduleId={moduleIds.bom} departmentId={deptId} onRefresh={() => refetchDept()} components={moduleData.components} skuItems={moduleData.sku} />
           ) : (
             <BrandTransitionTab items={moduleData.brand} moduleId={moduleIds.brand} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'BRAND_TRANSITION' })} />
           )}
