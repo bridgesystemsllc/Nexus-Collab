@@ -280,16 +280,17 @@ export function Step1({ form, setForm, errors, briefItems }: StepProps) {
 
   const filteredBriefs = briefItems?.filter(
     (b: any) =>
-      b.projectName?.toLowerCase().includes(briefSearch.toLowerCase()) ||
+      (b.projectName || b.name)?.toLowerCase().includes(briefSearch.toLowerCase()) ||
       b.brand?.toLowerCase().includes(briefSearch.toLowerCase())
   ) || []
 
   const handleSelectBrief = (brief: any) => {
+    const briefName = brief.projectName || brief.name
     setForm({
       ...form,
       linkedBriefId: brief.id,
-      linkedBriefName: brief.projectName,
-      product: brief.projectName || form.product,
+      linkedBriefName: briefName,
+      product: briefName || form.product,
       brand: brief.brand || form.brand,
       inciIngredients: brief.ingredients || form.inciIngredients,
       restrictedIngredients: brief.restrictedIngredients
@@ -336,7 +337,7 @@ export function Step1({ form, setForm, errors, briefItems }: StepProps) {
                     >
                       <FileText size={13} className="text-[var(--accent)] flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-[13px] text-[var(--text-primary)] truncate">{b.projectName}</p>
+                        <p className="text-[13px] text-[var(--text-primary)] truncate">{b.projectName || b.name}</p>
                         <p className="text-[11px] text-[var(--text-tertiary)]">{b.brand}</p>
                       </div>
                     </button>

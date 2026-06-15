@@ -15,6 +15,8 @@ interface FormulationDetailDrawerProps {
   formulation: any
   onClose: () => void
   onUpdate: (updates: any) => void
+  /** Open the formulation edit form (closes the drawer first). */
+  onEdit?: () => void
 }
 
 type TabKey = 'composition' | 'procedure' | 'specs' | 'cost' | 'history' | 'attachments'
@@ -125,6 +127,7 @@ export function FormulationDetailDrawer({
   formulation,
   onClose,
   onUpdate,
+  onEdit,
 }: FormulationDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('composition')
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set())
@@ -267,7 +270,7 @@ export function FormulationDetailDrawer({
 
   // ── Status values ──────────────────────────────────────
 
-  const version = f.version ?? f.versionLabel ?? null
+  const version = f.version ?? f.versionLabel ?? f.ver ?? null
   const status = f.status ?? 'Draft'
   const stability = f.stability ?? f.stabilityStatus ?? null
   const statusStyle = STATUS_PILL_STYLES[status] ?? { bg: 'var(--bg-hover)', text: '#6B7280' }
@@ -322,7 +325,7 @@ export function FormulationDetailDrawer({
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
               <h2 className="text-xl font-bold text-[var(--text-primary)] truncate">
-                {f.name || f.title || f.formulaName || 'Untitled Formulation'}
+                {f.name || f.title || f.formulaName || f.product || 'Untitled Formulation'}
               </h2>
             </div>
             <button
@@ -429,20 +432,24 @@ export function FormulationDetailDrawer({
               item={{ name: f.name || f.title || f.formulaName || f.product || 'Untitled Formulation', type: 'Formulation', id: f.id, description: f.cmName ? `CM: ${f.cmName}` : 'Formulation' }}
               variant="ghost"
             />
-            <button
-              onClick={() => onUpdate({ action: 'new-version' })}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
-            >
-              <Plus size={14} />
-              New Version
-            </button>
-            <button
-              onClick={() => onUpdate({ action: 'edit' })}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
-            >
-              <Edit3 size={14} />
-              Edit
-            </button>
+            {onEdit && (
+              <>
+                <button
+                  onClick={onEdit}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+                >
+                  <Plus size={14} />
+                  New Version
+                </button>
+                <button
+                  onClick={onEdit}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+                >
+                  <Edit3 size={14} />
+                  Edit
+                </button>
+              </>
+            )}
           </div>
         </div>
 

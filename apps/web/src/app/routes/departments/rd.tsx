@@ -1763,13 +1763,30 @@ export function RDPage() {
       {/* Formulation Detail Drawer */}
       <FormulationDetailDrawer
         open={!!viewingFormulation}
-        formulation={viewingFormulation?.data || viewingFormulation}
+        formulation={viewingFormulation ? { id: viewingFormulation.id, ...(viewingFormulation.data || viewingFormulation) } : null}
         onClose={() => setViewingFormulation(null)}
+        onEdit={() => {
+          if (!viewingFormulation) return
+          const fm = viewingFormulation
+          setViewingFormulation(null)
+          openForm({
+            formType: 'formulation',
+            mode: 'edit',
+            recordId: fm.id,
+            context: {
+              moduleId: fm.moduleId ?? moduleData.formulationsModuleId,
+              departmentId: rdDept?.id || null,
+              initialData: fm.data ?? fm,
+              briefItems: moduleData.briefs,
+            },
+          })
+        }}
         onUpdate={async (updates) => {
           if (viewingFormulation?.id && viewingFormulation?.moduleId) {
             await api.patch(`/departments/_/modules/${viewingFormulation.moduleId}/items/${viewingFormulation.id}`, {
               data: { ...(viewingFormulation.data || viewingFormulation), ...updates },
             })
+            setViewingFormulation((prev: any) => prev ? { ...prev, data: { ...(prev.data || {}), ...updates } } : prev)
             refetchDept()
           }
         }}
