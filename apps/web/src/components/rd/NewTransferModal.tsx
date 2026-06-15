@@ -394,7 +394,9 @@ export function Step1({ form, setForm, errors, briefItems }: StepProps) {
 // ─── Step 2 — Transfer Details ─────────────────────────────
 
 export function Step2({ form, setForm, errors, cmItems }: StepProps) {
-  const cmOptions = cmItems?.map((c: any) => c.name || c) || CM_OPTIONS
+  const cmOptions = cmItems
+    ?.map((c: any) => String(c.data?.name ?? c.name ?? ''))
+    .filter(Boolean) || CM_OPTIONS
 
   return (
     <div className="space-y-5">
