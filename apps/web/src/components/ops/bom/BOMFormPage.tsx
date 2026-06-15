@@ -7,6 +7,7 @@ import { useAppStore, type ActiveForm } from '@/stores/appStore'
 import { api } from '@/lib/api'
 import { emptyBom, emptyLine, bomFromItem, type Bom, type BomLine, type PartType } from './bomTypes'
 import { ComponentPicker, type ComponentPickerValue } from './ComponentPicker'
+import { SKUPicker, type SKUPickerValue } from './SKUPicker'
 import { BOMPreview, BOMPrintStyles } from './BOMPreview'
 import { exportBomsXlsx } from './bomExcel'
 
@@ -19,6 +20,8 @@ interface BOMFormContext {
   components?: any[]
   /** COMPONENTS module id, for inline part creation. */
   componentsModuleId?: string | null
+  /** SKU_PIPELINE items, for the finished-good SKU picker. */
+  skuItems?: any[]
 }
 
 // ─── Small field primitives ───────────────────────────────
@@ -78,6 +81,11 @@ export function BOMFormPage({ form: activeForm }: { form: ActiveForm }) {
   const [exporting, setExporting] = useState(false)
 
   const set = <K extends keyof Bom>(key: K, value: Bom[K]) => setForm((f) => ({ ...f, [key]: value }))
+
+  // Finished-good SKU picker → maps onto fgPartNumber / productName / brand.
+  const skuItems = ctx.skuItems ?? []
+  const onPickSku = (v: SKUPickerValue) =>
+    setForm((f) => ({ ...f, fgPartNumber: v.sku, productName: v.productName, brand: v.brand }))
 
   // ─── line operations ───
   const reindex = (lines: BomLine[]) => lines.map((l, i) => ({ ...l, lineNo: i + 1 }))
@@ -240,11 +248,13 @@ export function BOMFormPage({ form: activeForm }: { form: ActiveForm }) {
               <h2 className="text-[14px] font-semibold text-[var(--text-primary)] border-b border-[var(--border-subtle)] pb-2">
                 A. Finished Good
               </h2>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="FG Part Number"><Text value={form.fgPartNumber} onChange={(v) => set('fgPartNumber', v)} placeholder="K8120000" /></Field>
-                <Field label="Brand"><Text value={form.brand} onChange={(v) => set('brand', v)} /></Field>
-              </div>
-              <Field label="Product Name"><Text value={form.productName} onChange={(v) => set('productName', v)} placeholder="Full marketing name" /></Field>
+              <Field label="Finished Good SKU">
+                <SKUPicker
+                  value={{ sku: form.fgPartNumber, productName: form.productName, brand: form.brand }}
+                  onChange={onPickSku}
+                  skuItems={skuItems}
+                />
+              </Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Fill Claim"><Text value={form.fillClaim} onChange={(v) => set('fillClaim', v)} placeholder="2.0 fl oz" /></Field>
                 <Field label="Min Fill"><Text value={form.minFill} onChange={(v) => set('minFill', v)} /></Field>
