@@ -1,11 +1,52 @@
 import { useState, useMemo } from 'react'
-import { Boxes, Plus } from 'lucide-react'
+import { Boxes, Plus, Trash2, Pencil } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { api } from '@/lib/api'
 import { ComponentDetail } from '@/components/rd/components/ComponentDetail'
 import { COMPONENT_TYPE_COLORS, FEASIBILITY_STATUS_COLORS, getWorstCompatibility, getBestUnitCost, type Component as RDComponent } from '@/components/rd/components/componentData'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
+
+// Legacy feasibility statuses not present in FEASIBILITY_STATUS_COLORS.
+const LEGACY_STATUS_COLORS: Record<string, string> = {
+  'MOQ Pending': '#F59E0B', // amber — awaiting MOQ
+  'Quoted': '#06B6D4', // cyan — quote received
+}
+
+// ─── Delete Confirmation Dialog ───────────────────────────
+function DeleteConfirmDialog({
+  name,
+  deleting,
+  onConfirm,
+  onCancel,
+}: {
+  name: string
+  deleting: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative z-10 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl shadow-2xl w-full max-w-md p-6">
+        <h3 className="text-[16px] font-semibold text-[var(--text-primary)] mb-2">Confirm Delete</h3>
+        <p className="text-[14px] text-[var(--text-secondary)] mb-5">
+          Are you sure you want to delete <strong>"{name}"</strong>? This action cannot be undone.
+        </p>
+        <div className="flex justify-end gap-3">
+          <button onClick={onCancel} disabled={deleting} className="btn-ghost px-4 py-2 text-[14px]">Cancel</button>
+          <button
+            onClick={onConfirm}
+            disabled={deleting}
+            className="px-4 py-2 rounded-lg text-[14px] font-medium text-white bg-[var(--danger)] hover:opacity-90 transition-opacity disabled:opacity-60"
+          >
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ─── Components Tab ───────────────────────────────────────
 export function ComponentsTab({
@@ -22,10 +63,51 @@ export function ComponentsTab({
   const openForm = useAppStore((s) => s.openForm)
   const [viewingComponent, setViewingComponent] = useState<any>(null)
   const [view, setView] = useState<ViewMode>('table')
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; moduleId: string; name: string } | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const components = useMemo(() => {
-    return items.map((item: any) => ({ id: item.id, moduleId: item.moduleId, ...item.data }))
+    return items.map((item: any) => {
+      const d = item.data || {}
+      // Legacy migrated rows use {component, product, vendor, risk, status};
+      // the Component shape uses name/partNumber/type/vendors[]/moqTiers[]/risks[].
+      // Normalize legacy keys so existing data renders instead of showing '—'.
+      const name = d.name ?? d.component
+      const vendors =
+        Array.isArray(d.vendors) && d.vendors.length > 0
+          ? d.vendors
+          : d.vendor
+            ? [{ vendorName: d.vendor, vendorStatus: 'Primary' }]
+            : []
+      const risks =
+        Array.isArray(d.risks) && d.risks.length > 0
+          ? d.risks
+          : d.risk
+            ? [{ description: `${d.risk} risk`, severity: d.risk, status: 'Open' }]
+            : []
+      const productAssignments =
+        Array.isArray(d.productAssignments) && d.productAssignments.length > 0
+          ? d.productAssignments
+          : d.product
+            ? [{ productName: d.product, assignmentStatus: 'Active' }]
+            : []
+      return {
+        id: item.id,
+        moduleId: item.moduleId,
+        ...d,
+        name,
+        vendors,
+        risks,
+        productAssignments,
+      }
+    })
   }, [items])
+
+  // 'MOQ Pending' / 'Quoted' are legacy statuses absent from FEASIBILITY_STATUS_COLORS.
+  const statusColorFor = (status: string): string =>
+    FEASIBILITY_STATUS_COLORS[status as keyof typeof FEASIBILITY_STATUS_COLORS] ??
+    LEGACY_STATUS_COLORS[status] ??
+    '#6B7280'
 
   const openComponentForm = (mode: 'create' | 'edit', comp?: any) => {
     openForm({
@@ -38,6 +120,21 @@ export function ComponentsTab({
         initialData: comp ?? null,
       },
     })
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await api.delete(`/departments/_/modules/${deleteTarget.moduleId}/items/${deleteTarget.id}`)
+      setDeleteTarget(null)
+      setViewingComponent(null)
+      onRefresh()
+    } catch (err) {
+      console.error('Failed to delete component:', err)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const handleComponentUpdate = async (updates: any) => {
@@ -89,7 +186,7 @@ export function ComponentsTab({
             <tbody>
               {components.map((comp: RDComponent & { moduleId?: string }) => {
                 const typeColor = COMPONENT_TYPE_COLORS[comp.type] || '#6B7280'
-                const statusColor = FEASIBILITY_STATUS_COLORS[comp.status] || '#6B7280'
+                const statusColor = statusColorFor(comp.status)
                 const primaryVendor = (comp.vendors || []).find((v: any) => v.vendorStatus === 'Primary') || (comp.vendors || [])[0]
                 const bestCost = getBestUnitCost(comp.moqTiers || [])
                 const compatibility = getWorstCompatibility(comp.compatibilityTests || [])
@@ -122,6 +219,20 @@ export function ComponentsTab({
                     <td>
                       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                         <AddToCowork item={{ name: comp.name || 'Untitled Component', type: 'Component', id: comp.id, description: `Component — ${comp.type || '—'}${comp.partNumber ? ` · ${comp.partNumber}` : ''}` }} variant="icon" />
+                        <button
+                          title="Edit"
+                          onClick={() => openComponentForm('edit', comp)}
+                          className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+                        >
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          title="Delete"
+                          onClick={() => setDeleteTarget({ id: comp.id, moduleId: comp.moduleId || moduleId || '', name: comp.name || 'Untitled Component' })}
+                          className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--danger)] hover:bg-[var(--bg-hover)] transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -134,7 +245,7 @@ export function ComponentsTab({
         <div className="space-y-2">
           {components.map((comp: RDComponent & { moduleId?: string }) => {
             const typeColor = COMPONENT_TYPE_COLORS[comp.type] || '#6B7280'
-            const statusColor = FEASIBILITY_STATUS_COLORS[comp.status] || '#6B7280'
+            const statusColor = statusColorFor(comp.status)
             const primaryVendor = (comp.vendors || []).find((v: any) => v.vendorStatus === 'Primary') || (comp.vendors || [])[0]
             const bestCost = getBestUnitCost(comp.moqTiers || [])
             return (
@@ -162,7 +273,22 @@ export function ComponentsTab({
         </div>
       )}
 
-      <ComponentDetail open={!!viewingComponent} component={viewingComponent} onClose={() => setViewingComponent(null)} onComponentUpdate={handleComponentUpdate} />
+      <ComponentDetail
+        open={!!viewingComponent}
+        component={viewingComponent}
+        onClose={() => setViewingComponent(null)}
+        onComponentUpdate={handleComponentUpdate}
+        onEdit={(comp) => openComponentForm('edit', comp)}
+      />
+
+      {deleteTarget && (
+        <DeleteConfirmDialog
+          name={deleteTarget.name || 'this component'}
+          deleting={deleting}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={handleDelete}
+        />
+      )}
     </div>
   )
 }

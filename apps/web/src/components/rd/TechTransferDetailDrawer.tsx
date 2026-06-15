@@ -14,6 +14,8 @@ interface TechTransferDetailDrawerProps {
   transfer: any
   onClose: () => void
   onUpdate: (updates: any) => void
+  /** Open the transfer edit form (closes the drawer first). */
+  onEdit?: () => void
   /** Navigate to the linked brief's detail view (closes the drawer first). */
   onOpenBrief?: (briefId: string) => void
 }
@@ -114,6 +116,7 @@ function buildDefaultStages(transferType: string): Stage[] {
   const key = (transferType || 'formula_transfer') as TransferType
   const names = DEFAULT_STAGES[key] || DEFAULT_STAGES.formula_transfer
   return names.map((name, i) => ({
+    id: generateId(),
     name,
     status: i === 0 ? 'in_progress' : 'pending',
     assignee: '',
@@ -209,6 +212,7 @@ export function TechTransferDetailDrawer({
   transfer,
   onClose,
   onUpdate,
+  onEdit,
   onOpenBrief,
 }: TechTransferDetailDrawerProps) {
   const [stages, setStages] = useState<Stage[]>([])
@@ -490,9 +494,14 @@ export function TechTransferDetailDrawer({
               >
                 <ChevronRight size={14} /> Advance Stage
               </button>
-              <button className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium btn-secondary">
-                Edit
-              </button>
+              {onEdit && (
+                <button
+                  onClick={onEdit}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium btn-secondary"
+                >
+                  Edit
+                </button>
+              )}
               <button
                 onClick={onClose}
                 className="p-2 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
@@ -858,7 +867,7 @@ export function TechTransferDetailDrawer({
                 {/* Stage Attachments */}
                 <div className="pt-2 border-t border-[var(--border-subtle)]">
                   <TaskAttachments
-                    taskId={selectedStage.id || `stage-${selectedStageIndex}`}
+                    taskId={selectedStage.id || `${transfer.id}-stage-${selectedStageIndex}`}
                     module="tech_transfer"
                   />
                 </div>

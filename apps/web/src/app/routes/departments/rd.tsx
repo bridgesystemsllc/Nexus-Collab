@@ -873,6 +873,16 @@ function TransfersTab({
 }) {
   const openForm = useAppStore((s) => s.openForm)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+  const [deletingItem, setDeletingItem] = useState<{ id: string; name: string } | null>(null)
+
+  const handleDelete = async () => {
+    if (!deletingItem) return
+    try {
+      const item = items.find((i: any) => i.id === deletingItem.id)
+      if (item) await api.delete(`/departments/_/modules/${item.moduleId ?? moduleId}/items/${deletingItem.id}`)
+      setDeletingItem(null); onRefresh()
+    } catch (err) { console.error('Failed to delete transfer:', err) }
+  }
 
   // Build a brief lookup map for display
   const briefMap = useMemo(() => {
@@ -955,7 +965,7 @@ function TransfersTab({
                 return (
                   <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
                     <td className="font-medium text-[14px] text-[var(--text-primary)]">{d.product}</td>
-                    <td className="text-[14px] text-[var(--text-secondary)]">{d.from} → {d.to}</td>
+                    <td className="text-[14px] text-[var(--text-secondary)]">{d.fromCM || d.from} → {d.toCM || d.to}</td>
                     <td>
                       {briefName ? (
                         <span className="inline-flex items-center gap-1 text-[12px] text-[var(--accent)]">
@@ -974,16 +984,15 @@ function TransfersTab({
                         <span className="text-[12px] tabular-nums text-[var(--text-secondary)]">{d.progress}%</span>
                       </div>
                     </td>
-                    <td className="text-[14px] text-[var(--text-secondary)]">{d.target}</td>
+                    <td className="text-[14px] text-[var(--text-secondary)]">{d.targetCompletionDate || d.target}</td>
                     <td>
                       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <AddToCowork item={{ name: d.product || 'Untitled Transfer', type: 'Transfer', id: item.id, description: `${d.from || '—'} → ${d.to || '—'}` }} variant="icon" />
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openTransferForm('edit', item) }}
-                          className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
-                        >
-                          <Edit3 size={14} />
-                        </button>
+                        <AddToCowork item={{ name: d.product || 'Untitled Transfer', type: 'Transfer', id: item.id, description: `${d.fromCM || d.from || '—'} → ${d.toCM || d.to || '—'}` }} variant="icon" />
+                        <ActionsMenu actions={[
+                          { label: 'View', icon: Eye, onClick: () => onSelect(item) },
+                          { label: 'Edit', icon: Edit3, onClick: () => openTransferForm('edit', item) },
+                          { label: 'Delete', icon: Trash2, onClick: () => setDeletingItem({ id: item.id, name: d.product || 'Untitled Transfer' }), danger: true },
+                        ]} />
                       </div>
                     </td>
                   </tr>
@@ -1005,9 +1014,9 @@ function TransfersTab({
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                  <span className="truncate">{d.from}</span>
+                  <span className="truncate">{d.fromCM || d.from}</span>
                   <ArrowRight size={12} className="text-[var(--accent)] flex-shrink-0" />
-                  <span className="truncate">{d.to}</span>
+                  <span className="truncate">{d.toCM || d.to}</span>
                 </div>
 
                 {/* Linked Brief chip */}
@@ -1031,10 +1040,14 @@ function TransfersTab({
                 </div>
 
                 <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
-                  <span className="flex items-center gap-1"><Clock size={11} /> Target: {d.target}</span>
+                  <span className="flex items-center gap-1"><Clock size={11} /> Target: {d.targetCompletionDate || d.target}</span>
                   <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                    <AddToCowork item={{ name: d.product || 'Untitled Transfer', type: 'Transfer', id: item.id, description: `${d.from || '—'} → ${d.to || '—'}` }} variant="icon" />
-                    <button onClick={(e) => { e.stopPropagation(); openTransferForm('edit', item) }} className="text-[var(--accent)] hover:underline text-[11px]">Edit</button>
+                    <AddToCowork item={{ name: d.product || 'Untitled Transfer', type: 'Transfer', id: item.id, description: `${d.fromCM || d.from || '—'} → ${d.toCM || d.to || '—'}` }} variant="icon" />
+                    <ActionsMenu actions={[
+                      { label: 'View', icon: Eye, onClick: () => onSelect(item) },
+                      { label: 'Edit', icon: Edit3, onClick: () => openTransferForm('edit', item) },
+                      { label: 'Delete', icon: Trash2, onClick: () => setDeletingItem({ id: item.id, name: d.product || 'Untitled Transfer' }), danger: true },
+                    ]} />
                   </div>
                 </div>
               </div>
@@ -1043,6 +1056,13 @@ function TransfersTab({
         </div>
       )}
 
+      {/* Delete Confirmation */}
+      <DeleteConfirmDialog
+        open={!!deletingItem}
+        itemName={deletingItem?.name || ''}
+        onConfirm={handleDelete}
+        onCancel={() => setDeletingItem(null)}
+      />
     </div>
   )
 }
@@ -1057,6 +1077,8 @@ function NPDTab({
   formulationItems = [],
   skuItems = [],
   onOpenCm,
+  onOpenBrief,
+  onOpenFormulation,
 }: {
   items: any[]
   moduleId: string | null
@@ -1067,6 +1089,10 @@ function NPDTab({
   skuItems?: any[]
   /** Cross-tab navigation: opens a CM profile in the CM Productivity tab. */
   onOpenCm?: (cmId: string) => void
+  /** Cross-tab navigation: opens a brief in the Active Briefs tab. */
+  onOpenBrief?: (briefId: string) => void
+  /** Cross-tab navigation: opens a formulation in the Formulations tab. */
+  onOpenFormulation?: (formulationId: string) => void
 }) {
   const openForm = useAppStore((s) => s.openForm)
   const [viewingProject, setViewingProject] = useState<any>(null)
@@ -1431,6 +1457,8 @@ function NPDTab({
         onGateApprove={handleGateApprove}
         onProjectUpdate={handleProjectUpdate}
         onOpenCm={(cmId) => { setViewingProject(null); onOpenCm?.(cmId) }}
+        onOpenBrief={(briefId) => { setViewingProject(null); onOpenBrief?.(briefId) }}
+        onOpenFormulation={(formulationId) => { setViewingProject(null); onOpenFormulation?.(formulationId) }}
       />
 
       {/* Delete Confirmation */}
@@ -1558,8 +1586,8 @@ function FormulationsTab({ items, moduleId, departmentId, briefItems = [], onSel
 
 // ─── Main Page ─────────────────────────────────────────────
 export function RDPage() {
+  const openForm = useAppStore((s) => s.openForm)
   const [activeTab, setActiveTab] = useState<RDTab>('briefs')
-  const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
   const [viewingTransfer, setViewingTransfer] = useState<any>(null)
   const [viewingFormulation, setViewingFormulation] = useState<any>(null)
   // Brief id queued for cross-tab navigation (e.g. clicking a tech
@@ -1580,6 +1608,14 @@ export function RDPage() {
     if (!cmId) return
     setActiveTab('cm')
     setPendingCmId(cmId)
+  }
+
+  const handleOpenFormulation = (formulationId: string) => {
+    if (!formulationId) return
+    const match = (moduleData.formulations || []).find((f: any) => f.id === formulationId)
+    if (!match) return
+    setActiveTab('formulations')
+    setViewingFormulation(match)
   }
 
   const { data: departments, isLoading: deptsLoading } = useDepartments()
@@ -1698,10 +1734,10 @@ export function RDPage() {
             <TransfersTab items={moduleData.transfers} moduleId={moduleData.transfersModuleId} departmentId={rdDept?.id || null} briefs={moduleData.briefs} cmItems={moduleData.cm} onRefresh={() => refetchDept()} onSelect={(item) => setViewingTransfer(item)} />
           ) : activeTab === 'formulations' ? (
             <FormulationsGate>
-              <FormulationsTab items={tabContent.formulations} moduleId={moduleData.formulationsModuleId} departmentId={rdDept?.id || null} briefItems={moduleData.briefs} onRefresh={() => refetchDept()} onSelect={(item) => setSelectedItem({ item, type: 'FORMULATIONS' })} />
+              <FormulationsTab items={tabContent.formulations} moduleId={moduleData.formulationsModuleId} departmentId={rdDept?.id || null} briefItems={moduleData.briefs.map((i: any) => ({ id: i.id, ...i.data }))} onRefresh={() => refetchDept()} onSelect={(item) => setViewingFormulation(item)} />
             </FormulationsGate>
           ) : (
-            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} skuItems={skuItems} onOpenCm={handleOpenCm} />
+            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} skuItems={skuItems} onOpenCm={handleOpenCm} onOpenBrief={handleOpenBrief} onOpenFormulation={handleOpenFormulation} />
           )}
         </div>
       </div>
@@ -1709,14 +1745,32 @@ export function RDPage() {
       {/* Tech Transfer Detail Drawer */}
       <TechTransferDetailDrawer
         open={!!viewingTransfer}
-        transfer={viewingTransfer?.data || viewingTransfer}
+        transfer={viewingTransfer ? { id: viewingTransfer.id, ...(viewingTransfer.data || viewingTransfer) } : null}
         onClose={() => setViewingTransfer(null)}
         onOpenBrief={handleOpenBrief}
+        onEdit={() => {
+          if (!viewingTransfer) return
+          const t = viewingTransfer
+          setViewingTransfer(null)
+          openForm({
+            formType: 'transfer',
+            mode: 'edit',
+            recordId: t.id,
+            context: {
+              moduleId: t.moduleId ?? moduleData.transfersModuleId,
+              departmentId: rdDept?.id || null,
+              initialData: t.data ?? t,
+              briefItems: moduleData.briefs,
+              cmItems: moduleData.cm,
+            },
+          })
+        }}
         onUpdate={async (updates) => {
           if (viewingTransfer?.id && viewingTransfer?.moduleId) {
             await api.patch(`/departments/_/modules/${viewingTransfer.moduleId}/items/${viewingTransfer.id}`, {
               data: { ...(viewingTransfer.data || viewingTransfer), ...updates },
             })
+            setViewingTransfer((prev: any) => prev ? { ...prev, data: { ...(prev.data || {}), ...updates } } : prev)
             refetchDept()
           }
         }}
@@ -1725,13 +1779,30 @@ export function RDPage() {
       {/* Formulation Detail Drawer */}
       <FormulationDetailDrawer
         open={!!viewingFormulation}
-        formulation={viewingFormulation?.data || viewingFormulation}
+        formulation={viewingFormulation ? { id: viewingFormulation.id, ...(viewingFormulation.data || viewingFormulation) } : null}
         onClose={() => setViewingFormulation(null)}
+        onEdit={() => {
+          if (!viewingFormulation) return
+          const fm = viewingFormulation
+          setViewingFormulation(null)
+          openForm({
+            formType: 'formulation',
+            mode: 'edit',
+            recordId: fm.id,
+            context: {
+              moduleId: fm.moduleId ?? moduleData.formulationsModuleId,
+              departmentId: rdDept?.id || null,
+              initialData: fm.data ?? fm,
+              briefItems: moduleData.briefs,
+            },
+          })
+        }}
         onUpdate={async (updates) => {
           if (viewingFormulation?.id && viewingFormulation?.moduleId) {
             await api.patch(`/departments/_/modules/${viewingFormulation.moduleId}/items/${viewingFormulation.id}`, {
               data: { ...(viewingFormulation.data || viewingFormulation), ...updates },
             })
+            setViewingFormulation((prev: any) => prev ? { ...prev, data: { ...(prev.data || {}), ...updates } } : prev)
             refetchDept()
           }
         }}

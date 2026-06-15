@@ -15,6 +15,7 @@ import {
 import { BRIEF_STATUSES, DEFAULT_BRIEF_STATUS } from '../../lib/briefStatus'
 import { UserPicker, type PickedMember } from '../shared/UserPicker'
 import { CMPicker } from '../shared/CMPicker'
+import { useAppStore } from '../../stores/appStore'
 
 // ─── Types ─────────────────────────────────────────────────
 export interface ProjectContact {
@@ -802,6 +803,7 @@ export function Step5({ form, setForm }: StepProps) {
 }
 
 export function Step6({ form, setForm, oneDriveConnected }: StepProps & { oneDriveConnected: boolean }) {
+  const setPage = useAppStore((s) => s.setPage)
   const addMember = () => {
     setForm({ ...form, teamMembers: [...form.teamMembers, { name: '', role: '' }] })
   }
@@ -852,9 +854,13 @@ export function Step6({ form, setForm, oneDriveConnected }: StepProps & { oneDri
             <CloudOff size={16} className="text-[var(--text-tertiary)]" />
             <span className="text-[13px] text-[var(--text-secondary)]">
               Connect OneDrive in{' '}
-              <a href="/integrations" className="text-[var(--accent)] hover:underline">
+              <button
+                type="button"
+                onClick={() => setPage('integrations')}
+                className="text-[var(--accent)] hover:underline"
+              >
                 Integrations
-              </a>{' '}
+              </button>{' '}
               to auto-save files to your drive
             </span>
           </>
