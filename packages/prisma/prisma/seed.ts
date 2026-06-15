@@ -24,8 +24,9 @@ async function main() {
   const rd = await prisma.department.create({ data: { name: 'R&D', description: 'Formulations, briefs, tech transfers, CM coordination', icon: '⚗', color: '#BF5AF2', type: 'BUILTIN_RD', orgId: org.id } })
   const ops = await prisma.department.create({ data: { name: 'Operations', description: 'SKU pipeline, inventory, production tracking', icon: '⚙', color: '#7C3AED', type: 'BUILTIN_OPS', orgId: org.id } })
   const wh = await prisma.department.create({ data: { name: 'Warehouse', description: 'Receiving, shipping, inventory', icon: '📦', color: '#32D74B', type: 'CUSTOM', orgId: org.id } })
-  const vm = await prisma.department.create({ data: { name: 'Vendor Mgmt', description: 'Vendor relationships, MOQ, PO management', icon: '🤝', color: '#E8948A', type: 'CUSTOM', orgId: org.id } })
-  const fin = await prisma.department.create({ data: { name: 'Finance', description: 'COGS, margins, budgets', icon: '📊', color: '#00C7FF', type: 'CUSTOM', orgId: org.id } })
+  // Vendor Mgmt is archived — its responsibilities now live under CM Productivity (R&D + Finance). Data preserved.
+  const vm = await prisma.department.create({ data: { name: 'Vendor Mgmt', description: 'Vendor relationships, MOQ, PO management', icon: '🤝', color: '#E8948A', type: 'CUSTOM', archived: true, orgId: org.id } })
+  const fin = await prisma.department.create({ data: { name: 'Finance', description: 'COGS, cost analysis, component & MOQ costing', icon: '📊', color: '#00C7FF', type: 'BUILTIN_FINANCE', orgId: org.id } })
   const sales = await prisma.department.create({ data: { name: 'Sales', description: 'Customer demand, account signals, revenue follow-up', icon: '📈', color: '#32D74B', type: 'CUSTOM', orgId: org.id } })
   const marketing = await prisma.department.create({ data: { name: 'Marketing', description: 'Launch assets, retail stories, campaign readiness', icon: '📣', color: '#BF5AF2', type: 'CUSTOM', orgId: org.id } })
   console.log('✅ Departments: 7')
@@ -246,6 +247,18 @@ async function main() {
     })
   }
   console.log(`✅ Bills of Materials: ${SEED_BOMS.length}`)
+
+  // ─── Finance: FINANCE_COSTING module (finance-owned cost overrides/additions per SKU)
+  // These layer on top of the live roll-ups (BOM component landed costs + formulation cost)
+  // to produce a finished-good COGS + margin. Keyed by fgPartNumber (SKU).
+  const finCostingMod = await prisma.departmentModule.create({ data: { name: 'Costing', type: 'FINANCE_COSTING', departmentId: fin.id, sortOrder: 0 } })
+  for (const fc of [
+    { fgPartNumber: 'K8120000', productName: "CD LK Balancing Serum 2oz", brand: "Carol's Daughter", labelCost: 0.18, freightPerUnit: 0.22, overheadPerUnit: 0.35, targetMarginPct: 65, cogsOverride: null, retailPrice: 24.0, notes: 'Glass dropper drives unit cost' },
+    { fgPartNumber: 'K8130000', productName: "CD LK Treatment Balm 2oz", brand: "Carol's Daughter", labelCost: 0.0, freightPerUnit: 0.18, overheadPerUnit: 0.30, targetMarginPct: 68, cogsOverride: null, retailPrice: 22.0, notes: 'Carton + tube' },
+    { fgPartNumber: 'K8140000', productName: "CD LK Detox Nectar 8oz", brand: "Carol's Daughter", labelCost: 0.21, freightPerUnit: 0.28, overheadPerUnit: 0.40, targetMarginPct: 62, cogsOverride: null, retailPrice: 28.0, notes: '' },
+    { fgPartNumber: 'K8150000', productName: "CD LK Cleansing Oil 6oz", brand: "Carol's Daughter", labelCost: 0.19, freightPerUnit: 0.25, overheadPerUnit: 0.38, targetMarginPct: 64, cogsOverride: null, retailPrice: 26.0, notes: '' },
+  ]) await prisma.moduleItem.create({ data: { moduleId: finCostingMod.id, status: 'active', data: fc } })
+  console.log('✅ Finance costing rows: 4')
 
   // ─── SKU Pipeline
   for (const s of [

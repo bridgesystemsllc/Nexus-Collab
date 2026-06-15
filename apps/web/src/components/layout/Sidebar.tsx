@@ -27,6 +27,7 @@ type StaticPage =
   | 'everything'
   | 'rd'
   | 'ops'
+  | 'finance'
   | 'cowork'
   | 'docs'
   | 'product-catalog'
@@ -67,8 +68,7 @@ const overviewSection: NavSection = {
 const fallbackDeptItems: NavItem[] = [
   { id: 'rd', label: 'R&D', icon: FlaskConical },
   { id: 'ops', label: 'Operations', icon: Settings2 },
-  { id: 'custom-dept', label: 'Vendor Mgmt', icon: Truck, deptId: 'vendor-mgmt' },
-  { id: 'custom-dept', label: 'Finance', icon: BarChart3, deptId: 'finance' },
+  { id: 'finance', label: 'Finance', icon: BarChart3 },
   { id: 'custom-dept', label: 'Sales', icon: TrendingUp, deptId: 'sales' },
   { id: 'custom-dept', label: 'Marketing', icon: Megaphone, deptId: 'marketing' },
 ]
@@ -93,12 +93,17 @@ const systemSection: NavSection = {
 }
 
 function buildDeptItems(departments: any[]): NavItem[] {
-  return departments.map((dept): NavItem => {
+  return departments
+    .filter((dept) => !dept.archived)
+    .map((dept): NavItem => {
     if (dept.type === 'BUILTIN_RD') {
       return { id: 'rd', label: dept.name, icon: FlaskConical }
     }
     if (dept.type === 'BUILTIN_OPS') {
       return { id: 'ops', label: dept.name, icon: Settings2 }
+    }
+    if (dept.type === 'BUILTIN_FINANCE') {
+      return { id: 'finance', label: dept.name, icon: BarChart3 }
     }
     // Custom department — use emoji icon from DB
     return {

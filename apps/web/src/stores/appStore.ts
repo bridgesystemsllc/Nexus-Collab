@@ -6,6 +6,7 @@ type Page =
   | 'everything'
   | 'rd'
   | 'ops'
+  | 'finance'
   | 'cowork'
   | 'cowork-detail'
   | 'docs'

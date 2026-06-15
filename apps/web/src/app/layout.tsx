@@ -9,6 +9,7 @@ import { DashboardPage } from '@/app/routes/dashboard'
 import { EverythingPage } from '@/app/routes/everything'
 import { RDPage } from '@/app/routes/departments/rd'
 import { OpsPage } from '@/app/routes/departments/ops'
+import { FinancePage } from '@/app/routes/departments/finance'
 import { CoworkPage } from '@/app/routes/cowork'
 import { CoworkDetailPage } from '@/app/routes/cowork-detail'
 import { DocsPage } from '@/app/routes/docs'
@@ -38,6 +39,8 @@ function PageContent() {
       return <RDPage />
     case 'ops':
       return <OpsPage />
+    case 'finance':
+      return <FinancePage />
     case 'cowork':
       return <CoworkPage />
     case 'cowork-detail':
