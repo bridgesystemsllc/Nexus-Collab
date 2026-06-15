@@ -139,13 +139,28 @@ async function main() {
     { pn: 'CD-101013', desc: 'Shipper-12 ct', type: 'shipper', vendor: 'Undirected' },
     { pn: 'CD-101014', desc: 'Shrink-wrap', type: 'shrinkwrap', vendor: 'Undirected' },
   ]
+  // Base unit cost per part type (for MOQ cost tiers — bulk formulas cost comes from formulation, so no tiers)
+  const BASE_UNIT_COST: Record<string, number> = {
+    bottle: 0.62, cap: 0.12, tube: 0.35, carton: 0.28, label: 0.08, shipper: 0.45, divider: 0.15, shrinkwrap: 0.03, other: 0.20,
+  }
   const partIdByPn: Record<string, string> = {}
   for (const p of BOM_PARTS) {
+    const base = BASE_UNIT_COST[p.type] ?? 0.2
+    // Two MOQ tiers: higher volume → lower unit cost. Bulk parts get none (cost via formulation).
+    const moqTiers = p.type === 'bulk' ? [] : [
+      { moqQuantity: 5000, unitCost: Number((base * 1.15).toFixed(3)), toolingCost: p.type === 'bottle' ? 3500 : 0, sampleCost: 150, shippingCostPerUnit: Number((base * 0.12).toFixed(3)), dutyRatePct: p.vendor === 'BestChinaSourcing' ? 8 : 0, totalLandedCost: 0, effectiveDate: '2026-01-01', expiryDate: '2026-12-31', quoteReference: `Q-${p.pn}-5K` },
+      { moqQuantity: 25000, unitCost: base, toolingCost: 0, sampleCost: 0, shippingCostPerUnit: Number((base * 0.10).toFixed(3)), dutyRatePct: p.vendor === 'BestChinaSourcing' ? 8 : 0, totalLandedCost: 0, effectiveDate: '2026-01-01', expiryDate: '2026-12-31', quoteReference: `Q-${p.pn}-25K` },
+    ]
     const item = await prisma.moduleItem.create({
       data: {
         moduleId: componentsMod.id,
         status: 'Approved',
-        data: { name: p.desc, partNumber: p.pn, description: p.desc, type: p.type, vendor: p.vendor, status: 'Approved' },
+        data: {
+          name: p.desc, partNumber: p.pn, description: p.desc, type: p.type, vendor: p.vendor, status: 'Approved',
+          targetCostPerUnit: p.type === 'bulk' ? null : Number((base * 0.95).toFixed(3)),
+          moqTiers,
+          vendors: [{ vendorName: p.vendor, vendorStatus: 'Primary' }],
+        },
       },
     })
     partIdByPn[p.pn] = item.id
