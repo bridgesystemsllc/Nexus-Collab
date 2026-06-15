@@ -35,7 +35,7 @@ import { setupAuth, attachMember } from './auth/session'
 
 export const prisma = new PrismaClient()
 
-const isReplit = !!process.env.REPL_SLUG || !!process.env.REPLIT_DEPLOYMENT
+const isReplit = !!process.env.REPL_SLUG || !!process.env.REPLIT_DEV_DOMAIN || !!process.env.REPLIT_DEPLOYMENT
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
 
 const app = express()

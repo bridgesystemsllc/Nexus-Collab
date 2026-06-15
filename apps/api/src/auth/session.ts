@@ -127,9 +127,15 @@ export async function setupAuth(app: Express) {
   // Browsers frequently block the login cookie inside Replit's embedded preview
   // iframe (third-party cookie restrictions), which leaves the preview stuck on
   // the Microsoft login screen. This shortcut signs in as the first member so
-  // the app is usable in the preview while building. It is HARD-disabled in a
-  // real deployment — production stays Microsoft-only.
-  if (!process.env.REPLIT_DEPLOYMENT) {
+  // the app is usable in the preview while building.
+  //
+  // This is a privileged, unauthenticated bypass, so it is double-gated and the
+  // route is NEVER REGISTERED in production: it requires BOTH a non-production
+  // NODE_ENV AND the absence of REPLIT_DEPLOYMENT. Either signal alone is enough
+  // to keep it off, so a single misconfiguration cannot expose it.
+  const devLoginAllowed =
+    process.env.NODE_ENV !== 'production' && !process.env.REPLIT_DEPLOYMENT
+  if (devLoginAllowed) {
     app.get('/api/dev-login', async (req: Request, res: Response) => {
       try {
         const member = await prisma.member.findFirst({ orderBy: { createdAt: 'asc' } })
