@@ -92,6 +92,8 @@ export function BOMTab({ items, moduleId, departmentId, onRefresh, components }:
       ...bom,
       productName: `${bom.productName} (Copy)`,
       status: 'draft',
+      // A duplicate is a brand-new finished good — reset PLM version to 1.
+      version: 1,
     }
     try {
       await api.post(`/departments/_/modules/${moduleId}/items`, { data: clone, status: 'draft' })
