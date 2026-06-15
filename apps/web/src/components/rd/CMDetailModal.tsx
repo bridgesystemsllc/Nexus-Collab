@@ -178,7 +178,17 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
   const quality = data.quality ?? 0
   const activePOs = data.activePOs ?? 0
   const openIssues = data.openIssues ?? issues.filter((i: any) => i.status?.toLowerCase() === 'open' || i.status?.toLowerCase() === 'in progress').length
-  const avgLeadTime = data.avgLeadTime ?? 0
+  // Seeded CMs store the contract status under data.status (legacy);
+  // app-created CMs use data.contractStatus.
+  const contractStatus = data.contractStatus ?? data.status
+  // avgLeadTime may be numeric (app-created) or a units string like '6-8 wks' (seeded).
+  const avgLeadTime = data.avgLeadTime
+  const avgLeadTimeIsNumeric =
+    typeof avgLeadTime === 'number' || /^\d+$/.test(String(avgLeadTime ?? ''))
+  const avgLeadTimeDisplay =
+    avgLeadTime === undefined || avgLeadTime === null || avgLeadTime === ''
+      ? '—'
+      : avgLeadTime
   const capacityUtil = data.capacityUtilization ?? 85
   const productivityScore = Math.round(quality * 0.5 + onTime * 0.3 + capacityUtil * 0.2)
 
@@ -253,7 +263,7 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
 
   if (!open || !cm) return null
 
-  const statusColors = contractStatusColor(data.contractStatus || '')
+  const statusColors = contractStatusColor(contractStatus || '')
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -273,7 +283,7 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
                 className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[12px] font-semibold"
                 style={{ background: statusColors.bg, color: statusColors.text }}
               >
-                {data.contractStatus || 'Unknown'}
+                {contractStatus || 'Unknown'}
               </span>
             </div>
             <div className="flex items-center gap-3 mt-1.5 text-[12px] text-[var(--text-tertiary)]">
@@ -283,7 +293,7 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
           </div>
           <div className="flex items-center gap-2 ml-4">
             <AddToCowork
-              item={{ name: data.name || 'Untitled CM', type: 'CM', id: cm?.id || data.id, description: `Contract Manufacturer — ${data.contractStatus || 'Unknown'}` }}
+              item={{ name: data.name || 'Untitled CM', type: 'CM', id: cm?.id || data.id, description: `Contract Manufacturer — ${contractStatus || 'Unknown'}` }}
             />
             <button
               onClick={onEdit}
@@ -407,8 +417,8 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
               />
               <KPICell
                 label="Avg Lead Time"
-                value={avgLeadTime}
-                suffix=" days"
+                value={avgLeadTimeDisplay}
+                suffix={avgLeadTimeIsNumeric ? ' days' : undefined}
               />
               <KPICell
                 label="Productivity Score"

@@ -17,7 +17,12 @@ cmRoutes.get('/', async (_req: Request, res: Response) => {
         return {
           id: item.id,
           name: typeof data.name === 'string' ? data.name : '',
-          status: typeof data.status === 'string' ? data.status : null,
+          status:
+            typeof data.contractStatus === 'string'
+              ? data.contractStatus
+              : typeof data.status === 'string'
+                ? data.status
+                : null,
           brands: Array.isArray(data.brands) ? data.brands : [],
         }
       })
