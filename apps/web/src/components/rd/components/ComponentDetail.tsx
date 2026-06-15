@@ -18,7 +18,6 @@ import {
   DollarSign,
   Users,
   ShieldCheck,
-  Upload,
   Layers,
 } from 'lucide-react'
 import type {
@@ -60,6 +59,8 @@ interface Props {
   component: Component | null
   onClose: () => void
   onComponentUpdate: (updates: Partial<Component>) => void
+  /** Opens the component edit form. Wired to the header Edit button. */
+  onEdit?: (component: Component) => void
 }
 
 // ── Tab Definitions ────────────────────────────────────────────
@@ -200,12 +201,11 @@ function CompatIcon({ status }: { status: CompatibilityResult }) {
 
 // ── Main Component ─────────────────────────────────────────────
 
-export function ComponentDetail({ open, component, onClose, onComponentUpdate }: Props) {
+export function ComponentDetail({ open, component, onClose, onComponentUpdate, onEdit }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('overview')
   const [statusNotes, setStatusNotes] = useState('')
   const [newStatus, setNewStatus] = useState<FeasibilityStatus | ''>('')
   const [costQty, setCostQty] = useState<number>(1000)
-  const [costVendorIdx, setCostVendorIdx] = useState<number>(0)
   const [showTestForm, setShowTestForm] = useState(false)
   const [showRiskForm, setShowRiskForm] = useState(false)
   const [showAssignForm, setShowAssignForm] = useState(false)
@@ -372,7 +372,7 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate }:
     const totalLanded = unitCost + toolingAmortized + shipping + duty
     const delta = totalLanded - component.targetCostPerUnit
     return { unitCost, toolingAmortized, shipping, duty, totalLanded, delta }
-  }, [costQty, costVendorIdx, moqTiers, vendors, component.targetCostPerUnit])
+  }, [costQty, moqTiers, vendors, component.targetCostPerUnit])
 
   // ── Compatibility Matrix ──────────────────────────────────
 
@@ -648,7 +648,13 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate }:
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <SectionHeader icon={Users} label="Vendors & Quotes" />
-        <button className="flex items-center gap-1 text-[12px] text-[var(--accent)] hover:underline">
+        <button
+          onClick={() => {
+            onClose()
+            onEdit?.(component)
+          }}
+          className="flex items-center gap-1 text-[12px] text-[var(--accent)] hover:underline"
+        >
           <Plus size={14} /> Add Vendor
         </button>
       </div>
@@ -804,22 +810,8 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate }:
                 className="nexus-input text-[13px] w-full"
               />
             </div>
-            <div className="flex-1">
-              <label className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider mb-1 block">Vendor</label>
-              <select
-                value={costVendorIdx}
-                onChange={(e) => setCostVendorIdx(Number(e.target.value))}
-                className="nexus-input text-[13px] w-full"
-              >
-                {vendors.length > 0 ? (
-                  vendors.map((v, i) => (
-                    <option key={i} value={i}>{v.vendorName}</option>
-                  ))
-                ) : (
-                  <option value={0}>No vendors</option>
-                )}
-              </select>
-            </div>
+            {/* Vendor selector removed: MOQTier rows carry no vendor reference, so
+                selecting a vendor never affected the cost model — the control was dead. */}
           </div>
 
           {costModel ? (
@@ -1193,10 +1185,7 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate }:
                 ))}
               </div>
             ) : (
-              <div className="border-2 border-dashed border-[var(--border-subtle)] rounded-lg p-4 flex flex-col items-center justify-center text-center">
-                <Upload size={20} className="text-[var(--text-tertiary)] mb-1" />
-                <p className="text-[12px] text-[var(--text-tertiary)]">Drop files here or click to upload</p>
-              </div>
+              <p className="text-[12px] text-[var(--text-tertiary)] px-2 py-1">No files.</p>
             )}
           </div>
         )
@@ -1309,7 +1298,13 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate }:
                 item={{ name: component.name, type: 'Component', id: component.id, description: `${component.type || 'Component'}${component.partNumber ? ` · ${component.partNumber}` : ''}` }}
                 variant="ghost"
               />
-              <button className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium btn-primary">
+              <button
+                onClick={() => {
+                  onClose()
+                  onEdit?.(component)
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium btn-primary"
+              >
                 <Edit3 size={14} /> Edit
               </button>
               <button
