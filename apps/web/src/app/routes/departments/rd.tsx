@@ -1077,6 +1077,8 @@ function NPDTab({
   formulationItems = [],
   skuItems = [],
   onOpenCm,
+  onOpenBrief,
+  onOpenFormulation,
 }: {
   items: any[]
   moduleId: string | null
@@ -1087,6 +1089,10 @@ function NPDTab({
   skuItems?: any[]
   /** Cross-tab navigation: opens a CM profile in the CM Productivity tab. */
   onOpenCm?: (cmId: string) => void
+  /** Cross-tab navigation: opens a brief in the Active Briefs tab. */
+  onOpenBrief?: (briefId: string) => void
+  /** Cross-tab navigation: opens a formulation in the Formulations tab. */
+  onOpenFormulation?: (formulationId: string) => void
 }) {
   const openForm = useAppStore((s) => s.openForm)
   const [viewingProject, setViewingProject] = useState<any>(null)
@@ -1451,6 +1457,8 @@ function NPDTab({
         onGateApprove={handleGateApprove}
         onProjectUpdate={handleProjectUpdate}
         onOpenCm={(cmId) => { setViewingProject(null); onOpenCm?.(cmId) }}
+        onOpenBrief={(briefId) => { setViewingProject(null); onOpenBrief?.(briefId) }}
+        onOpenFormulation={(formulationId) => { setViewingProject(null); onOpenFormulation?.(formulationId) }}
       />
 
       {/* Delete Confirmation */}
@@ -1602,6 +1610,14 @@ export function RDPage() {
     setPendingCmId(cmId)
   }
 
+  const handleOpenFormulation = (formulationId: string) => {
+    if (!formulationId) return
+    const match = (moduleData.formulations || []).find((f: any) => f.id === formulationId)
+    if (!match) return
+    setActiveTab('formulations')
+    setViewingFormulation(match)
+  }
+
   const { data: departments, isLoading: deptsLoading } = useDepartments()
 
   const rdDept = useMemo(() => {
@@ -1721,7 +1737,7 @@ export function RDPage() {
               <FormulationsTab items={tabContent.formulations} moduleId={moduleData.formulationsModuleId} departmentId={rdDept?.id || null} briefItems={moduleData.briefs.map((i: any) => ({ id: i.id, ...i.data }))} onRefresh={() => refetchDept()} onSelect={(item) => setViewingFormulation(item)} />
             </FormulationsGate>
           ) : (
-            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} skuItems={skuItems} onOpenCm={handleOpenCm} />
+            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} skuItems={skuItems} onOpenCm={handleOpenCm} onOpenBrief={handleOpenBrief} onOpenFormulation={handleOpenFormulation} />
           )}
         </div>
       </div>

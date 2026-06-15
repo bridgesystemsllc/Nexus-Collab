@@ -67,6 +67,12 @@ export interface NPDProject {
   contractManufacturerId: string
   /** Legacy seed-data CM text key. */
   cm?: string
+  /** Optional linked brief (ModuleItem id + denormalized name). */
+  linkedBriefId?: string
+  linkedBriefName?: string
+  /** Optional linked formulation (ModuleItem id + denormalized name). */
+  linkedFormulationId?: string
+  linkedFormulationName?: string
   pipeQuantity: string
   teamAssignments: { role: string; memberId: string; assignedName: string }[]
   stageDates: Record<string, string>
@@ -85,6 +91,10 @@ interface Props {
   onProjectUpdate: (updates: Partial<NPDProject>) => void
   /** Opens the linked CM's profile in the CM Productivity tab. */
   onOpenCm?: (cmId: string) => void
+  /** Opens the linked brief's detail in the Briefs tab. */
+  onOpenBrief?: (briefId: string) => void
+  /** Opens the linked formulation's detail in the Formulations tab. */
+  onOpenFormulation?: (formulationId: string) => void
 }
 
 /** Best-available CM display name across canonical and legacy keys. */
@@ -1208,6 +1218,8 @@ export function NPDProjectDetail({
   onGateApprove,
   onProjectUpdate,
   onOpenCm,
+  onOpenBrief,
+  onOpenFormulation,
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>('checklist')
   const stageRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -1267,11 +1279,11 @@ export function NPDProjectDetail({
               item={{ name: project.projectName, type: 'NPD', id: project.id, description: `NPD Project — ${project.brand}${project.category ? ` · ${project.category}` : ''}` }}
               variant="ghost"
             />
-            <button className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium btn-ghost">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium btn-ghost"
+            >
               <Edit3 size={14} /> Edit
-            </button>
-            <button className="p-2 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors">
-              <MoreHorizontal size={18} />
             </button>
             <button
               onClick={onClose}
@@ -1403,12 +1415,26 @@ export function NPDProjectDetail({
           <span className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider mr-1">
             Linked:
           </span>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer transition-colors">
-            <Link2 size={10} /> Brief
-          </span>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer transition-colors">
-            <Link2 size={10} /> Formulation
-          </span>
+          {project.linkedBriefId && (
+            <button
+              type="button"
+              onClick={() => onOpenBrief?.(project.linkedBriefId!)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer transition-colors"
+            >
+              <Link2 size={10} /> Brief
+              <ArrowUpRight size={10} />
+            </button>
+          )}
+          {project.linkedFormulationId && (
+            <button
+              type="button"
+              onClick={() => onOpenFormulation?.(project.linkedFormulationId!)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)] cursor-pointer transition-colors"
+            >
+              <Link2 size={10} /> Formulation
+              <ArrowUpRight size={10} />
+            </button>
+          )}
           {project.cmId ? (
             <button
               type="button"
