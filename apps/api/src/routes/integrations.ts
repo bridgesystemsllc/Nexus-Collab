@@ -8,7 +8,7 @@ import {
   exchangeMicrosoftToken,
   exchangeGoogleToken,
 } from '../lib/oauth'
-import { syncErpInventory } from '../lib/erpSync'
+import { syncErpInventory, syncErpSkuPipeline } from '../lib/erpSync'
 
 export const integrationRoutes: ReturnType<typeof Router> = Router()
 export const webhookRoutes: ReturnType<typeof Router> = Router()
@@ -313,8 +313,11 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
       try {
         let recordsProcessed = Math.floor(Math.random() * 100)
         if (integration.type === 'ERP_KAREVE_SYNC') {
-          const result = await syncErpInventory(prisma)
-          recordsProcessed = result.recordsProcessed
+          // Request-driven (no Redis required): pull both the inventory feed
+          // and the SKU/product master feed into Operations.
+          const inv = await syncErpInventory(prisma)
+          const skuPipeline = await syncErpSkuPipeline(prisma)
+          recordsProcessed = inv.recordsProcessed + skuPipeline.recordsProcessed
         }
         await prisma.syncLog.update({
           where: { id: syncLog.id },
