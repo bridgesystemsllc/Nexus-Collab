@@ -42,7 +42,8 @@ async function main() {
   const prodMod = await prisma.departmentModule.create({ data: { name: 'Production Tracking', type: 'PRODUCTION_TRACKING', departmentId: ops.id, sortOrder: 2 } })
   const brandMod = await prisma.departmentModule.create({ data: { name: 'Brand Transition', type: 'BRAND_TRANSITION', departmentId: ops.id, sortOrder: 3 } })
   const componentsMod = await prisma.departmentModule.create({ data: { name: 'Components', type: 'COMPONENTS', departmentId: ops.id, sortOrder: 4 } })
-  console.log('✅ Modules: 11')
+  const bomMod = await prisma.departmentModule.create({ data: { name: 'Bill of Materials', type: 'BILL_OF_MATERIALS', departmentId: ops.id, sortOrder: 5 } })
+  console.log('✅ Modules: 12')
 
   // ─── Members
   const m = await Promise.all([
@@ -113,6 +114,138 @@ async function main() {
     { component: 'Label stock', product: 'CD Scalp Detox Shampoo 8oz', vendor: 'ACT Labs', status: 'Approved', risk: 'Low' },
   ]) await prisma.moduleItem.create({ data: { moduleId: componentsMod.id, data: c, status: c.status } })
   console.log('✅ NPD modules: 8')
+
+  // ─── BOM Part Master (seeded into the Components module so BOMs can reference real components)
+  // partType enum: bulk | bottle | cap | tube | carton | label | shipper | divider | shrinkwrap | other
+  const BOM_PARTS: { pn: string; desc: string; type: string; vendor: string }[] = [
+    { pn: 'CD-73ACT139', desc: 'BULK-Formula#73ACT139_BalancingSerum2oz', type: 'bulk', vendor: 'ACT' },
+    { pn: 'CD-73ACT166A', desc: 'BULK-Formula#73ACT166A_TreatmentBalm2oz', type: 'bulk', vendor: 'ACT' },
+    { pn: 'CD-73ACT105', desc: 'BULK-Formula#73ACT105_DetoxNectar8oz', type: 'bulk', vendor: 'ACT' },
+    { pn: 'CD-67ACT166', desc: 'BULK-Formula#67ACT166_CleansingOil6oz', type: 'bulk', vendor: 'ACT' },
+    { pn: 'CD-101000', desc: 'Glass Bottle w Dropper Set; custom color-BestChinaSourcing', type: 'bottle', vendor: 'BestChinaSourcing' },
+    { pn: 'CD-101001', desc: 'Product label-LK Balancing Serum', type: 'label', vendor: 'BROOK + WHITTLE' },
+    { pn: 'CD-101002', desc: 'Shipper corrugate dividers', type: 'divider', vendor: 'Undirected' },
+    { pn: 'CD-101003', desc: 'Shipper-12 ct (ship test with pad)', type: 'shipper', vendor: 'Undirected' },
+    { pn: 'CD-101004', desc: 'Tube 2oz-JansyPkg', type: 'tube', vendor: 'Jansy Packaging' },
+    { pn: 'CD-101005', desc: 'Unit carton-MillRockPkg', type: 'carton', vendor: 'Mill Rock Pkg' },
+    { pn: 'CD-101006', desc: 'Shipper-24 ct', type: 'shipper', vendor: 'Undirected' },
+    { pn: 'CD-101007', desc: '8oz PET Cylinder #365649 -Tricor', type: 'bottle', vendor: 'TricorBraun' },
+    { pn: 'CD-101008', desc: '24/410 needle nose cap, custom color 2655C-BestChinaSourcing', type: 'cap', vendor: 'BestChinaSourcing' },
+    { pn: 'CD-101009', desc: 'Product label-LK Detox Nectar', type: 'label', vendor: 'BROOK + WHITTLE' },
+    { pn: 'CD-101010', desc: 'Shipper-12 ct', type: 'shipper', vendor: 'Undirected' },
+    { pn: 'CD-101011', desc: '6oz PET Cylinder #365648 -Tricor', type: 'bottle', vendor: 'TricorBraun' },
+    { pn: 'CD-101012', desc: 'Product label-LK Cleansing Oil', type: 'label', vendor: 'BROOK + WHITTLE' },
+    { pn: 'CD-101013', desc: 'Shipper-12 ct', type: 'shipper', vendor: 'Undirected' },
+    { pn: 'CD-101014', desc: 'Shrink-wrap', type: 'shrinkwrap', vendor: 'Undirected' },
+  ]
+  const partIdByPn: Record<string, string> = {}
+  for (const p of BOM_PARTS) {
+    const item = await prisma.moduleItem.create({
+      data: {
+        moduleId: componentsMod.id,
+        status: 'Approved',
+        data: { name: p.desc, partNumber: p.pn, description: p.desc, type: p.type, vendor: p.vendor, status: 'Approved' },
+      },
+    })
+    partIdByPn[p.pn] = item.id
+  }
+  console.log(`✅ BOM parts (components): ${BOM_PARTS.length}`)
+
+  // ─── Bills of Materials (4 real Carol's Daughter / Lisa's Kitchen BOMs)
+  type SeedLine = { pn: string; desc: string; um: string }
+  type SeedBom = {
+    fgPartNumber: string; productName: string; fillClaim: string; minFill: string
+    fillerSupplier: string; fillerName: string; caseQty: number; innerPack: string
+    overUnderTolerance: string; launchPriority: number; lines: SeedLine[]
+  }
+  const SEED_BOMS: SeedBom[] = [
+    {
+      fgPartNumber: 'K8120000', productName: "Carol's Daughter Lisa's Kitchen Scalp & Edge Care Balancing Serum 2oz",
+      fillClaim: '2.0 fl oz', minFill: 'Legal fill claim', fillerSupplier: 'ACT', fillerName: '"CD LK SCALP & EDGE BALANCING SERUM 2OZ"',
+      caseQty: 12, innerPack: '3 eaches per', overUnderTolerance: '[+ or – 8%]', launchPriority: 3,
+      lines: [
+        { pn: 'CD-73ACT139', desc: 'BULK-Formula#73ACT139_BalancingSerum2oz', um: '1' },
+        { pn: 'CD-101000', desc: 'Glass Bottle w Dropper Set; custom color-BestChinaSourcing', um: '1' },
+        { pn: 'CD-101001', desc: 'Product label-LK Balancing Serum', um: '1' },
+        { pn: 'CD-101002', desc: 'Shipper corrugate dividers', um: '1' },
+        { pn: 'CD-101003', desc: 'Shipper-12 ct (ship test with pad)', um: '1' },
+        { pn: 'CD-101014', desc: 'Shrink-wrap (4 inner packs of 3 eaches)', um: '-' },
+      ],
+    },
+    {
+      fgPartNumber: 'K8130000', productName: "Carol's Daughter Lisa's Kitchen Scalp & Edge Care Treatment Balm 2oz",
+      fillClaim: '2.0 fl oz', minFill: 'Legal fill claim', fillerSupplier: 'ACT', fillerName: '"CD LK SCALP & EDGE TREATMENT BALM 2OZ"',
+      caseQty: 24, innerPack: '3 eaches per', overUnderTolerance: 'Industry Standard [+ or – 10%]', launchPriority: 4,
+      lines: [
+        { pn: 'CD-73ACT166A', desc: 'BULK-Formula#73ACT166A_TreatmentBalm2oz', um: '1' },
+        { pn: 'CD-101004', desc: 'Tube 2oz-JansyPkg', um: '1' },
+        { pn: 'CD-101005', desc: 'Unit carton-MillRockPkg', um: '1' },
+        { pn: 'CD-101006', desc: 'Shipper-24 ct', um: '1' },
+        { pn: 'CD-101014', desc: 'Shrink-wrap (8 inner packs of 3 eaches)', um: '-' },
+      ],
+    },
+    {
+      fgPartNumber: 'K8140000', productName: "Carol's Daughter Lisa's Kitchen Scalp & Edge Care Detox Nectar 8oz",
+      fillClaim: '8.0 fl oz', minFill: 'Legal fill claim', fillerSupplier: 'ACT', fillerName: '"CD LK SCALP & EDGE DETOX NECTAR 8OZ"',
+      caseQty: 12, innerPack: '3 eaches per', overUnderTolerance: '[+ or – 8%]', launchPriority: 2,
+      lines: [
+        { pn: 'CD-73ACT105', desc: 'BULK-Formula#73ACT105_DetoxNectar8oz', um: '1' },
+        { pn: 'CD-101007', desc: '8oz PET Cylinder #365649 -Tricor', um: '1' },
+        { pn: 'CD-101008', desc: '24/410 needle nose cap, custom color 2655C-BestChinaSourcing', um: '1' },
+        { pn: 'CD-101009', desc: 'Product label-LK Detox Nectar', um: '1' },
+        { pn: 'CD-101010', desc: 'Shipper-12 ct', um: '1' },
+        { pn: 'CD-101014', desc: 'Shrink-wrap (4 inner packs of 3 eaches)', um: '-' },
+      ],
+    },
+    {
+      fgPartNumber: 'K8150000', productName: "Carol's Daughter Lisa's Kitchen Scalp & Edge Care Cleansing Oil 6oz",
+      fillClaim: '6.0 fl oz', minFill: 'Legal fill claim', fillerSupplier: 'ACT', fillerName: '"CD LK SCALP & EDGE CLEANSING OIL 6OZ"',
+      caseQty: 12, innerPack: '3 eaches per', overUnderTolerance: '[+ or – 8%]', launchPriority: 1,
+      lines: [
+        { pn: 'CD-67ACT166', desc: 'BULK-Formula#67ACT166_CleansingOil6oz', um: '1' },
+        { pn: 'CD-101011', desc: '6oz PET Cylinder #365648 -Tricor', um: '1' },
+        { pn: 'CD-101008', desc: '24/410 needle nose cap, custom color 2655C-BestChinaSourcing', um: '1' },
+        { pn: 'CD-101012', desc: 'Product label-LK Cleansing Oil', um: '1' },
+        { pn: 'CD-101013', desc: 'Shipper-12 ct', um: '1' },
+        { pn: 'CD-101014', desc: 'Shrink-wrap (4 inner packs of 3 eaches)', um: '-' },
+      ],
+    },
+  ]
+  for (const b of SEED_BOMS) {
+    const partLookup = BOM_PARTS.reduce((acc, p) => { acc[p.pn] = p; return acc }, {} as Record<string, typeof BOM_PARTS[number]>)
+    const lines = b.lines.map((ln, i) => ({
+      lineNo: i + 1,
+      componentId: partIdByPn[ln.pn] ?? null,
+      partNumber: ln.pn,
+      description: ln.desc,
+      um: ln.um,
+      supplier: partLookup[ln.pn]?.vendor ?? '',
+      partType: partLookup[ln.pn]?.type ?? 'other',
+    }))
+    await prisma.moduleItem.create({
+      data: {
+        moduleId: bomMod.id,
+        status: 'active',
+        data: {
+          brand: "Carol's Daughter",
+          fgPartNumber: b.fgPartNumber,
+          productName: b.productName,
+          fillClaim: b.fillClaim,
+          minFill: b.minFill,
+          fillerSupplier: b.fillerSupplier,
+          fillerName: b.fillerName,
+          caseQty: b.caseQty,
+          innerPack: b.innerPack,
+          overUnderTolerance: b.overUnderTolerance,
+          launchPriority: b.launchPriority,
+          status: 'active',
+          version: 1,
+          lines,
+        },
+      },
+    })
+  }
+  console.log(`✅ Bills of Materials: ${SEED_BOMS.length}`)
 
   // ─── SKU Pipeline
   for (const s of [

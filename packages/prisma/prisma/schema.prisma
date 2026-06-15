@@ -100,7 +100,7 @@ model Department {
 model DepartmentModule {
   id           String       @id @default(cuid())
   name         String
-  type         String       // BRIEFS, CM_PRODUCTIVITY, TECH_TRANSFERS, FORMULATIONS, NPD_PIPELINE, ARTWORK, COMPONENTS, SKU_PIPELINE, INVENTORY_HEALTH, PRODUCTION_TRACKING, BRAND_TRANSITION, CUSTOM_TABLE, CUSTOM_KANBAN, CUSTOM_LIST
+  type         String       // BRIEFS, CM_PRODUCTIVITY, TECH_TRANSFERS, FORMULATIONS, NPD_PIPELINE, ARTWORK, COMPONENTS, BILL_OF_MATERIALS, SKU_PIPELINE, INVENTORY_HEALTH, PRODUCTION_TRACKING, BRAND_TRANSITION, CUSTOM_TABLE, CUSTOM_KANBAN, CUSTOM_LIST
   departmentId String
   department   Department   @relation(fields: [departmentId], references: [id])
   config       Json         @default("{}")
