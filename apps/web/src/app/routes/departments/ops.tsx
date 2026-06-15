@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Box,
   Boxes,
+  ClipboardList,
   Cog,
   DollarSign,
   Factory,
@@ -19,10 +20,11 @@ import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowork'
 import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
 import { ComponentsTab } from '@/components/ops/ComponentsTab'
+import { BOMTab } from '@/components/ops/BOMTab'
 import { useAppStore } from '@/stores/appStore'
 
 // ─── Types ─────────────────────────────────────────────────
-type OpsTab = 'sku' | 'inventory' | 'production' | 'brand' | 'components'
+type OpsTab = 'sku' | 'inventory' | 'production' | 'brand' | 'components' | 'bom'
 
 const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'sku', label: 'SKU Pipeline', icon: Package },
@@ -30,6 +32,7 @@ const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'production', label: 'Production Tracking', icon: Factory },
   { key: 'brand', label: 'Brand Transition', icon: TrendingUp },
   { key: 'components', label: 'Components', icon: Boxes },
+  { key: 'bom', label: 'Bill of Materials', icon: ClipboardList },
 ]
 
 interface TabProps {
@@ -656,6 +659,7 @@ const MODULE_TYPE_BY_TAB: Record<OpsTab, string> = {
   production: 'PRODUCTION_TRACKING',
   brand: 'BRAND_TRANSITION',
   components: 'COMPONENTS',
+  bom: 'BILL_OF_MATERIALS',
 }
 
 const FORM_TYPE_BY_MODULE: Record<string, string> = {
@@ -664,6 +668,7 @@ const FORM_TYPE_BY_MODULE: Record<string, string> = {
   PRODUCTION_TRACKING: 'opsProduction',
   BRAND_TRANSITION: 'opsBrand',
   COMPONENTS: 'component',
+  BILL_OF_MATERIALS: 'bom',
 }
 
 const COWORK_TYPE_BY_MODULE: Record<string, string> = {
@@ -672,6 +677,7 @@ const COWORK_TYPE_BY_MODULE: Record<string, string> = {
   PRODUCTION_TRACKING: 'Production Order',
   BRAND_TRANSITION: 'Brand Transition',
   COMPONENTS: 'Component',
+  BILL_OF_MATERIALS: 'BOM',
 }
 
 export function OpsPage() {
@@ -701,6 +707,7 @@ export function OpsPage() {
       production: find('PRODUCTION_TRACKING'),
       brand: find('BRAND_TRANSITION'),
       components: find('COMPONENTS'),
+      bom: find('BILL_OF_MATERIALS'),
     }
   }, [deptDetail])
 
@@ -710,6 +717,7 @@ export function OpsPage() {
     production: moduleByType('PRODUCTION_TRACKING')?.id ?? null,
     brand: moduleByType('BRAND_TRANSITION')?.id ?? null,
     components: moduleByType('COMPONENTS')?.id ?? null,
+    bom: moduleByType('BILL_OF_MATERIALS')?.id ?? null,
   }
 
   const emergencyCount = useMemo(
@@ -800,6 +808,8 @@ export function OpsPage() {
             <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} />
           ) : activeTab === 'components' ? (
             <ComponentsTab items={moduleData.components} moduleId={moduleIds.components} departmentId={deptId} onRefresh={() => refetchDept()} />
+          ) : activeTab === 'bom' ? (
+            <BOMTab items={moduleData.bom} moduleId={moduleIds.bom} departmentId={deptId} onRefresh={() => refetchDept()} components={moduleData.components} />
           ) : (
             <BrandTransitionTab items={moduleData.brand} moduleId={moduleIds.brand} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'BRAND_TRANSITION' })} />
           )}
