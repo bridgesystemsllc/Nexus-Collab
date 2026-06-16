@@ -33,6 +33,7 @@ import { sharepointRoutes } from './routes/sharepoint'
 import { uploadRoutes } from './routes/uploads'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
+import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
 
 export const prisma = new PrismaClient()
 
@@ -142,6 +143,10 @@ io.on('connection', (socket) => {
 const PORT = parseInt(process.env.PORT || '3000', 10)
 
 async function start() {
+  // Self-heal the department structure (Finance hub + retired stubs) on boot so
+  // a deployed instance reflects the latest structure without a manual migration.
+  await ensureDepartmentStructure(prisma)
+
   // Auth (session + /api/login,/api/logout) must be wired before the API router
   // so the session cookie is available. The Microsoft OAuth callback lives in
   // the /api/v1/integrations/microsoft router and sets req.session.userId.
