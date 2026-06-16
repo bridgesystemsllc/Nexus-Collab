@@ -27,8 +27,9 @@ async function main() {
   // Vendor Mgmt is archived — its responsibilities now live under CM Productivity (R&D + Finance). Data preserved.
   const vm = await prisma.department.create({ data: { name: 'Vendor Mgmt', description: 'Vendor relationships, MOQ, PO management', icon: '🤝', color: '#E8948A', type: 'CUSTOM', archived: true, orgId: org.id } })
   const fin = await prisma.department.create({ data: { name: 'Finance', description: 'COGS, cost analysis, component & MOQ costing', icon: '📊', color: '#00C7FF', type: 'BUILTIN_FINANCE', orgId: org.id } })
-  const sales = await prisma.department.create({ data: { name: 'Sales', description: 'Customer demand, account signals, revenue follow-up', icon: '📈', color: '#32D74B', type: 'CUSTOM', orgId: org.id } })
-  const marketing = await prisma.department.create({ data: { name: 'Marketing', description: 'Launch assets, retail stories, campaign readiness', icon: '📣', color: '#BF5AF2', type: 'CUSTOM', orgId: org.id } })
+  // Sales + Marketing are archived stubs (no modules surfaced) — kept for data/members but hidden from nav.
+  const sales = await prisma.department.create({ data: { name: 'Sales', description: 'Customer demand, account signals, revenue follow-up', icon: '📈', color: '#32D74B', type: 'CUSTOM', archived: true, orgId: org.id } })
+  const marketing = await prisma.department.create({ data: { name: 'Marketing', description: 'Launch assets, retail stories, campaign readiness', icon: '📣', color: '#BF5AF2', type: 'CUSTOM', archived: true, orgId: org.id } })
   console.log('✅ Departments: 7')
 
   // ─── Modules
