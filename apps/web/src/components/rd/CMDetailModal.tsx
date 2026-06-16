@@ -192,6 +192,14 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
     )
   }, [productionItems, cmNameKey])
 
+  // Purchase orders (production orders) assigned to this CM.
+  const purchaseOrders = useMemo(() => {
+    if (!cmNameKey) return [] as any[]
+    return (productionItems as any[])
+      .filter((po) => ((po?.data?.cm || '').trim().toLowerCase() === cmNameKey))
+      .map((po) => ({ id: po.id, ...(po.data || {}) }))
+  }, [productionItems, cmNameKey])
+
   // Computed KPIs
   const onTime = data.onTime ?? 0
   const quality = data.quality ?? 0
@@ -537,6 +545,39 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
               onResolve={handleResolveIssue}
               categories={['Quality', 'Delivery', 'Communication', 'Compliance', 'Capacity', 'Other']}
             />
+          </div>
+
+          {/* Purchase Orders — production orders assigned to this CM */}
+          <div>
+            <SectionHeader icon={Package} label={`Purchase Orders${purchaseOrders.length ? ` (${purchaseOrders.length})` : ''}`} />
+            {purchaseOrders.length === 0 ? (
+              <p className="text-[13px] text-[var(--text-tertiary)] italic">No purchase orders for this CM yet.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border border-[var(--border-subtle)]">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr className="text-left text-[var(--text-tertiary)] border-b border-[var(--border-subtle)]">
+                      <th className="px-3 py-2 font-medium">PO</th>
+                      <th className="px-3 py-2 font-medium">Product</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium text-right">Qty</th>
+                      <th className="px-3 py-2 font-medium">ETA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {purchaseOrders.map((po: any) => (
+                      <tr key={po.id} className="border-b border-[var(--border-subtle)] last:border-0">
+                        <td className="px-3 py-2 font-mono text-[var(--accent)]">{po.poNumber || '—'}</td>
+                        <td className="px-3 py-2 text-[var(--text-primary)]">{po.product || '—'}</td>
+                        <td className="px-3 py-2 text-[var(--text-secondary)]">{po.status || '—'}</td>
+                        <td className="px-3 py-2 tabular-nums text-right text-[var(--text-secondary)]">{po.qty != null ? Number(po.qty).toLocaleString() : '—'}</td>
+                        <td className="px-3 py-2 text-[var(--text-tertiary)]">{po.eta || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Production Updates — aggregated from this CM's production orders */}
