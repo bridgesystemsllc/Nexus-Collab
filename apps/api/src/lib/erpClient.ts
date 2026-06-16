@@ -198,6 +198,31 @@ function syntheticFeed(): ErpSku[] {
   }))
 }
 
+// The KarEve Sync ERP references a product's brand only by numeric `brandId`
+// and exposes no brand-list / lookup endpoint (and no `include`/`expand` for
+// it), so the brand name cannot be fetched at runtime. This curated map turns
+// the ERP's brand ids into their real display names. Update it if Kareve adds
+// or renumbers brands in the ERP.
+const ERP_BRAND_NAMES: Record<string, string> = {
+  '1': "Carol's Daughter",
+  '2': 'Baxter of California',
+  '3': 'AcneFree',
+  '4': 'Ambi',
+  '5': 'Dermablend',
+}
+
+/** Resolve a brand display name, preferring an ERP-supplied name, then the
+ * curated brandId map, else empty. */
+function resolveBrand(raw: Record<string, any>): string {
+  const named = raw.brand ?? raw.brandName
+  if (named != null && String(named).trim() !== '') return String(named)
+  if (raw.brandId != null) {
+    const mapped = ERP_BRAND_NAMES[String(raw.brandId)]
+    if (mapped) return mapped
+  }
+  return ''
+}
+
 // Map a raw ERP API record (shape varies across deployments) into ErpSku.
 // Field aliases cover the KarEve Sync ERP shape (skuNumber/itemName/quantity/
 // quantityAvailable/quantityAllocated/unitUpc) as well as common alternates.
@@ -215,7 +240,7 @@ function mapErpRecord(raw: Record<string, any>): ErpSku {
   return {
     sku: String(raw.sku ?? raw.skuNumber ?? raw.sellableSku ?? raw.shopifySku ?? raw.itemCode ?? raw.code ?? ''),
     name: String(raw.name ?? raw.itemName ?? raw.description ?? raw.productName ?? ''),
-    brand: String(raw.brand ?? raw.brandName ?? ''),
+    brand: resolveBrand(raw),
     upc: String(raw.upc ?? raw.unitUpc ?? raw.sellableUpc ?? raw.gtin ?? raw.barcode ?? ''),
     status: String(raw.status ?? (raw.isActive === false ? 'Inactive' : 'Active')),
     onHand,

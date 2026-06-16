@@ -209,8 +209,10 @@ export async function syncErp(prisma: PrismaClient): Promise<ErpSyncOrchestrator
  * SKU_PIPELINE module. Matches existing items by SKU and MERGES the ERP
  * fields (sku/name/brand/upc/onHand/committed/available/unitPrice/category)
  * into them while PRESERVING local pipeline fields (step/totalSteps/owner/
- * blocker/status/linkedNpdId). New SKUs are created with sensible pipeline
- * defaults. Mirrors the syncErpInventory pattern.
+ * blocker/linkedNpdId). Status is NOT preserved: since the SKU pipeline mirrors
+ * the ERP's ACTIVE catalog, every synced item is forced to "Active". New SKUs
+ * are created with sensible pipeline defaults. Mirrors the syncErpInventory
+ * pattern.
  */
 export async function syncErpSkuPipeline(
   prisma: PrismaClient,
@@ -267,7 +269,10 @@ export async function syncErpSkuPipeline(
         totalSteps: prev.totalSteps ?? 6,
         owner: prev.owner ?? 'ERP',
         blocker: prev.blocker ?? null,
-        status: prev.status ?? rec.status,
+        // The SKU pipeline mirrors the ERP's ACTIVE catalog, so every synced
+        // product is forced to "Active" — this intentionally overrides any
+        // prior local workflow-stage status on ERP-sourced items.
+        status: 'Active',
       }
       await prisma.moduleItem.update({
         where: { id: match.id },
@@ -277,7 +282,7 @@ export async function syncErpSkuPipeline(
     } else {
       const data = {
         ...erpFields,
-        status: rec.status,
+        status: 'Active',
         step: 1,
         totalSteps: 6,
         owner: 'ERP',
@@ -285,7 +290,7 @@ export async function syncErpSkuPipeline(
         linkedNpdId: null,
       }
       await prisma.moduleItem.create({
-        data: { moduleId: skuModule.id, data, status: rec.status },
+        data: { moduleId: skuModule.id, data, status: data.status },
       })
       created++
     }

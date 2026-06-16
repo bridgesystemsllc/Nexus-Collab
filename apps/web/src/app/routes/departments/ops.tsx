@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -282,9 +282,25 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
   const openForm = useAppStore((s) => s.openForm)
   const [view, setView] = useState<ViewMode>('table')
   const [brandFilter, setBrandFilter] = useState('All')
+  const [pageSize, setPageSize] = useState(50)
+  const [page, setPage] = useState(1)
 
   const brands = ['All', ...Array.from(new Set(items.map((i: any) => i.data?.brand).filter(Boolean)))]
   const filtered = brandFilter === 'All' ? items : items.filter((i: any) => i.data?.brand === brandFilter)
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+  // Clamp the current page when the list or page size shrinks (e.g. after
+  // changing the brand filter or per-page count) so we never land past the end.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
+  // Reset to the first page whenever the filtered set changes.
+  useEffect(() => {
+    setPage(1)
+  }, [brandFilter, pageSize])
+
+  const pageStart = (page - 1) * pageSize
+  const paged = filtered.slice(pageStart, pageStart + pageSize)
 
   const openCreate = () =>
     openForm({ formType: 'opsSku', mode: 'create', context: { moduleId, departmentId } })
@@ -322,6 +338,27 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
         </div>
       )}
 
+      {filtered.length > 0 && (
+        <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-[var(--text-secondary)]">
+          <span>
+            Showing {pageStart + 1}–{Math.min(pageStart + pageSize, filtered.length)} of {filtered.length}
+            {' · '}Page {page} of {totalPages}
+          </span>
+          <label className="flex items-center gap-2">
+            <span>Per page</span>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-1 text-xs text-[var(--text-primary)]"
+            >
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+            </select>
+          </label>
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <EmptyState text="No SKUs in pipeline." />
       ) : view === 'table' ? (
@@ -341,7 +378,7 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((item: any) => {
+              {paged.map((item: any) => {
                 const d = item.data
                 return (
                   <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
@@ -362,7 +399,7 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {filtered.map((item: any) => {
+          {paged.map((item: any) => {
             const d = item.data
             return (
               <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
@@ -398,6 +435,26 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {filtered.length > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+          <span className="text-xs text-[var(--text-tertiary)]">Page {page} of {totalPages}</span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
         </div>
       )}
     </div>
