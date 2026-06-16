@@ -2,17 +2,20 @@ import { useState, useEffect } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   Cloud,
   Copy,
   Database,
   ExternalLink,
   Hash,
   Key,
+  Lock,
   Mail,
   MessageCircle,
   Pencil,
   Plug,
   RefreshCw,
+  Route,
   Settings,
   ShoppingCart,
   Table2,
@@ -20,7 +23,16 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import { useIntegrations, useSyncIntegration } from '@/hooks/useData'
+import {
+  useIntegrations,
+  useSyncIntegration,
+  useDepartments,
+  useErpRouting,
+  useUpdateErpRouting,
+  type ErpRoutingFeed,
+  type ErpRoutingPatch,
+} from '@/hooks/useData'
+import { useUserStore } from '@/stores/userStore'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { ConnectMicrosoft } from '@/components/shared/ConnectMicrosoft'
@@ -178,6 +190,265 @@ function ErpSettingsSection({
   )
 }
 
+// ─── ERP Data Routing Section ────────────────────────────────
+// Lets an admin map each ERP feed to a Nexus module and toggle it on/off.
+// Non-admins see it read-only (controls disabled + an "Admin only" note).
+
+interface ModuleTarget {
+  id: string
+  type: string
+  name: string
+  department: string
+}
+
+function useModuleTargets(): ModuleTarget[] {
+  const { data: departments } = useDepartments()
+  const list = Array.isArray(departments) ? departments : []
+  const targets: ModuleTarget[] = []
+  for (const dept of list) {
+    for (const mod of dept.modules ?? []) {
+      targets.push({ id: mod.id, type: mod.type, name: mod.name, department: dept.name })
+    }
+  }
+  return targets
+}
+
+function ToggleSwitch({
+  on,
+  onChange,
+  disabled,
+}: {
+  on: boolean
+  onChange: (next: boolean) => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onChange(!on)}
+      disabled={disabled}
+      className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
+        on ? 'bg-[var(--success)]' : 'bg-[var(--border-default)]'
+      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      aria-pressed={on}
+    >
+      <div
+        className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${
+          on ? 'translate-x-[18px]' : 'translate-x-[2px]'
+        }`}
+      />
+    </button>
+  )
+}
+
+// A single editable feed row. Tracks pending edits via the parent's draft map.
+function RoutingFeedRow({
+  feed,
+  draft,
+  targets,
+  editable,
+  onChange,
+}: {
+  feed: ErpRoutingFeed
+  draft: ErpRoutingPatch[string] | undefined
+  targets: ModuleTarget[]
+  editable: boolean
+  onChange: (patch: ErpRoutingPatch[string]) => void
+}) {
+  const [advanced, setAdvanced] = useState(false)
+
+  // Effective values = server value overridden by any pending draft edit.
+  const enabled = draft?.enabled ?? feed.enabled
+  const targetModuleId =
+    draft && 'targetModuleId' in draft ? draft.targetModuleId : feed.targetModuleId
+  const erpPath = draft && 'erpPath' in draft ? draft.erpPath : feed.erpPath
+  const defaultType = feed.targetModuleType || 'auto'
+
+  return (
+    <div className="p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-medium text-[var(--text-primary)]">{feed.label}</p>
+          <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">{feed.description}</p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <span className={`text-[10px] ${enabled ? 'text-[var(--success)]' : 'text-[var(--text-tertiary)]'}`}>
+            {enabled ? 'On' : 'Off'}
+          </span>
+          <ToggleSwitch
+            on={enabled}
+            disabled={!editable}
+            onChange={(next) => onChange({ ...draft, enabled: next })}
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 mt-3">
+        <span className="text-[10px] uppercase tracking-[0.06em] text-[var(--text-tertiary)] w-[44px] flex-shrink-0">
+          Route to
+        </span>
+        <div className="relative flex-1">
+          <select
+            value={targetModuleId ?? ''}
+            disabled={!editable || !enabled}
+            onChange={(e) => {
+              const v = e.target.value
+              const next: ErpRoutingPatch[string] = { ...draft }
+              if (v === '') {
+                next.targetModuleId = null
+                next.targetModuleType = null
+              } else {
+                const t = targets.find((m) => m.id === v)
+                next.targetModuleId = v
+                if (t) next.targetModuleType = t.type
+              }
+              onChange(next)
+            }}
+            className="w-full appearance-none pl-3 pr-8 py-2 rounded-[8px] text-[12px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <option value="">Default ({defaultType})</option>
+            {targets.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.department} — {t.name}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            size={14}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none"
+          />
+        </div>
+      </div>
+
+      {/* Advanced: ERP path override */}
+      <button
+        type="button"
+        onClick={() => setAdvanced((v) => !v)}
+        className="text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] mt-2 flex items-center gap-1"
+      >
+        <ChevronDown size={11} className={`transition-transform ${advanced ? 'rotate-180' : ''}`} />
+        Advanced
+      </button>
+      {advanced && (
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-[10px] uppercase tracking-[0.06em] text-[var(--text-tertiary)] w-[44px] flex-shrink-0">
+            ERP path
+          </span>
+          <input
+            type="text"
+            value={erpPath ?? ''}
+            disabled={!editable}
+            placeholder={`/${feed.key}`}
+            onChange={(e) => onChange({ ...draft, erpPath: e.target.value })}
+            className="flex-1 px-3 py-1.5 rounded-[8px] text-[12px] font-mono outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors disabled:opacity-50"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ErpDataRoutingSection() {
+  const role = useUserStore((s) => s.currentUser?.role)
+  // Admin/OPS_MANAGER can edit. Unknown role in dev → treat as editable.
+  const editable = role == null || role === 'ADMIN' || role === 'OPS_MANAGER'
+
+  const { data, isLoading, isError } = useErpRouting()
+  const targets = useModuleTargets()
+  const updateRouting = useUpdateErpRouting()
+
+  // Pending edits keyed by feed key; only changed feeds are sent on save.
+  const [draft, setDraft] = useState<ErpRoutingPatch>({})
+  const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const feeds = data?.feeds ?? []
+  const dirty = Object.keys(draft).length > 0
+  const enabledCount = feeds.filter((f) => draft[f.key]?.enabled ?? f.enabled).length
+
+  const handleSave = async () => {
+    setMsg(null)
+    try {
+      await updateRouting.mutateAsync(draft)
+      setDraft({})
+      setMsg({ type: 'success', text: 'Data routing saved' })
+    } catch (err: any) {
+      const status = err?.response?.status
+      setMsg({
+        type: 'error',
+        text: status === 403 ? 'Admin access required' : err?.response?.data?.error || 'Failed to save routing',
+      })
+    }
+  }
+
+  return (
+    <div className="p-4 rounded-[12px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Route size={15} className="text-[var(--accent)]" />
+          <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">Data Routing</h3>
+        </div>
+        {!editable && (
+          <span className="text-[11px] text-[var(--text-tertiary)] flex items-center gap-1">
+            <Lock size={11} /> Admin only
+          </span>
+        )}
+      </div>
+      <p className="text-[12px] text-[var(--text-secondary)]">
+        Choose which ERP feeds flow into which Nexus modules. Only enabled feeds sync.
+      </p>
+
+      {isLoading && <div className="skeleton h-24 rounded-[10px]" />}
+      {isError && (
+        <p className="text-[12px] text-[var(--text-tertiary)]">Routing configuration unavailable.</p>
+      )}
+
+      {!isLoading && !isError && feeds.length > 0 && (
+        <>
+          <div className="space-y-2">
+            {feeds.map((feed) => (
+              <RoutingFeedRow
+                key={feed.key}
+                feed={feed}
+                draft={draft[feed.key]}
+                targets={targets}
+                editable={editable}
+                onChange={(patch) => setDraft((d) => ({ ...d, [feed.key]: patch }))}
+              />
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-[11px] text-[var(--text-tertiary)] tabular-nums">
+              {enabledCount} of {feeds.length} feeds syncing
+            </span>
+            <div className="flex items-center gap-3">
+              {msg && (
+                <span
+                  className={`text-[12px] flex items-center gap-1 ${
+                    msg.type === 'success' ? 'text-[var(--success)]' : 'text-[var(--danger)]'
+                  }`}
+                >
+                  {msg.type === 'success' ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
+                  {msg.text}
+                </span>
+              )}
+              {editable && (
+                <button
+                  onClick={handleSave}
+                  disabled={!dirty || updateRouting.isPending}
+                  className="btn-primary text-[13px] px-4 py-2 disabled:opacity-40"
+                >
+                  {updateRouting.isPending ? 'Saving...' : 'Save Routing'}
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Integration Settings Drawer ─────────────────────────────
 
 function IntegrationSettingsDrawer({
@@ -199,6 +470,11 @@ function IntegrationSettingsDrawer({
   const isOAuth = group === 'microsoft' || group === 'google'
   const isZapier = integration.type === 'ZAPIER'
   const isErp = integration.type === 'ERP_KAREVE_SYNC'
+
+  // Live ERP routing — drives the incoming-data list below.
+  const { data: erpRouting } = useErpRouting(isErp && integration.status === 'CONNECTED')
+  const moduleTargets = useModuleTargets()
+  const moduleNameById = new Map(moduleTargets.map((t) => [t.id, `${t.department} — ${t.name}`]))
 
   const handleTestConnection = async () => {
     setTesting(true)
@@ -268,6 +544,8 @@ function IntegrationSettingsDrawer({
           />
         )}
 
+        {isErp && integration.status === 'CONNECTED' && <ErpDataRoutingSection />}
+
         {isOAuth && (
           <div className="p-4 rounded-[12px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3">
             <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">OAuth Connection</h3>
@@ -284,32 +562,45 @@ function IntegrationSettingsDrawer({
           </div>
         )}
 
-        {/* Incoming Sync */}
+        {/* Incoming Sync — live for ERP (driven by Data Routing), static otherwise */}
         <div>
           <h3 className="text-[14px] font-semibold text-[var(--text-primary)] mb-3">Incoming Data</h3>
           <div className="space-y-2">
-            {(isErp
-              ? [
-                  { name: 'Product Names & Details', status: 'Syncing' },
-                  { name: 'Product SKUs / UPCs', status: 'Syncing' },
-                  { name: 'CM Information', status: 'Syncing' },
-                  { name: 'Inventory Levels', status: 'Syncing' },
-                  { name: 'Purchase Orders', status: 'Syncing' },
-                  { name: 'Production Orders', status: 'Syncing' },
-                  { name: 'BOM (Bill of Materials)', status: 'Syncing' },
-                ]
-              : [
-                  { name: 'Tasks', status: 'Syncing' },
-                  { name: 'Calendar Events', status: 'Syncing' },
-                  { name: 'Contacts', status: 'Syncing' },
-                  { name: 'Messages', status: 'Syncing' },
-                ]
-            ).map((item) => (
-              <div key={item.name} className="flex items-center justify-between p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
-                <span className="text-[13px] text-[var(--text-primary)]">{item.name}</span>
-                <span className="badge badge-healthy text-[10px]">{item.status}</span>
-              </div>
-            ))}
+            {isErp ? (
+              (erpRouting?.feeds ?? []).length > 0 ? (
+                erpRouting!.feeds.map((feed) => {
+                  const target = feed.targetModuleId
+                    ? moduleNameById.get(feed.targetModuleId) ?? feed.targetModuleType ?? 'module'
+                    : `Default (${feed.targetModuleType || 'auto'})`
+                  return (
+                    <div key={feed.key} className="flex items-center justify-between p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                      <span className="text-[13px] text-[var(--text-primary)]">{feed.label}</span>
+                      {feed.enabled ? (
+                        <span className="badge badge-healthy text-[10px]">Syncing to {target}</span>
+                      ) : (
+                        <span className="badge badge-accent text-[10px]">Off</span>
+                      )}
+                    </div>
+                  )
+                })
+              ) : (
+                <p className="text-[12px] text-[var(--text-tertiary)] px-1">
+                  Configure feeds in Data Routing above.
+                </p>
+              )
+            ) : (
+              [
+                { name: 'Tasks', status: 'Syncing' },
+                { name: 'Calendar Events', status: 'Syncing' },
+                { name: 'Contacts', status: 'Syncing' },
+                { name: 'Messages', status: 'Syncing' },
+              ].map((item) => (
+                <div key={item.name} className="flex items-center justify-between p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                  <span className="text-[13px] text-[var(--text-primary)]">{item.name}</span>
+                  <span className="badge badge-healthy text-[10px]">{item.status}</span>
+                </div>
+              ))
+            )}
           </div>
         </div>
 

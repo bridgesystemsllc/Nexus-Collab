@@ -157,8 +157,10 @@ export async function fetchErpSkus(prisma: PrismaClient): Promise<ErpSku[]> {
   for (const path of ['/skus', '/products']) {
     try {
       const response = await fetch(`${base}${path}`, {
+        // Send both auth styles so either ERP auth scheme works.
         headers: {
           Authorization: `Bearer ${apiKey}`,
+          'X-API-Key': apiKey,
           Accept: 'application/json',
         },
         signal: AbortSignal.timeout(10_000),

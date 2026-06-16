@@ -8,7 +8,13 @@ import {
   exchangeMicrosoftToken,
   exchangeGoogleToken,
 } from '../lib/oauth'
-import { syncErpInventory, syncErpSkuPipeline } from '../lib/erpSync'
+import { syncErp } from '../lib/erpSync'
+import {
+  ERP_FEEDS,
+  getRouting,
+  setRoutingOnConfig,
+  type RouteEntry,
+} from '../lib/erpRouting'
 
 export const integrationRoutes: ReturnType<typeof Router> = Router()
 export const webhookRoutes: ReturnType<typeof Router> = Router()
@@ -142,8 +148,14 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
         const controller = new AbortController()
         const timeout = setTimeout(() => controller.abort(), 5000)
 
+        // Send both auth styles so either ERP auth scheme works.
+        const authHeaders = {
+          'X-API-Key': apiKey,
+          Authorization: `Bearer ${apiKey}`,
+        }
+
         let response = await fetch(`${apiUrl}/ping`, {
-          headers: { 'X-API-Key': apiKey },
+          headers: authHeaders,
           signal: controller.signal,
         })
 
@@ -157,7 +169,7 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
           const timeout2 = setTimeout(() => controller2.abort(), 5000)
 
           response = await fetch(`${apiUrl}/health`, {
-            headers: { 'X-API-Key': apiKey },
+            headers: authHeaders,
             signal: controller2.signal,
           })
 
@@ -174,11 +186,19 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
 
       const encryptedConfig = encryptJson({ apiUrl, apiKey })
 
+      // Preserve any existing routing while rewriting the creds blob, so
+      // reconnecting / rotating credentials never clobbers the admin's routing.
+      const existing = await prisma.integration.findFirst({ where: { type } })
+      const existingRouting =
+        (existing?.config as { routing?: Record<string, Partial<RouteEntry>> } | null)
+          ?.routing ?? {}
+      const config = setRoutingOnConfig(encryptedConfig, existingRouting)
+
       await prisma.integration.updateMany({
         where: { type },
         data: {
           status: 'CONNECTED',
-          config: encryptedConfig,
+          config,
         },
       })
 
@@ -273,6 +293,114 @@ integrationRoutes.get('/google/callback', async (req: Request, res: Response) =>
   }
 })
 
+// ─── ERP data-flow routing ──────────────────────────────────
+//
+// Routing controls which ERP feeds flow into which Nexus modules and whether
+// each feed is enabled. It is stored UNENCRYPTED under Integration.config.routing
+// alongside the encrypted creds blob.
+
+// Shape one feed's current routing for an API response.
+function feedRoutingResponse(integration: Awaited<ReturnType<typeof prisma.integration.findFirst>>) {
+  const routing = getRouting(integration)
+  return ERP_FEEDS.map((feed) => {
+    const entry = routing[feed.key]
+    return {
+      key: feed.key,
+      label: feed.label,
+      description: feed.description,
+      enabled: entry.enabled,
+      targetModuleId: entry.targetModuleId,
+      targetModuleType: entry.targetModuleType,
+      erpPath: entry.erpPath ?? null,
+    }
+  })
+}
+
+// GET routing — read-only, any authenticated user.
+integrationRoutes.get('/:type/routing', async (req: Request, res: Response) => {
+  try {
+    if (req.params.type !== 'ERP_KAREVE_SYNC') {
+      return res.status(404).json({ error: 'Routing is only available for ERP_KAREVE_SYNC' })
+    }
+    const integration = await prisma.integration.findFirst({
+      where: { type: req.params.type as string },
+    })
+    if (!integration) return res.status(404).json({ error: 'Integration not found' })
+
+    res.json({
+      feeds: feedRoutingResponse(integration),
+      connected: integration.status === 'CONNECTED',
+    })
+  } catch (error) {
+    console.error('[integrations] GET /:type/routing error:', error)
+    res.status(500).json({ error: 'Failed to fetch routing' })
+  }
+})
+
+// PATCH routing — ADMIN / OPS_MANAGER only (with a dev escape hatch).
+integrationRoutes.patch('/:type/routing', async (req: Request, res: Response) => {
+  try {
+    if (req.params.type !== 'ERP_KAREVE_SYNC') {
+      return res.status(404).json({ error: 'Routing is only available for ERP_KAREVE_SYNC' })
+    }
+
+    // Role gate: allow ADMIN / OPS_MANAGER. If no member resolved (e.g. local
+    // dev with no session), allow only when NODE_ENV !== 'production'.
+    const member = (req as any).member as { role?: string } | undefined
+    const role = member?.role
+    const privileged = role === 'ADMIN' || role === 'OPS_MANAGER'
+    const devUnauthenticated = !member && process.env.NODE_ENV !== 'production'
+    if (!privileged && !devUnauthenticated) {
+      return res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
+    }
+
+    const body = (req.body ?? {}) as { routing?: Record<string, Partial<RouteEntry>> }
+    const patch = body.routing
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+      return res.status(400).json({ error: 'Body must include a routing object' })
+    }
+
+    const validKeys = new Set(ERP_FEEDS.map((f) => f.key))
+    for (const key of Object.keys(patch)) {
+      if (!validKeys.has(key)) {
+        return res.status(400).json({ error: `Unknown feed key: ${key}` })
+      }
+    }
+
+    // Validate any provided targetModuleId actually exists.
+    for (const [key, entry] of Object.entries(patch)) {
+      if (entry && entry.targetModuleId) {
+        const mod = await prisma.departmentModule.findUnique({
+          where: { id: entry.targetModuleId },
+        })
+        if (!mod) {
+          return res.status(400).json({ error: `targetModuleId for feed "${key}" does not exist` })
+        }
+      }
+    }
+
+    const integration = await prisma.integration.findFirst({
+      where: { type: req.params.type as string },
+    })
+    if (!integration) return res.status(404).json({ error: 'Integration not found' })
+
+    const config = setRoutingOnConfig(integration.config, patch)
+    await prisma.integration.update({
+      where: { id: integration.id },
+      data: { config },
+    })
+
+    const updated = await prisma.integration.findUnique({ where: { id: integration.id } })
+    res.json({
+      feeds: feedRoutingResponse(updated),
+      connected: updated?.status === 'CONNECTED',
+    })
+  } catch (error) {
+    console.error('[integrations] PATCH /:type/routing error:', error)
+    res.status(500).json({ error: 'Failed to update routing' })
+  }
+})
+
 // ─── Disconnect integration ─────────────────────────────────
 integrationRoutes.post('/:type/disconnect', async (req: Request, res: Response) => {
   try {
@@ -313,11 +441,11 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
       try {
         let recordsProcessed = Math.floor(Math.random() * 100)
         if (integration.type === 'ERP_KAREVE_SYNC') {
-          // Request-driven (no Redis required): pull both the inventory feed
-          // and the SKU/product master feed into Operations.
-          const inv = await syncErpInventory(prisma)
-          const skuPipeline = await syncErpSkuPipeline(prisma)
-          recordsProcessed = inv.recordsProcessed + skuPipeline.recordsProcessed
+          // Request-driven (no Redis required): run the routing-aware
+          // orchestrator, which pulls each enabled ERP feed into its
+          // configured Nexus module.
+          const result = await syncErp(prisma)
+          recordsProcessed = result.recordsProcessed
         }
         await prisma.syncLog.update({
           where: { id: syncLog.id },

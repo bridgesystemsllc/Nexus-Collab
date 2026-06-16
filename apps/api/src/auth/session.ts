@@ -138,7 +138,11 @@ export async function setupAuth(app: Express) {
   if (devLoginAllowed) {
     app.get('/api/dev-login', async (req: Request, res: Response) => {
       try {
-        const member = await prisma.member.findFirst({ orderBy: { createdAt: 'asc' } })
+        // Prefer signing in as a privileged member so the preview can exercise
+        // admin features (e.g. ERP data-routing); fall back to the first member.
+        const member =
+          (await prisma.member.findFirst({ where: { role: { in: ['ADMIN', 'OPS_MANAGER'] } }, orderBy: { createdAt: 'asc' } })) ||
+          (await prisma.member.findFirst({ orderBy: { createdAt: 'asc' } }))
         if (!member) return res.redirect('/?ms=error&reason=no_workspace')
         req.session.regenerate((regenErr) => {
           if (regenErr) return res.redirect('/?ms=error&reason=session_persist_failed')

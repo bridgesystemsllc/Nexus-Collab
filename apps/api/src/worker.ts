@@ -1,7 +1,7 @@
 import { Worker, Queue } from 'bullmq'
 import IORedis from 'ioredis'
 import { PrismaClient } from '@prisma/client'
-import { syncErpInventory, syncErpSkuPipeline } from './lib/erpSync'
+import { syncErp } from './lib/erpSync'
 
 const prisma = new PrismaClient()
 
@@ -62,11 +62,10 @@ const erpWorker = new Worker('erp-sync', async () => {
   })
 
   try {
-    // Pull the ERP inventory feed into the Inventory Health module and the
-    // ERP SKU/product master feed into the SKU Pipeline module.
-    const inv = await syncErpInventory(prisma)
-    const skuPipeline = await syncErpSkuPipeline(prisma)
-    const recordsProcessed = inv.recordsProcessed + skuPipeline.recordsProcessed
+    // Run the routing-aware orchestrator: each enabled ERP feed flows into its
+    // admin-configured Nexus module.
+    const result = await syncErp(prisma)
+    const recordsProcessed = result.recordsProcessed
 
     await prisma.syncLog.update({
       where: { id: syncLog.id },
