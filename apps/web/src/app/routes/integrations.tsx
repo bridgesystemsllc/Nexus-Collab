@@ -20,6 +20,7 @@ import {
   ShoppingCart,
   Table2,
   Unplug,
+  Upload,
   X,
   Zap,
 } from 'lucide-react'
@@ -29,8 +30,14 @@ import {
   useDepartments,
   useErpRouting,
   useUpdateErpRouting,
+  useErpOutbound,
+  useUpdateErpOutbound,
+  usePushToErp,
   type ErpRoutingFeed,
   type ErpRoutingPatch,
+  type ErpOutboundFeed,
+  type ErpOutboundPatch,
+  type ErpPushResponse,
 } from '@/hooks/useData'
 import { useUserStore } from '@/stores/userStore'
 import { useQueryClient } from '@tanstack/react-query'
@@ -449,6 +456,236 @@ function ErpDataRoutingSection() {
   )
 }
 
+// ─── Outbound to ERP Section ─────────────────────────────────
+// Lets an admin control which Nexus feeds (components / boms / finance) may push
+// TO the ERP, edit each feed's ERP path, and trigger a manual push. Non-admins
+// see it read-only (controls disabled + an "Admin only" note). When the ERP is
+// not connected, a push returns dryRun results describing what WOULD be sent.
+
+// A single editable outbound feed row. Tracks pending edits via the parent draft.
+function OutboundFeedRow({
+  feed,
+  draft,
+  editable,
+  result,
+  onChange,
+}: {
+  feed: ErpOutboundFeed
+  draft: ErpOutboundPatch[string] | undefined
+  editable: boolean
+  result: ErpPushResponse['feeds'][string] | undefined
+  onChange: (patch: ErpOutboundPatch[string]) => void
+}) {
+  const [advanced, setAdvanced] = useState(false)
+
+  // Effective values = server value overridden by any pending draft edit.
+  const enabled = draft?.enabled ?? feed.enabled
+  const erpPath = draft && 'erpPath' in draft ? draft.erpPath : feed.erpPath
+
+  return (
+    <div className="p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-[13px] font-medium text-[var(--text-primary)]">{feed.label}</p>
+          <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">{feed.description}</p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <span className="text-[10px] text-[var(--text-tertiary)] tabular-nums">{feed.itemCount} items</span>
+          <span className={`text-[10px] ${enabled ? 'text-[var(--success)]' : 'text-[var(--text-tertiary)]'}`}>
+            {enabled ? 'On' : 'Off'}
+          </span>
+          <ToggleSwitch
+            on={enabled}
+            disabled={!editable}
+            onChange={(next) => onChange({ ...draft, enabled: next })}
+          />
+        </div>
+      </div>
+
+      {/* Per-feed push result (set after a "Push now"). */}
+      {result && (
+        <p
+          className={`text-[11px] mt-2 flex items-center gap-1 ${
+            result.error
+              ? 'text-[var(--danger)]'
+              : result.dryRun
+                ? 'text-[var(--text-secondary)]'
+                : 'text-[var(--success)]'
+          }`}
+        >
+          {result.error ? (
+            <AlertTriangle size={11} />
+          ) : result.dryRun ? null : (
+            <CheckCircle2 size={11} />
+          )}
+          {result.error
+            ? result.error
+            : result.dryRun
+              ? `Dry run (ERP not connected): ${result.count} would send`
+              : `Pushed ${result.count}`}
+        </p>
+      )}
+
+      {/* Advanced: ERP path override */}
+      <button
+        type="button"
+        onClick={() => setAdvanced((v) => !v)}
+        className="text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] mt-2 flex items-center gap-1"
+      >
+        <ChevronDown size={11} className={`transition-transform ${advanced ? 'rotate-180' : ''}`} />
+        Advanced
+      </button>
+      {advanced && (
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-[10px] uppercase tracking-[0.06em] text-[var(--text-tertiary)] w-[44px] flex-shrink-0">
+            ERP path
+          </span>
+          <input
+            type="text"
+            value={erpPath ?? ''}
+            disabled={!editable}
+            placeholder={`/${feed.key}`}
+            onChange={(e) => onChange({ ...draft, erpPath: e.target.value })}
+            className="flex-1 px-3 py-1.5 rounded-[8px] text-[12px] font-mono outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors disabled:opacity-50"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ErpOutboundSection() {
+  const role = useUserStore((s) => s.currentUser?.role)
+  // Admin/OPS_MANAGER can edit. Unknown role in dev → treat as editable.
+  const editable = role == null || role === 'ADMIN' || role === 'OPS_MANAGER'
+
+  const { data, isLoading, isError } = useErpOutbound()
+  const updateOutbound = useUpdateErpOutbound()
+  const pushToErp = usePushToErp()
+
+  // Pending edits keyed by feed key; only changed feeds are sent on save.
+  const [draft, setDraft] = useState<ErpOutboundPatch>({})
+  const [msg, setMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  // Results from the last push, keyed by feed key.
+  const [pushResults, setPushResults] = useState<ErpPushResponse['feeds']>({})
+
+  const feeds = data?.feeds ?? []
+  const dirty = Object.keys(draft).length > 0
+  const enabledKeys = feeds.filter((f) => draft[f.key]?.enabled ?? f.enabled).map((f) => f.key)
+
+  const handleSave = async () => {
+    setMsg(null)
+    try {
+      await updateOutbound.mutateAsync(draft)
+      setDraft({})
+      setMsg({ type: 'success', text: 'Outbound config saved' })
+    } catch (err: any) {
+      const status = err?.response?.status
+      setMsg({
+        type: 'error',
+        text: status === 403 ? 'Admin access required' : err?.response?.data?.error || 'Failed to save',
+      })
+    }
+  }
+
+  const handlePush = async () => {
+    setMsg(null)
+    setPushResults({})
+    try {
+      const res = await pushToErp.mutateAsync({ feeds: enabledKeys })
+      setPushResults(res.feeds ?? {})
+    } catch (err: any) {
+      const status = err?.response?.status
+      setMsg({
+        type: 'error',
+        text: status === 403 ? 'Admin access required' : err?.response?.data?.error || 'Push failed',
+      })
+    }
+  }
+
+  return (
+    <div className="p-4 rounded-[12px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Upload size={15} className="text-[var(--accent)]" />
+          <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">Outbound to ERP</h3>
+        </div>
+        {!editable && (
+          <span className="text-[11px] text-[var(--text-tertiary)] flex items-center gap-1">
+            <Lock size={11} /> Admin only
+          </span>
+        )}
+      </div>
+      <p className="text-[12px] text-[var(--text-secondary)]">
+        Choose which Nexus modules may push data to the ERP, then push on demand.
+      </p>
+
+      {isLoading && <div className="skeleton h-24 rounded-[10px]" />}
+      {isError && (
+        <p className="text-[12px] text-[var(--text-tertiary)]">Outbound configuration unavailable.</p>
+      )}
+
+      {!isLoading && !isError && feeds.length > 0 && (
+        <>
+          <div className="space-y-2">
+            {feeds.map((feed) => (
+              <OutboundFeedRow
+                key={feed.key}
+                feed={feed}
+                draft={draft[feed.key]}
+                editable={editable}
+                result={pushResults[feed.key]}
+                onChange={(patch) => setDraft((d) => ({ ...d, [feed.key]: patch }))}
+              />
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-[11px] text-[var(--text-tertiary)] tabular-nums">
+              {enabledKeys.length} of {feeds.length} feeds enabled
+            </span>
+            <div className="flex items-center gap-3">
+              {msg && (
+                <span
+                  className={`text-[12px] flex items-center gap-1 ${
+                    msg.type === 'success' ? 'text-[var(--success)]' : 'text-[var(--danger)]'
+                  }`}
+                >
+                  {msg.type === 'success' ? <CheckCircle2 size={12} /> : <AlertTriangle size={12} />}
+                  {msg.text}
+                </span>
+              )}
+              {editable && (
+                <>
+                  <button
+                    onClick={handleSave}
+                    disabled={!dirty || updateOutbound.isPending}
+                    className="btn-ghost text-[13px] px-4 py-2 disabled:opacity-40"
+                  >
+                    {updateOutbound.isPending ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={handlePush}
+                    disabled={enabledKeys.length === 0 || pushToErp.isPending}
+                    className="btn-primary text-[13px] px-4 py-2 flex items-center gap-1.5 disabled:opacity-40"
+                  >
+                    <Upload size={13} className={pushToErp.isPending ? 'animate-pulse' : ''} />
+                    {pushToErp.isPending ? 'Pushing...' : 'Push now'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <p className="text-[11px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
+            Only enabled feeds push; pushes are manual.
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Integration Settings Drawer ─────────────────────────────
 
 function IntegrationSettingsDrawer({
@@ -607,31 +844,26 @@ function IntegrationSettingsDrawer({
           </div>
         </div>
 
-        {/* Outgoing Sync */}
-        <div>
-          <h3 className="text-[14px] font-semibold text-[var(--text-primary)] mb-3">Outgoing Data</h3>
-          <div className="space-y-2">
-            {(isErp
-              ? [
-                  { name: 'Inventory Updates', status: 'Enabled' },
-                  { name: 'PO Status Changes', status: 'Enabled' },
-                  { name: 'Production Updates', status: 'Enabled' },
-                  { name: 'SKU / Product Changes', status: 'Enabled' },
-                  { name: 'CM Assignment Changes', status: 'Enabled' },
-                ]
-              : [
-                  { name: 'Task Updates', status: 'Enabled' },
-                  { name: 'Status Changes', status: 'Enabled' },
-                  { name: 'Activity Logs', status: 'Enabled' },
-                ]
-            ).map((item) => (
-              <div key={item.name} className="flex items-center justify-between p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
-                <span className="text-[13px] text-[var(--text-primary)]">{item.name}</span>
-                <span className="badge badge-info text-[10px]">{item.status}</span>
-              </div>
-            ))}
+        {/* Outgoing Sync — live "Outbound to ERP" for ERP, static otherwise */}
+        {isErp ? (
+          <ErpOutboundSection />
+        ) : (
+          <div>
+            <h3 className="text-[14px] font-semibold text-[var(--text-primary)] mb-3">Outgoing Data</h3>
+            <div className="space-y-2">
+              {[
+                { name: 'Task Updates', status: 'Enabled' },
+                { name: 'Status Changes', status: 'Enabled' },
+                { name: 'Activity Logs', status: 'Enabled' },
+              ].map((item) => (
+                <div key={item.name} className="flex items-center justify-between p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+                  <span className="text-[13px] text-[var(--text-primary)]">{item.name}</span>
+                  <span className="badge badge-info text-[10px]">{item.status}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Sync Info */}
         <div className="p-4 rounded-[12px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">

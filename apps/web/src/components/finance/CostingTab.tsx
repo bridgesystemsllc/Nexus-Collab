@@ -13,6 +13,7 @@ import {
 import { api } from '@/lib/api'
 import { useFinanceSummary, useProductCosts } from '@/hooks/useData'
 import { fmtCurrency, fmtInt, fmtPct, toNum } from './financeFormat'
+import { PushToErpButton } from '@/components/shared/PushToErpButton'
 
 // Finance-owned fields editable from the cost drawer (everything else on a
 // product-cost row is a live roll-up from BOM / formulation and is read-only).
@@ -286,14 +287,17 @@ export function CostingTab({
           <h2 className="text-sm font-medium text-[var(--text-primary)]">Product COGS &amp; Margins</h2>
           <span className="text-xs text-[var(--text-tertiary)]">{filtered.length}</span>
         </div>
-        <div className="relative min-w-[260px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)]"
-            placeholder="Search SKU, product, brand…"
-          />
+        <div className="flex items-center gap-2">
+          <PushToErpButton feedKey="finance" label="Finance costing" />
+          <div className="relative min-w-[260px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)]"
+              placeholder="Search SKU, product, brand…"
+            />
+          </div>
         </div>
       </div>
 
