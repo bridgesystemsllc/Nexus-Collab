@@ -10,6 +10,7 @@ import {
   Phone,
   Mail,
   MapPin,
+  Factory,
   TrendingUp,
   AlertTriangle,
   Package,
@@ -30,6 +31,7 @@ interface CMDetailModalProps {
   onDelete: () => void
   onUpdate?: (data: any) => void
   briefItems?: any[]
+  productionItems?: any[]
 }
 
 type SortField = 'productName' | 'brand' | 'unitsOrdered' | 'unitsDelivered' | 'status' | 'lastActivity'
@@ -163,7 +165,7 @@ function normalizeIssue(iss: any, i: number): Issue {
 
 // ─── Main Modal ────────────────────────────────────────────
 
-export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, briefItems }: CMDetailModalProps) {
+export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, briefItems, productionItems = [] }: CMDetailModalProps) {
   const issuesRef = useRef<HTMLDivElement>(null)
   const [sortField, setSortField] = useState<SortField>('unitsOrdered')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -172,6 +174,23 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
   const products = data.products || []
   const issues = data.issues || []
   const contacts = data.contacts || []
+
+  // Aggregated production updates: notes from all production orders assigned to this CM.
+  const cmNameKey = (data.name || '').trim().toLowerCase()
+  const productionUpdates = useMemo(() => {
+    if (!cmNameKey) return [] as any[]
+    const rows: any[] = []
+    for (const po of productionItems as any[]) {
+      const pd = po?.data || {}
+      if ((pd.cm || '').trim().toLowerCase() !== cmNameKey) continue
+      for (const n of (pd.notes || [])) {
+        rows.push({ ...n, _po: pd.poNumber || '', _product: pd.product || '' })
+      }
+    }
+    return rows.sort(
+      (a, b) => new Date(b.createdAt || b.noteDate || 0).getTime() - new Date(a.createdAt || a.noteDate || 0).getTime(),
+    )
+  }, [productionItems, cmNameKey])
 
   // Computed KPIs
   const onTime = data.onTime ?? 0
@@ -518,6 +537,27 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
               onResolve={handleResolveIssue}
               categories={['Quality', 'Delivery', 'Communication', 'Compliance', 'Capacity', 'Other']}
             />
+          </div>
+
+          {/* Production Updates — aggregated from this CM's production orders */}
+          <div>
+            <SectionHeader icon={Factory} label="Production Updates" />
+            {productionUpdates.length === 0 ? (
+              <p className="text-[13px] text-[var(--text-tertiary)] italic">No production updates for this CM yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {productionUpdates.map((n: any, i: number) => (
+                  <div key={n.id || i} className="relative pl-4 border-l-2 border-[var(--border-default)]">
+                    <div className="absolute -left-[5px] top-1.5 w-2 h-2 rounded-full bg-[var(--accent)]" />
+                    <p className="text-[13px] text-[var(--text-primary)] whitespace-pre-wrap">{n.noteText}</p>
+                    <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
+                      {n.noteDate || (n.createdAt ? String(n.createdAt).slice(0, 10) : '')} · {n.createdBy || 'User'}
+                      {(n._product || n._po) && <> · {n._product || n._po}</>}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Task Attachments */}
