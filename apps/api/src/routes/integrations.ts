@@ -15,7 +15,12 @@ import {
   getRouting,
   setRoutingOnConfig,
   type RouteEntry,
+  ERP_OUTBOUND_FEEDS,
+  getOutbound,
+  setOutboundOnConfig,
+  type OutboundEntry,
 } from '../lib/erpRouting'
+import { pushErp } from '../lib/erpPush'
 
 export const integrationRoutes: ReturnType<typeof Router> = Router()
 export const webhookRoutes: ReturnType<typeof Router> = Router()
@@ -187,13 +192,24 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
 
       const encryptedConfig = encryptJson({ apiUrl, apiKey })
 
-      // Preserve any existing routing while rewriting the creds blob, so
-      // reconnecting / rotating credentials never clobbers the admin's routing.
+      // Preserve any existing routing AND outbound config while rewriting the
+      // creds blob, so reconnecting / rotating credentials never clobbers the
+      // admin's inbound routing or outbound push settings.
       const existing = await prisma.integration.findFirst({ where: { type } })
-      const existingRouting =
-        (existing?.config as { routing?: Record<string, Partial<RouteEntry>> } | null)
-          ?.routing ?? {}
-      const config = setRoutingOnConfig(encryptedConfig, existingRouting)
+      const existingConfig =
+        (existing?.config as
+          | {
+              routing?: Record<string, Partial<RouteEntry>>
+              outbound?: Record<string, Partial<OutboundEntry>>
+            }
+          | null) ?? {}
+      const existingRouting = existingConfig.routing ?? {}
+      const existingOutbound = existingConfig.outbound ?? {}
+      // Layer creds → routing → outbound; each setter preserves prior keys.
+      const config = setOutboundOnConfig(
+        setRoutingOnConfig(encryptedConfig, existingRouting),
+        existingOutbound,
+      )
 
       await prisma.integration.updateMany({
         where: { type },
@@ -466,6 +482,207 @@ integrationRoutes.patch('/:type/routing', async (req: Request, res: Response) =>
   } catch (error) {
     console.error('[integrations] PATCH /:type/routing error:', error)
     res.status(500).json({ error: 'Failed to update routing' })
+  }
+})
+
+// ─── ERP OUTBOUND push config (Nexus → ERP) ─────────────────
+//
+// Outbound config controls which Nexus modules may be PUSHED to the ERP and
+// whether each feed is enabled. It is stored UNENCRYPTED under
+// Integration.config.outbound, alongside the encrypted creds blob and the
+// inbound `.routing`. All default to DISABLED (opt-in by an admin).
+
+// Shape the outbound feeds for an API response, including a live item count of
+// each feed's source module.
+async function feedOutboundResponse(
+  integration: Awaited<ReturnType<typeof prisma.integration.findFirst>>,
+) {
+  const outbound = getOutbound(integration)
+  return Promise.all(
+    ERP_OUTBOUND_FEEDS.map(async (feed) => {
+      const entry = outbound[feed.key]
+      const mod = await prisma.departmentModule.findFirst({
+        where: { type: feed.sourceModuleType },
+      })
+      const itemCount = mod
+        ? await prisma.moduleItem.count({ where: { moduleId: mod.id } })
+        : 0
+      return {
+        key: feed.key,
+        label: feed.label,
+        description: feed.description,
+        enabled: entry.enabled,
+        erpPath: entry.erpPath ?? null,
+        itemCount,
+      }
+    }),
+  )
+}
+
+// GET outbound — read-only, any authenticated user.
+integrationRoutes.get('/:type/outbound', async (req: Request, res: Response) => {
+  try {
+    if (req.params.type !== 'ERP_KAREVE_SYNC') {
+      return res.status(404).json({ error: 'Outbound is only available for ERP_KAREVE_SYNC' })
+    }
+    const integration = await prisma.integration.findFirst({
+      where: { type: req.params.type as string },
+    })
+    if (!integration) return res.status(404).json({ error: 'Integration not found' })
+
+    const { configured } = await getErpConfig(prisma)
+    res.json({
+      connected: integration.status === 'CONNECTED',
+      configured,
+      feeds: await feedOutboundResponse(integration),
+    })
+  } catch (error) {
+    console.error('[integrations] GET /:type/outbound error:', error)
+    res.status(500).json({ error: 'Failed to fetch outbound config' })
+  }
+})
+
+// PATCH outbound — ADMIN / OPS_MANAGER only (with a dev escape hatch).
+integrationRoutes.patch('/:type/outbound', async (req: Request, res: Response) => {
+  try {
+    if (req.params.type !== 'ERP_KAREVE_SYNC') {
+      return res.status(404).json({ error: 'Outbound is only available for ERP_KAREVE_SYNC' })
+    }
+
+    // Role gate: allow ADMIN / OPS_MANAGER. If no member resolved (e.g. local
+    // dev with no session), allow only when NODE_ENV !== 'production'.
+    const member = (req as any).member as { role?: string } | undefined
+    const role = member?.role
+    const privileged = role === 'ADMIN' || role === 'OPS_MANAGER'
+    const devUnauthenticated = !member && process.env.NODE_ENV !== 'production'
+    if (!privileged && !devUnauthenticated) {
+      return res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
+    }
+
+    const body = (req.body ?? {}) as { outbound?: Record<string, Partial<OutboundEntry>> }
+    const patch = body.outbound
+    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+      return res.status(400).json({ error: 'Body must include an outbound object' })
+    }
+
+    const validKeys = new Set(ERP_OUTBOUND_FEEDS.map((f) => f.key))
+    for (const key of Object.keys(patch)) {
+      if (!validKeys.has(key)) {
+        return res.status(400).json({ error: `Unknown outbound feed key: ${key}` })
+      }
+    }
+
+    const integration = await prisma.integration.findFirst({
+      where: { type: req.params.type as string },
+    })
+    if (!integration) return res.status(404).json({ error: 'Integration not found' })
+
+    const config = setOutboundOnConfig(integration.config, patch)
+    await prisma.integration.update({
+      where: { id: integration.id },
+      data: { config },
+    })
+
+    const updated = await prisma.integration.findUnique({ where: { id: integration.id } })
+    const { configured } = await getErpConfig(prisma)
+    res.json({
+      connected: updated?.status === 'CONNECTED',
+      configured,
+      feeds: await feedOutboundResponse(updated),
+    })
+  } catch (error) {
+    console.error('[integrations] PATCH /:type/outbound error:', error)
+    res.status(500).json({ error: 'Failed to update outbound config' })
+  }
+})
+
+// POST push — ADMIN / OPS_MANAGER only (with a dev escape hatch). Pushes the
+// enabled outbound feeds (or the explicitly-requested feeds) to the ERP and
+// records a SyncLog noting the OUTBOUND direction.
+integrationRoutes.post('/:type/push', async (req: Request, res: Response) => {
+  try {
+    if (req.params.type !== 'ERP_KAREVE_SYNC') {
+      return res.status(404).json({ error: 'Push is only available for ERP_KAREVE_SYNC' })
+    }
+
+    // Role gate: same as routing/outbound PATCH.
+    const member = (req as any).member as { role?: string } | undefined
+    const role = member?.role
+    const privileged = role === 'ADMIN' || role === 'OPS_MANAGER'
+    const devUnauthenticated = !member && process.env.NODE_ENV !== 'production'
+    if (!privileged && !devUnauthenticated) {
+      return res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
+    }
+
+    const body = (req.body ?? {}) as { feeds?: string[] }
+    let feedKeys: string[] | undefined
+    if (body.feeds !== undefined) {
+      if (
+        !Array.isArray(body.feeds) ||
+        !body.feeds.every((f) => typeof f === 'string')
+      ) {
+        return res.status(400).json({ error: 'feeds must be an array of feed keys' })
+      }
+      const validKeys = new Set(ERP_OUTBOUND_FEEDS.map((f) => f.key))
+      for (const key of body.feeds) {
+        if (!validKeys.has(key)) {
+          return res.status(400).json({ error: `Unknown outbound feed key: ${key}` })
+        }
+      }
+      feedKeys = body.feeds
+    }
+
+    const integration = await prisma.integration.findFirst({
+      where: { type: req.params.type as string },
+    })
+    if (!integration) return res.status(404).json({ error: 'Integration not found' })
+
+    const syncLog = await prisma.syncLog.create({
+      data: { integrationId: integration.id, status: 'RUNNING' },
+    })
+
+    try {
+      const result = await pushErp(prisma, feedKeys)
+
+      // A push is a DRY RUN when the ERP is not configured (no feed sent real
+      // data). Surface this so the UI can label it "dry run (ERP not connected)".
+      const anyFeed = Object.values(result.feeds)
+      const dryRun = anyFeed.length > 0 ? anyFeed.every((f) => f.dryRun) : true
+      const errors = anyFeed
+        .map((f) => f.error)
+        .filter((e): e is string => Boolean(e))
+
+      await prisma.syncLog.update({
+        where: { id: syncLog.id },
+        data: {
+          status: errors.length ? 'FAILED' : 'COMPLETE',
+          completedAt: new Date(),
+          recordsProcessed: result.pushed,
+          // Tag the direction + outcome so logs distinguish push from sync.
+          errors: {
+            direction: 'OUTBOUND',
+            dryRun,
+            feeds: feedKeys ?? 'all-enabled',
+            ...(errors.length ? { messages: errors } : {}),
+          },
+        },
+      })
+
+      return res.json({ success: true, syncLogId: syncLog.id, dryRun, ...result })
+    } catch (err) {
+      await prisma.syncLog.update({
+        where: { id: syncLog.id },
+        data: {
+          status: 'FAILED',
+          completedAt: new Date(),
+          errors: { direction: 'OUTBOUND', message: String(err) },
+        },
+      })
+      throw err
+    }
+  } catch (error) {
+    console.error('[integrations] POST /:type/push error:', error)
+    res.status(500).json({ error: 'Failed to push to ERP' })
   }
 })
 
