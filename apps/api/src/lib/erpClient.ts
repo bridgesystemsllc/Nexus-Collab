@@ -30,6 +30,40 @@ export interface ErpSku {
   source: 'ERP_KAREVE'
 }
 
+/** A raw component / part master record from the ERP. */
+export interface ErpComponent {
+  partNumber: string
+  name: string
+  description: string
+  type: string
+  vendor: string
+  unitCost?: number
+  status?: string
+  source: 'ERP_KAREVE'
+}
+
+/** A pricing / cost record from the ERP, keyed to a finished-good SKU. */
+export interface ErpPricing {
+  fgPartNumber: string
+  productName: string
+  brand: string
+  retailPrice: number
+  erpUnitCost: number
+  source: 'ERP_KAREVE'
+}
+
+/** A contract-manufacturer / vendor record from the ERP. */
+export interface ErpCm {
+  name: string
+  brands: string[]
+  status: string
+  avgLeadTime: string
+  onTime?: number
+  quality?: number
+  activePOs?: number
+  source: 'ERP_KAREVE'
+}
+
 export interface ErpConfig {
   apiUrl: string | null
   apiKey: string | null
@@ -194,4 +228,241 @@ export async function fetchErpSkus(prisma: PrismaClient): Promise<ErpSku[]> {
       lastError instanceof Error ? lastError.message : String(lastError)
     }`,
   )
+}
+
+// ─── Shared real-ERP fetch helper ───────────────────────────
+// Mirrors the fetchErpSkus request/auth/shape logic for the other feeds.
+// Tries each candidate path in order (an explicit routing `path` takes
+// precedence), sends both auth styles, and unwraps array / { data } /
+// { <resource> } response shapes. Throws if every candidate path fails.
+async function fetchErpRecords(
+  base: string,
+  apiKey: string,
+  paths: string[],
+  resourceKeys: string[],
+): Promise<Record<string, any>[]> {
+  let lastError: unknown = null
+  for (const path of paths) {
+    try {
+      const response = await fetch(`${base}${path}`, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'X-API-Key': apiKey,
+          Accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(10_000),
+      })
+      if (!response.ok) {
+        lastError = new Error(`ERP ${path} returned HTTP ${response.status}`)
+        continue
+      }
+      const body = (await response.json()) as unknown
+      if (Array.isArray(body)) return body as Record<string, any>[]
+      if (Array.isArray((body as any)?.data)) return (body as any).data as Record<string, any>[]
+      for (const key of resourceKeys) {
+        if (Array.isArray((body as any)?.[key])) return (body as any)[key] as Record<string, any>[]
+      }
+      return []
+    } catch (err) {
+      lastError = err
+    }
+  }
+  throw new Error(
+    `Failed to fetch ${resourceKeys[0]} from ERP at ${base}: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+  )
+}
+
+/**
+ * Build the ordered list of candidate paths to try: the routing-supplied
+ * `path` first (when present), then the per-resource defaults.
+ */
+function candidatePaths(path: string | undefined, ...defaults: string[]): string[] {
+  const trimmed = path?.trim()
+  return trimmed ? [trimmed, ...defaults.filter((d) => d !== trimmed)] : defaults
+}
+
+// ─── Components / Parts ─────────────────────────────────────
+interface SyntheticComponent {
+  partNumber: string
+  name: string
+  description: string
+  type: string
+  vendor: string
+  unitCost: number
+  status: string
+}
+
+const SYNTHETIC_ERP_COMPONENTS: SyntheticComponent[] = [
+  { partNumber: 'CD-101000', name: 'Glass Bottle w Dropper Set 2oz', description: 'Glass Bottle w Dropper Set; custom color-BestChinaSourcing', type: 'bottle', vendor: 'BestChinaSourcing', unitCost: 0.62, status: 'Approved' },
+  { partNumber: 'CD-101004', name: 'Tube 2oz-JansyPkg', description: 'Tube 2oz-JansyPkg', type: 'tube', vendor: 'Jansy Packaging', unitCost: 0.35, status: 'Approved' },
+  { partNumber: 'CD-101005', name: 'Unit carton-MillRockPkg', description: 'Unit carton-MillRockPkg', type: 'carton', vendor: 'Mill Rock Pkg', unitCost: 0.28, status: 'Approved' },
+  { partNumber: 'CD-101007', name: '8oz PET Cylinder #365649', description: '8oz PET Cylinder #365649 -Tricor', type: 'bottle', vendor: 'TricorBraun', unitCost: 0.58, status: 'Approved' },
+  { partNumber: 'CD-101008', name: '24/410 needle nose cap 2655C', description: '24/410 needle nose cap, custom color 2655C-BestChinaSourcing', type: 'cap', vendor: 'BestChinaSourcing', unitCost: 0.12, status: 'Quoted' },
+  { partNumber: 'CD-101011', name: '6oz PET Cylinder #365648', description: '6oz PET Cylinder #365648 -Tricor', type: 'bottle', vendor: 'TricorBraun', unitCost: 0.55, status: 'Approved' },
+  { partNumber: 'CD-101099', name: 'Scalp & Edge Treatment Mist Bottle 4oz', description: 'New NPD component — 4oz fine-mist sprayer bottle', type: 'bottle', vendor: 'TricorBraun', unitCost: 0.71, status: 'MOQ Pending' },
+]
+
+function syntheticComponents(): ErpComponent[] {
+  return SYNTHETIC_ERP_COMPONENTS.map((c) => ({
+    partNumber: c.partNumber,
+    name: c.name,
+    description: c.description,
+    type: c.type,
+    vendor: c.vendor,
+    unitCost: c.unitCost,
+    status: c.status,
+    source: 'ERP_KAREVE',
+  }))
+}
+
+function mapErpComponent(raw: Record<string, any>): ErpComponent {
+  const unitCostRaw = raw.unitCost ?? raw.unit_cost ?? raw.cost
+  return {
+    partNumber: String(raw.partNumber ?? raw.partNo ?? raw.part_number ?? raw.itemCode ?? raw.code ?? ''),
+    name: String(raw.name ?? raw.description ?? raw.partName ?? ''),
+    description: String(raw.description ?? raw.name ?? ''),
+    type: String(raw.type ?? raw.partType ?? raw.componentType ?? 'other'),
+    vendor: String(raw.vendor ?? raw.vendorName ?? raw.supplier ?? ''),
+    unitCost: unitCostRaw != null ? Number(unitCostRaw) || 0 : undefined,
+    status: raw.status != null ? String(raw.status) : undefined,
+    source: 'ERP_KAREVE',
+  }
+}
+
+/**
+ * Fetch component / part master data from the ERP. Returns the real feed when
+ * configured (trying `path` then `/components` then `/parts`), otherwise a
+ * labelled synthetic dev feed.
+ */
+export async function fetchErpComponents(
+  prisma: PrismaClient,
+  path?: string,
+): Promise<ErpComponent[]> {
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+  if (!configured || !apiUrl || !apiKey) return syntheticComponents()
+  const base = apiUrl.replace(/\/+$/, '')
+  const records = await fetchErpRecords(
+    base,
+    apiKey,
+    candidatePaths(path, '/components', '/parts'),
+    ['components', 'parts'],
+  )
+  return records.map(mapErpComponent).filter((r) => r.partNumber)
+}
+
+// ─── Pricing / Cost ─────────────────────────────────────────
+interface SyntheticPricing {
+  fgPartNumber: string
+  productName: string
+  brand: string
+  retailPrice: number
+  erpUnitCost: number
+}
+
+const SYNTHETIC_ERP_PRICING: SyntheticPricing[] = [
+  { fgPartNumber: 'K8120000', productName: "CD LK Balancing Serum 2oz", brand: "Carol's Daughter", retailPrice: 24.0, erpUnitCost: 4.85 },
+  { fgPartNumber: 'K8130000', productName: "CD LK Treatment Balm 2oz", brand: "Carol's Daughter", retailPrice: 22.0, erpUnitCost: 4.12 },
+  { fgPartNumber: 'K8140000', productName: "CD LK Detox Nectar 8oz", brand: "Carol's Daughter", retailPrice: 28.0, erpUnitCost: 5.63 },
+  { fgPartNumber: 'K8150000', productName: "CD LK Cleansing Oil 6oz", brand: "Carol's Daughter", retailPrice: 26.0, erpUnitCost: 5.21 },
+  { fgPartNumber: 'K8160000', productName: "CD Scalp & Edge Treatment Mist 4oz", brand: "Carol's Daughter", retailPrice: 25.0, erpUnitCost: 4.98 },
+]
+
+function syntheticPricing(): ErpPricing[] {
+  return SYNTHETIC_ERP_PRICING.map((p) => ({ ...p, source: 'ERP_KAREVE' }))
+}
+
+function mapErpPricing(raw: Record<string, any>): ErpPricing {
+  return {
+    fgPartNumber: String(raw.fgPartNumber ?? raw.sku ?? raw.itemCode ?? raw.code ?? raw.partNumber ?? ''),
+    productName: String(raw.productName ?? raw.name ?? raw.description ?? ''),
+    brand: String(raw.brand ?? raw.brandName ?? ''),
+    retailPrice: Number(raw.retailPrice ?? raw.price ?? raw.listPrice ?? raw.msrp ?? 0) || 0,
+    erpUnitCost: Number(raw.erpUnitCost ?? raw.unitCost ?? raw.cost ?? raw.standardCost ?? 0) || 0,
+    source: 'ERP_KAREVE',
+  }
+}
+
+/**
+ * Fetch pricing / cost data from the ERP. Returns the real feed when
+ * configured (trying `path` then `/pricing` then `/costs`), otherwise a
+ * labelled synthetic dev feed.
+ */
+export async function fetchErpPricing(
+  prisma: PrismaClient,
+  path?: string,
+): Promise<ErpPricing[]> {
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+  if (!configured || !apiUrl || !apiKey) return syntheticPricing()
+  const base = apiUrl.replace(/\/+$/, '')
+  const records = await fetchErpRecords(
+    base,
+    apiKey,
+    candidatePaths(path, '/pricing', '/costs'),
+    ['pricing', 'costs'],
+  )
+  return records.map(mapErpPricing).filter((r) => r.fgPartNumber)
+}
+
+// ─── Contract Manufacturers / Vendors ───────────────────────
+interface SyntheticCm {
+  name: string
+  brands: string[]
+  status: string
+  avgLeadTime: string
+  onTime: number
+  quality: number
+  activePOs: number
+}
+
+const SYNTHETIC_ERP_CMS: SyntheticCm[] = [
+  { name: 'Paklab', brands: ['Ambi', 'AcneFree'], status: 'active', avgLeadTime: '6-8 wks', onTime: 84, quality: 95, activePOs: 9 },
+  { name: 'ACT Labs', brands: ["Carol's Daughter"], status: 'active', avgLeadTime: '8-10 wks', onTime: 92, quality: 97, activePOs: 5 },
+  { name: 'TricorBraun', brands: ["Carol's Daughter", 'Ambi'], status: 'attention', avgLeadTime: '4-6 wks', onTime: 77, quality: 89, activePOs: 3 },
+  { name: 'Jansy', brands: ["Carol's Daughter"], status: 'active', avgLeadTime: '3-5 wks', onTime: 96, quality: 96, activePOs: 2 },
+]
+
+function syntheticCms(): ErpCm[] {
+  return SYNTHETIC_ERP_CMS.map((c) => ({ ...c, brands: [...c.brands], source: 'ERP_KAREVE' }))
+}
+
+function mapErpCm(raw: Record<string, any>): ErpCm {
+  const brandsRaw = raw.brands ?? raw.brandList
+  const brands = Array.isArray(brandsRaw)
+    ? brandsRaw.map((b) => String(b))
+    : typeof brandsRaw === 'string'
+      ? brandsRaw.split(',').map((b) => b.trim()).filter(Boolean)
+      : []
+  const onTime = raw.onTime ?? raw.onTimePct ?? raw.on_time
+  const quality = raw.quality ?? raw.qualityScore
+  const activePOs = raw.activePOs ?? raw.openPOs ?? raw.poCount
+  return {
+    name: String(raw.name ?? raw.vendorName ?? raw.cmName ?? ''),
+    brands,
+    status: String(raw.status ?? 'active'),
+    avgLeadTime: String(raw.avgLeadTime ?? raw.leadTime ?? raw.lead_time ?? ''),
+    onTime: onTime != null ? Number(onTime) || 0 : undefined,
+    quality: quality != null ? Number(quality) || 0 : undefined,
+    activePOs: activePOs != null ? Number(activePOs) || 0 : undefined,
+    source: 'ERP_KAREVE',
+  }
+}
+
+/**
+ * Fetch contract-manufacturer / vendor data from the ERP. Returns the real
+ * feed when configured (trying `path` then `/vendors` then `/cms`), otherwise
+ * a labelled synthetic dev feed.
+ */
+export async function fetchErpCms(prisma: PrismaClient, path?: string): Promise<ErpCm[]> {
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+  if (!configured || !apiUrl || !apiKey) return syntheticCms()
+  const base = apiUrl.replace(/\/+$/, '')
+  const records = await fetchErpRecords(
+    base,
+    apiKey,
+    candidatePaths(path, '/vendors', '/cms'),
+    ['vendors', 'cms'],
+  )
+  return records.map(mapErpCm).filter((r) => r.name)
 }

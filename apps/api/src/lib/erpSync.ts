@@ -1,5 +1,10 @@
 import type { PrismaClient } from '@prisma/client'
-import { fetchErpSkus } from './erpClient'
+import {
+  fetchErpSkus,
+  fetchErpComponents,
+  fetchErpPricing,
+  fetchErpCms,
+} from './erpClient'
 import { ERP_FEEDS, getRouting, resolveTargetModule } from './erpRouting'
 
 // Simulated ERP master inventory feed for Kareve Beauty Group.
@@ -126,10 +131,19 @@ export async function syncErpInventory(
 // the routing catalog but have no sync yet — syncErp leaves them inert.
 const FEED_SYNCS: Record<
   string,
-  (prisma: PrismaClient, targetModuleId: string) => Promise<ErpSyncResult>
+  (
+    prisma: PrismaClient,
+    targetModuleId: string,
+    erpPath?: string | null,
+  ) => Promise<ErpSyncResult>
 > = {
   skus: (prisma, moduleId) => syncErpSkuPipeline(prisma, moduleId),
   inventory: (prisma, moduleId) => syncErpInventory(prisma, moduleId),
+  components: (prisma, moduleId, erpPath) =>
+    syncErpComponents(prisma, moduleId, erpPath ?? undefined),
+  pricing: (prisma, moduleId, erpPath) =>
+    syncErpPricing(prisma, moduleId, erpPath ?? undefined),
+  cm: (prisma, moduleId, erpPath) => syncErpCm(prisma, moduleId, erpPath ?? undefined),
 }
 
 export interface ErpSyncOrchestratorResult {
@@ -168,7 +182,6 @@ export async function syncErp(prisma: PrismaClient): Promise<ErpSyncOrchestrator
     const syncFn = FEED_SYNCS[feed.key]
     if (!syncFn) {
       // Wired in routing but no sync implemented yet — leave inert.
-      // TODO: implement components / pricing / cm syncs.
       feeds[feed.key] = inert
       continue
     }
@@ -180,7 +193,7 @@ export async function syncErp(prisma: PrismaClient): Promise<ErpSyncOrchestrator
       continue
     }
 
-    const result = await syncFn(prisma, targetModule.id)
+    const result = await syncFn(prisma, targetModule.id, entry.erpPath)
     feeds[feed.key] = result
     recordsProcessed += result.recordsProcessed
   }
@@ -271,6 +284,242 @@ export async function syncErpSkuPipeline(
       await prisma.moduleItem.create({
         data: { moduleId: skuModule.id, data, status: rec.status },
       })
+      created++
+    }
+  }
+
+  return { recordsProcessed: created + updated, created, updated }
+}
+
+/**
+ * Pull the ERP component / part master feed and upsert it into a COMPONENTS
+ * module. Matches existing items by data.partNumber, MERGES the ERP master
+ * fields (partNumber/name/description/type/vendor/status + a targetCostPerUnit
+ * derived from ERP unitCost) while PRESERVING locally-managed fields
+ * (moqTiers, vendors). New parts are created with empty moqTiers + a primary
+ * vendor entry. Sets source:'ERP_KAREVE' + lastSyncedAt and mirrors status.
+ */
+export async function syncErpComponents(
+  prisma: PrismaClient,
+  targetModuleId?: string,
+  erpPath?: string,
+): Promise<ErpSyncResult> {
+  const mod = targetModuleId
+    ? await prisma.departmentModule.findUnique({ where: { id: targetModuleId } })
+    : await prisma.departmentModule.findFirst({ where: { type: 'COMPONENTS' } })
+  if (!mod) {
+    return { recordsProcessed: 0, created: 0, updated: 0 }
+  }
+
+  const existing = await prisma.moduleItem.findMany({ where: { moduleId: mod.id } })
+  const byPart = new Map<string, (typeof existing)[number]>()
+  for (const item of existing) {
+    const pn = (item.data as any)?.partNumber
+    if (pn) byPart.set(pn, item)
+  }
+
+  const components = await fetchErpComponents(prisma, erpPath)
+  const now = new Date().toISOString()
+
+  let created = 0
+  let updated = 0
+
+  for (const rec of components) {
+    const status = rec.status ?? 'Approved'
+    // ERP-supplied master fields applied on every sync.
+    const erpFields = {
+      partNumber: rec.partNumber,
+      name: rec.name,
+      description: rec.description,
+      type: rec.type,
+      vendor: rec.vendor,
+      status,
+      source: 'ERP_KAREVE' as const,
+      lastSyncedAt: now,
+    }
+
+    const match = byPart.get(rec.partNumber)
+    if (match) {
+      const prev = (match.data as any) || {}
+      // Preserve locally-managed sourcing data (moqTiers, vendors); ERP only
+      // supplies the part master + an optional cost reference.
+      const data = {
+        ...prev,
+        ...erpFields,
+        targetCostPerUnit: rec.unitCost ?? prev.targetCostPerUnit ?? null,
+        moqTiers: prev.moqTiers ?? [],
+        vendors: prev.vendors ?? [{ vendorName: rec.vendor, vendorStatus: 'Primary' }],
+      }
+      await prisma.moduleItem.update({ where: { id: match.id }, data: { data, status } })
+      updated++
+    } else {
+      const data = {
+        ...erpFields,
+        targetCostPerUnit: rec.unitCost ?? null,
+        moqTiers: [],
+        vendors: [{ vendorName: rec.vendor, vendorStatus: 'Primary' }],
+      }
+      await prisma.moduleItem.create({ data: { moduleId: mod.id, data, status } })
+      created++
+    }
+  }
+
+  return { recordsProcessed: created + updated, created, updated }
+}
+
+/**
+ * Pull the ERP pricing / cost feed and upsert it into a FINANCE_COSTING module.
+ * Matches existing items by data.fgPartNumber. The ERP OWNS retailPrice +
+ * a cost reference (erpUnitCost) + productName/brand; everything else is
+ * FINANCE-OWNED and PRESERVED on update (labelCost, freightPerUnit,
+ * overheadPerUnit, targetMarginPct, cogsOverride, notes). New rows get sane
+ * finance defaults. Sets source:'ERP_KAREVE' + lastSyncedAt.
+ */
+export async function syncErpPricing(
+  prisma: PrismaClient,
+  targetModuleId?: string,
+  erpPath?: string,
+): Promise<ErpSyncResult> {
+  const mod = targetModuleId
+    ? await prisma.departmentModule.findUnique({ where: { id: targetModuleId } })
+    : await prisma.departmentModule.findFirst({ where: { type: 'FINANCE_COSTING' } })
+  if (!mod) {
+    return { recordsProcessed: 0, created: 0, updated: 0 }
+  }
+
+  const existing = await prisma.moduleItem.findMany({ where: { moduleId: mod.id } })
+  const byFg = new Map<string, (typeof existing)[number]>()
+  for (const item of existing) {
+    const fg = (item.data as any)?.fgPartNumber
+    if (fg) byFg.set(fg, item)
+  }
+
+  const pricing = await fetchErpPricing(prisma, erpPath)
+  const now = new Date().toISOString()
+
+  let created = 0
+  let updated = 0
+
+  for (const rec of pricing) {
+    // ERP-owned fields, applied on every sync.
+    const erpFields = {
+      fgPartNumber: rec.fgPartNumber,
+      productName: rec.productName,
+      brand: rec.brand,
+      retailPrice: rec.retailPrice,
+      erpUnitCost: rec.erpUnitCost,
+      source: 'ERP_KAREVE' as const,
+      lastSyncedAt: now,
+    }
+
+    const match = byFg.get(rec.fgPartNumber)
+    if (match) {
+      const prev = (match.data as any) || {}
+      // Spread prev FIRST so ERP-owned fields overwrite, then explicitly carry
+      // the finance-owned fields back over to guarantee preservation.
+      const data = {
+        ...prev,
+        ...erpFields,
+        labelCost: prev.labelCost,
+        freightPerUnit: prev.freightPerUnit,
+        overheadPerUnit: prev.overheadPerUnit,
+        targetMarginPct: prev.targetMarginPct,
+        cogsOverride: prev.cogsOverride,
+        notes: prev.notes,
+      }
+      await prisma.moduleItem.update({
+        where: { id: match.id },
+        data: { data, status: match.status },
+      })
+      updated++
+    } else {
+      const data = {
+        ...erpFields,
+        labelCost: 0,
+        freightPerUnit: 0,
+        overheadPerUnit: 0,
+        targetMarginPct: null,
+        cogsOverride: null,
+        notes: '',
+      }
+      await prisma.moduleItem.create({ data: { moduleId: mod.id, data, status: 'Active' } })
+      created++
+    }
+  }
+
+  return { recordsProcessed: created + updated, created, updated }
+}
+
+/**
+ * Pull the ERP contract-manufacturer / vendor feed and upsert it into a
+ * CM_PRODUCTIVITY module. Matches existing items by data.name, MERGES the ERP
+ * fields (name/brands/status/avgLeadTime + onTime/quality/activePOs metrics)
+ * while PRESERVING locally-managed fields (issues, contacts, products, notes).
+ * Sets source:'ERP_KAREVE' + lastSyncedAt and mirrors status.
+ */
+export async function syncErpCm(
+  prisma: PrismaClient,
+  targetModuleId?: string,
+  erpPath?: string,
+): Promise<ErpSyncResult> {
+  const mod = targetModuleId
+    ? await prisma.departmentModule.findUnique({ where: { id: targetModuleId } })
+    : await prisma.departmentModule.findFirst({ where: { type: 'CM_PRODUCTIVITY' } })
+  if (!mod) {
+    return { recordsProcessed: 0, created: 0, updated: 0 }
+  }
+
+  const existing = await prisma.moduleItem.findMany({ where: { moduleId: mod.id } })
+  const byName = new Map<string, (typeof existing)[number]>()
+  for (const item of existing) {
+    const name = (item.data as any)?.name
+    if (name) byName.set(name, item)
+  }
+
+  const cms = await fetchErpCms(prisma, erpPath)
+  const now = new Date().toISOString()
+
+  let created = 0
+  let updated = 0
+
+  for (const rec of cms) {
+    const status = rec.status || 'active'
+    // ERP-supplied fields applied on every sync.
+    const erpFields = {
+      name: rec.name,
+      brands: rec.brands,
+      status,
+      avgLeadTime: rec.avgLeadTime,
+      onTime: rec.onTime,
+      quality: rec.quality,
+      activePOs: rec.activePOs,
+      source: 'ERP_KAREVE' as const,
+      lastSyncedAt: now,
+    }
+
+    const match = byName.get(rec.name)
+    if (match) {
+      const prev = (match.data as any) || {}
+      // Preserve locally-managed CM detail; ERP supplies the scorecard fields.
+      const data = {
+        ...prev,
+        ...erpFields,
+        onTime: rec.onTime ?? prev.onTime,
+        quality: rec.quality ?? prev.quality,
+        activePOs: rec.activePOs ?? prev.activePOs,
+        openIssues: prev.openIssues ?? 0,
+      }
+      await prisma.moduleItem.update({ where: { id: match.id }, data: { data, status } })
+      updated++
+    } else {
+      const data = {
+        ...erpFields,
+        onTime: rec.onTime ?? 0,
+        quality: rec.quality ?? 0,
+        activePOs: rec.activePOs ?? 0,
+        openIssues: 0,
+      }
+      await prisma.moduleItem.create({ data: { moduleId: mod.id, data, status } })
       created++
     }
   }
