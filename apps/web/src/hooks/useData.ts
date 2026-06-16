@@ -335,14 +335,14 @@ export interface ErpPushFeedResult {
   count: number
   configured: boolean
   dryRun: boolean
-  sent: boolean
+  sent: number
   sample?: unknown
   error?: string
 }
 
 export interface ErpPushResponse {
   feeds: Record<string, ErpPushFeedResult>
-  pushed: boolean
+  pushed: number
 }
 
 const ERP_OUTBOUND_KEY = ['integration-outbound', 'ERP_KAREVE_SYNC'] as const
