@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -280,6 +280,17 @@ function SyncFromErpButton({ departmentId }: { departmentId: string | null }) {
 function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
   const openForm = useAppStore((s) => s.openForm)
   const [view, setView] = useState<ViewMode>('table')
+  const PAGE_SIZE = 50
+  const [page, setPage] = useState(1)
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages)
+  const pageItems = items.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+
+  // Hard-clamp page state when the dataset shrinks (e.g. after a re-sync) so the
+  // stored page never lags behind the rendered (clamped) page.
+  useEffect(() => {
+    setPage((p) => Math.min(Math.max(1, p), totalPages))
+  }, [totalPages])
 
   const openCreate = () =>
     openForm({ formType: 'opsSku', mode: 'create', context: { moduleId, departmentId } })
@@ -318,7 +329,7 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
               </tr>
             </thead>
             <tbody>
-              {items.map((item: any) => {
+              {pageItems.map((item: any) => {
                 const d = item.data
                 return (
                   <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
@@ -339,7 +350,7 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {items.map((item: any) => {
+          {pageItems.map((item: any) => {
             const d = item.data
             return (
               <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
@@ -375,6 +386,35 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {items.length > PAGE_SIZE && (
+        <div className="flex items-center justify-between pt-2 text-sm text-[var(--text-secondary)]">
+          <span>
+            Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, items.length)} of {items.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              className="px-3 py-1.5 rounded-lg border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <span className="px-1">
+              Page {safePage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+              className="px-3 py-1.5 rounded-lg border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -240,11 +240,47 @@ export async function fetchErpSkus(prisma: PrismaClient): Promise<ErpSku[]> {
     ['/products', '/inventory', '/skus'],
     ['products', 'inventory', 'skus'],
   )
-  const mapped = records.map(mapErpRecord).filter((r) => r.sku)
+  // The SKU pipeline mirrors the ERP's ACTIVE catalog only — drop records the
+  // ERP flags inactive/discontinued (isActive === false or a matching status).
+  const active = records.filter((r) => {
+    if (r.isActive === false) return false
+    const status = String(r.status ?? '').toLowerCase()
+    return status !== 'inactive' && status !== 'discontinued'
+  })
+  const mapped = active.map(mapErpRecord).filter((r) => r.sku)
   if (mapped.length === 0) {
     throw new Error('ERP returned no usable SKU records')
   }
   return mapped
+}
+
+// Page size requested per ERP page. The KarEve ERP caps page size at 100, so
+// asking for more still returns 100; we then walk the remaining pages.
+const ERP_PAGE_LIMIT = 100
+// Hard ceiling on pages walked, so a misreported `total` can never loop forever.
+const ERP_MAX_PAGES = 1000
+
+/** Pull the record array out of the various envelope shapes ERPs use. */
+function extractRecords(body: unknown, resourceKeys: string[]): Record<string, any>[] | null {
+  if (Array.isArray(body)) return body as Record<string, any>[]
+  if (Array.isArray((body as any)?.data)) return (body as any).data as Record<string, any>[]
+  for (const key of resourceKeys) {
+    if (Array.isArray((body as any)?.[key])) return (body as any)[key] as Record<string, any>[]
+  }
+  return null
+}
+
+/** Read the advertised total record count from a paginated envelope, if any. */
+function extractTotal(body: unknown): number | null {
+  const meta = (body as any)?.meta ?? body
+  const total = Number(meta?.total ?? meta?.totalCount ?? meta?.count)
+  return Number.isFinite(total) && total > 0 ? total : null
+}
+
+/** Append `page`/`limit` query params, respecting any existing query string. */
+function withPage(url: string, page: number, limit: number): string {
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}page=${page}&limit=${limit}`
 }
 
 // ─── Shared real-ERP fetch helper ───────────────────────────
@@ -252,7 +288,9 @@ export async function fetchErpSkus(prisma: PrismaClient): Promise<ErpSku[]> {
 // each candidate path in order (an explicit routing `path` takes precedence),
 // sends both auth styles, rejects HTML/non-JSON responses (an SPA index.html
 // returned for unknown routes), and unwraps array / { data } / { <resource> }
-// shapes. Throws if every candidate fails.
+// shapes. Once a working endpoint is found it walks ALL pages (using the
+// `meta.total` advertised by the ERP) so the full catalog is returned, not just
+// the first page. Throws if every candidate fails.
 async function fetchErpRecords(
   apiUrl: string,
   apiKey: string,
@@ -260,34 +298,69 @@ async function fetchErpRecords(
   resourceKeys: string[],
 ): Promise<Record<string, any>[]> {
   let lastError: unknown = null
+  // Send both auth styles so either ERP auth scheme works.
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'X-API-Key': apiKey,
+    Accept: 'application/json',
+  }
   for (const base of erpBaseCandidates(apiUrl)) {
     for (const path of paths) {
       try {
-        const response = await fetch(`${base}${path}`, {
-          // Send both auth styles so either ERP auth scheme works.
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'X-API-Key': apiKey,
-            Accept: 'application/json',
-          },
+        const url = `${base}${path}`
+        const response = await fetch(withPage(url, 1, ERP_PAGE_LIMIT), {
+          headers,
           signal: AbortSignal.timeout(10_000),
         })
         if (!response.ok) {
-          lastError = new Error(`ERP ${base}${path} returned HTTP ${response.status}`)
+          lastError = new Error(`ERP ${url} returned HTTP ${response.status}`)
           continue
         }
         const raw = await response.text()
         if (!looksLikeJson(response.headers.get('content-type'), raw)) {
-          lastError = new Error(`ERP ${base}${path} returned a non-JSON response`)
+          lastError = new Error(`ERP ${url} returned a non-JSON response`)
           continue
         }
         const body = JSON.parse(raw) as unknown
-        if (Array.isArray(body)) return body as Record<string, any>[]
-        if (Array.isArray((body as any)?.data)) return (body as any).data as Record<string, any>[]
-        for (const key of resourceKeys) {
-          if (Array.isArray((body as any)?.[key])) return (body as any)[key] as Record<string, any>[]
+        const firstRecords = extractRecords(body, resourceKeys)
+        if (firstRecords == null) {
+          lastError = new Error(`ERP ${url} returned an unrecognized JSON shape`)
+          continue
         }
-        return []
+
+        // Working endpoint found. Walk remaining pages if the ERP advertises a
+        // larger total than this page returned.
+        const all = [...firstRecords]
+        const total = extractTotal(body)
+        const perPage = firstRecords.length
+        if (total != null && perPage > 0 && total > perPage) {
+          const pages = Math.min(Math.ceil(total / perPage), ERP_MAX_PAGES)
+          for (let page = 2; page <= pages; page++) {
+            const resp = await fetch(withPage(url, page, perPage), {
+              headers,
+              signal: AbortSignal.timeout(10_000),
+            })
+            // A mid-pagination transport failure must THROW, not break: page 1
+            // already proved this endpoint works, so a later HTTP/non-JSON error
+            // is a real fault. Returning here would silently persist a partial
+            // catalog over real data. The throw propagates to syncErp's per-feed
+            // try/catch, which isolates + logs the feed and leaves prior data.
+            if (!resp.ok) {
+              throw new Error(`ERP ${url} page ${page} returned HTTP ${resp.status}`)
+            }
+            const text = await resp.text()
+            if (!looksLikeJson(resp.headers.get('content-type'), text)) {
+              throw new Error(`ERP ${url} page ${page} returned a non-JSON response`)
+            }
+            const pageRecords = extractRecords(JSON.parse(text), resourceKeys)
+            // An empty/exhausted page is a legitimate end (e.g. a stale `total`),
+            // so stop without error.
+            if (!pageRecords || pageRecords.length === 0) break
+            all.push(...pageRecords)
+            if (all.length >= total) break
+          }
+        }
+        return all
       } catch (err) {
         lastError = err
       }

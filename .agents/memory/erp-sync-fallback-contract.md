@@ -20,6 +20,21 @@ thrown feed is isolated + logged, the feed writes nothing, the integration stays
 CONNECTED, and the overall sync still completes. Keep new feed fetchers to the
 same shape: `if (!configured) return synthetic(); ...throw on failure`.
 
+# ERP returns one page at a time — walk all pages
+
+The KarEve ERP wraps lists as `{ success, data, meta:{ page, limit, total } }`
+and **caps page size at 100** (asking for more still returns 100). A single
+request therefore returns only the first slice. The shared fetch helper must
+walk pages via `?page=N&limit=N` using `meta.total` to know when to stop.
+
+**Why:** a one-shot fetch silently truncated the catalog (got ~25–33 of 457).
+**How to apply:** keep an upper page-count guard so a bad `total` can't loop
+forever; an empty page = legitimate end (break), but a mid-pagination HTTP /
+non-JSON error after page 1 succeeded must THROW (don't persist a partial
+catalog over real data). The SKU pipeline ingests ACTIVE products only
+(`isActive !== false` and status not inactive/discontinued); inventory ingests
+all products.
+
 # ERP base URL + JSON guard
 
 Users paste just the host (no `/api/v1`). `erpBaseCandidates(apiUrl)` tries the
