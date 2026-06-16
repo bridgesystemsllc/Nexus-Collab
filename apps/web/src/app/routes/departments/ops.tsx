@@ -9,6 +9,7 @@ import {
   DollarSign,
   Factory,
   Loader2,
+  Mail,
   Package,
   Pencil,
   Plus,
@@ -23,6 +24,7 @@ import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowork'
 import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
+import { ProductionEmailModal } from '@/components/ops/production/ProductionEmailModal'
 import { ComponentsTab } from '@/components/ops/ComponentsTab'
 import { BOMTab } from '@/components/ops/BOMTab'
 import { brandLabel } from '@/components/ops/brandLabel'
@@ -482,6 +484,7 @@ function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
   const [view, setView] = useState<ViewMode>('table')
   const [brandFilter, setBrandFilter] = useState('All')
   const [search, setSearch] = useState('')
+  const [emailItem, setEmailItem] = useState<any>(null)
 
   const openCreate = () =>
     openForm({ formType: 'opsProduction', mode: 'create', context: { moduleId, departmentId } })
@@ -615,7 +618,18 @@ function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
                     <td><span className="badge" style={{ background: `${statusColor(d.status)}20`, color: statusColor(d.status) }}>{d.status}</span></td>
                     <td className="tabular-nums text-[var(--text-secondary)]">{d.progress}%</td>
                     <td className="text-[var(--text-tertiary)]">{d.eta}</td>
-                    <td><div className="flex justify-end"><RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} /></div></td>
+                    <td>
+                      <div className="flex justify-end items-center gap-1">
+                        <button
+                          title="Create production update email"
+                          onClick={(e) => { e.stopPropagation(); setEmailItem(item) }}
+                          className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
+                        >
+                          <Mail size={15} />
+                        </button>
+                        <RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} />
+                      </div>
+                    </td>
                   </tr>
                 )
               })}
@@ -641,7 +655,16 @@ function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
                       <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
                         <div className="flex items-center justify-between">
                           <span className="badge" style={{ background: `${color}20`, color }}>{d.status}</span>
-                          <RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} />
+                          <div className="flex items-center gap-1">
+                            <button
+                              title="Create production update email"
+                              onClick={(e) => { e.stopPropagation(); setEmailItem(item) }}
+                              className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
+                            >
+                              <Mail size={15} />
+                            </button>
+                            <RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} />
+                          </div>
                         </div>
                         <h3 className="font-medium text-sm text-[var(--text-primary)]">{d.product}</h3>
                         <div className="grid grid-cols-2 gap-2 text-xs text-[var(--text-secondary)]">
@@ -671,6 +694,8 @@ function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
           })}
         </div>
       )}
+
+      <ProductionEmailModal item={emailItem} open={!!emailItem} onClose={() => setEmailItem(null)} />
     </div>
   )
 }
