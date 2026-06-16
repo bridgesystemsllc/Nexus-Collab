@@ -19,8 +19,10 @@ import {
   Check,
   Flame,
   ArrowUpDown,
+  Mail,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { ProductionEmailModal } from './ProductionEmailModal'
 import {
   STATUS_COLORS,
   ALL_STATUSES,
@@ -336,11 +338,13 @@ function ProductionCard({
   onNotes,
   onCowork,
   onEdit,
+  onEmail,
 }: {
   item: any
   onNotes: () => void
   onCowork: () => void
   onEdit: () => void
+  onEmail: () => void
 }) {
   const d: ProductionOrder = item.data || {}
   const color = STATUS_COLORS[d.status] || 'var(--text-tertiary)'
@@ -448,6 +452,14 @@ function ProductionCard({
           Notes{d.notes?.length ? ` (${d.notes.length})` : ''}
         </button>
         <button
+          onClick={(e) => { e.stopPropagation(); onEmail() }}
+          className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
+          title="Create Production Update Email"
+        >
+          <Mail size={11} />
+          Email
+        </button>
+        <button
           onClick={(e) => { e.stopPropagation(); onEdit() }}
           className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors ml-auto"
         >
@@ -466,11 +478,13 @@ function BoardView({
   onNotes,
   onCowork,
   onEdit,
+  onEmail,
 }: {
   items: any[]
   onNotes: (item: any) => void
   onCowork: (item: any) => void
   onEdit: (item: any) => void
+  onEmail: (item: any) => void
 }) {
   const groups = useMemo(() => groupByCM(items as any) as Record<string, any[]>, [items])
   const sortedCMs = Object.keys(groups).sort()
@@ -511,6 +525,7 @@ function BoardView({
                   onNotes={() => onNotes(item)}
                   onCowork={() => onCowork(item)}
                   onEdit={() => onEdit(item)}
+                  onEmail={() => onEmail(item)}
                 />
               ))}
             </div>
@@ -699,12 +714,14 @@ function NotesDrawer({
   moduleId,
   onClose,
   onRefresh,
+  onEmail,
 }: {
   open: boolean
   item: any | null
   moduleId: string | null
   onClose: () => void
   onRefresh: () => void
+  onEmail: (item: any) => void
 }) {
   const [newNote, setNewNote] = useState('')
   const [saving, setSaving] = useState(false)
@@ -757,12 +774,23 @@ function NotesDrawer({
               {d.salesOrder} &mdash; {d.description}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors flex-shrink-0"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={() => item && onEmail(item)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white transition-all hover:opacity-90"
+              style={{ background: 'var(--accent)' }}
+              title="Create Production Update Email"
+            >
+              <Mail size={13} />
+              Update Email
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Notes Timeline */}
@@ -1447,6 +1475,7 @@ export function ProductionModule({ items, moduleId, onRefresh }: ProductionModul
   const [coworkItem, setCoworkItem] = useState<any | null>(null)
   const [editItem, setEditItem] = useState<any | null>(null)
   const [showNewOrder, setShowNewOrder] = useState(false)
+  const [emailItem, setEmailItem] = useState<any | null>(null)
 
   // Apply filters
   const filtered = useMemo(() => {
@@ -1494,6 +1523,7 @@ export function ProductionModule({ items, moduleId, onRefresh }: ProductionModul
     setEditItem(item)
     setShowNewOrder(true)
   }, [])
+  const handleOpenEmail = useCallback((item: any) => setEmailItem(item), [])
 
   return (
     <div className="space-y-6">
@@ -1527,6 +1557,7 @@ export function ProductionModule({ items, moduleId, onRefresh }: ProductionModul
             onNotes={handleOpenNotes}
             onCowork={handleOpenCowork}
             onEdit={handleOpenEdit}
+            onEmail={handleOpenEmail}
           />
         ) : (
           <TableView
@@ -1545,6 +1576,7 @@ export function ProductionModule({ items, moduleId, onRefresh }: ProductionModul
         moduleId={moduleId}
         onClose={() => setNotesItem(null)}
         onRefresh={onRefresh}
+        onEmail={handleOpenEmail}
       />
 
       {/* CoWork Modal */}
@@ -1566,6 +1598,13 @@ export function ProductionModule({ items, moduleId, onRefresh }: ProductionModul
           setEditItem(null)
         }}
         onRefresh={onRefresh}
+      />
+
+      {/* Production Update Email Modal */}
+      <ProductionEmailModal
+        open={!!emailItem}
+        item={emailItem}
+        onClose={() => setEmailItem(null)}
       />
     </div>
   )
