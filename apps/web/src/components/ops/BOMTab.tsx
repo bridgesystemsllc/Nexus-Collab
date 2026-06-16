@@ -9,6 +9,7 @@ import { api } from '@/lib/api'
 import { bomFromItem, type Bom } from './bom/bomTypes'
 import { BOMPreview, BOMPrintStyles } from './bom/BOMPreview'
 import { exportBomsXlsx } from './bom/bomExcel'
+import { PushToErpButton } from '@/components/shared/PushToErpButton'
 
 interface BOMTabProps {
   items: any[]
@@ -156,6 +157,7 @@ export function BOMTab({ items, moduleId, departmentId, onRefresh, components, s
               <FileSpreadsheet size={14} /> Export Selected ({selected.size})
             </button>
           )}
+          <PushToErpButton feedKey="boms" label="BOMs" />
           <button onClick={openCreate} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
             <Plus size={15} /> New BOM
           </button>

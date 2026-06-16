@@ -6,6 +6,7 @@ import { ComponentDetail } from '@/components/rd/components/ComponentDetail'
 import { COMPONENT_TYPE_COLORS, FEASIBILITY_STATUS_COLORS, getWorstCompatibility, getBestUnitCost, type Component as RDComponent } from '@/components/rd/components/componentData'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
+import { PushToErpButton } from '@/components/shared/PushToErpButton'
 
 // Legacy feasibility statuses not present in FEASIBILITY_STATUS_COLORS.
 const LEGACY_STATUS_COLORS: Record<string, string> = {
@@ -155,9 +156,12 @@ export function ComponentsTab({
     <div>
       <div className="flex items-center justify-between mb-4">
         <ViewToggle value={view} onChange={setView} />
-        <button onClick={() => openComponentForm('create')} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
-          <Plus size={15} /> New Component
-        </button>
+        <div className="flex items-center gap-2">
+          <PushToErpButton feedKey="components" label="Components" />
+          <button onClick={() => openComponentForm('create')} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
+            <Plus size={15} /> New Component
+          </button>
+        </div>
       </div>
 
       {components.length === 0 ? (

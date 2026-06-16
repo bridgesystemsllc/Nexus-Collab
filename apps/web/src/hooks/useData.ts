@@ -306,6 +306,79 @@ export function useUpdateErpRouting() {
   })
 }
 
+// ─── ERP Outbound Push (Nexus → ERP) ────────────────────────
+// GET returns which Nexus feeds may push TO the ERP. PATCH updates a partial
+// outbound config; POST triggers a push. All mutations are admin / OPS_MANAGER
+// only (a 403 surfaces in the UI). When the ERP is not connected, a push
+// returns dryRun:true results describing what WOULD be sent.
+export interface ErpOutboundFeed {
+  key: string
+  label: string
+  description: string
+  enabled: boolean
+  erpPath: string | null
+  itemCount: number
+}
+
+export interface ErpOutboundResponse {
+  connected: boolean
+  configured: boolean
+  feeds: ErpOutboundFeed[]
+}
+
+export type ErpOutboundPatch = Record<string, {
+  enabled?: boolean
+  erpPath?: string | null
+}>
+
+export interface ErpPushFeedResult {
+  count: number
+  configured: boolean
+  dryRun: boolean
+  sent: number
+  sample?: unknown
+  error?: string
+}
+
+export interface ErpPushResponse {
+  feeds: Record<string, ErpPushFeedResult>
+  pushed: number
+}
+
+const ERP_OUTBOUND_KEY = ['integration-outbound', 'ERP_KAREVE_SYNC'] as const
+
+export function useErpOutbound(enabled = true) {
+  return useQuery<ErpOutboundResponse>({
+    queryKey: ERP_OUTBOUND_KEY,
+    queryFn: () => api.get('/integrations/ERP_KAREVE_SYNC/outbound').then(r => r.data),
+    enabled,
+    retry: false,
+  })
+}
+
+export function useUpdateErpOutbound() {
+  const qc = useQueryClient()
+  return useMutation<{ feeds: ErpOutboundFeed[] }, any, ErpOutboundPatch>({
+    mutationFn: (outbound: ErpOutboundPatch) =>
+      api.patch('/integrations/ERP_KAREVE_SYNC/outbound', { outbound }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ERP_OUTBOUND_KEY })
+      qc.invalidateQueries({ queryKey: ['integrations'] })
+    },
+  })
+}
+
+export function usePushToErp() {
+  const qc = useQueryClient()
+  return useMutation<ErpPushResponse, any, { feeds?: string[] } | void>({
+    mutationFn: (vars) =>
+      api.post('/integrations/ERP_KAREVE_SYNC/push', { feeds: vars?.feeds }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ERP_OUTBOUND_KEY })
+    },
+  })
+}
+
 // ─── AI ─────────────────────────────────────────────────────
 export function useAIBriefing() {
   return useQuery({ queryKey: ['ai-briefing'], queryFn: () => api.get('/ai/briefing').then(r => r.data) })
