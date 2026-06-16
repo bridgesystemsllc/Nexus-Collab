@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -25,6 +25,7 @@ import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowork'
 import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
 import { ProductionEmailModal } from '@/components/ops/production/ProductionEmailModal'
+import { ProductionOrderDrawer } from '@/components/ops/production/ProductionOrderDrawer'
 import { ComponentsTab } from '@/components/ops/ComponentsTab'
 import { BOMTab } from '@/components/ops/BOMTab'
 import { brandLabel } from '@/components/ops/brandLabel'
@@ -280,17 +281,10 @@ function SyncFromErpButton({ departmentId }: { departmentId: string | null }) {
 function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
   const openForm = useAppStore((s) => s.openForm)
   const [view, setView] = useState<ViewMode>('table')
-  const PAGE_SIZE = 50
-  const [page, setPage] = useState(1)
-  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
-  const safePage = Math.min(page, totalPages)
-  const pageItems = items.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+  const [brandFilter, setBrandFilter] = useState('All')
 
-  // Hard-clamp page state when the dataset shrinks (e.g. after a re-sync) so the
-  // stored page never lags behind the rendered (clamped) page.
-  useEffect(() => {
-    setPage((p) => Math.min(Math.max(1, p), totalPages))
-  }, [totalPages])
+  const brands = ['All', ...Array.from(new Set(items.map((i: any) => i.data?.brand).filter(Boolean)))]
+  const filtered = brandFilter === 'All' ? items : items.filter((i: any) => i.data?.brand === brandFilter)
 
   const openCreate = () =>
     openForm({ formType: 'opsSku', mode: 'create', context: { moduleId, departmentId } })
@@ -306,11 +300,29 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
 
   return (
     <div className="space-y-4">
-      <TabHeader title="SKUs in pipeline" count={items.length} view={view} onView={setView} onNew={openCreate} newLabel="New SKU">
+      <TabHeader title="SKUs in pipeline" count={filtered.length} view={view} onView={setView} onNew={openCreate} newLabel="New SKU">
         <SyncFromErpButton departmentId={departmentId} />
       </TabHeader>
 
-      {items.length === 0 ? (
+      {brands.length > 1 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {brands.map((brand) => (
+            <button
+              key={brand}
+              onClick={() => setBrandFilter(brand)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                brandFilter === brand
+                  ? 'bg-[var(--accent)] text-white border-transparent'
+                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              {brand === 'All' ? 'All' : brandLabel(brand)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {filtered.length === 0 ? (
         <EmptyState text="No SKUs in pipeline." />
       ) : view === 'table' ? (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
@@ -329,7 +341,7 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
               </tr>
             </thead>
             <tbody>
-              {pageItems.map((item: any) => {
+              {filtered.map((item: any) => {
                 const d = item.data
                 return (
                   <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
@@ -350,7 +362,7 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {pageItems.map((item: any) => {
+          {filtered.map((item: any) => {
             const d = item.data
             return (
               <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
@@ -386,35 +398,6 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
               </div>
             )
           })}
-        </div>
-      )}
-
-      {items.length > PAGE_SIZE && (
-        <div className="flex items-center justify-between pt-2 text-sm text-[var(--text-secondary)]">
-          <span>
-            Showing {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, items.length)} of {items.length}
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={safePage <= 1}
-              className="px-3 py-1.5 rounded-lg border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Previous
-            </button>
-            <span className="px-1">
-              Page {safePage} of {totalPages}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={safePage >= totalPages}
-              className="px-3 py-1.5 rounded-lg border border-[var(--border-default)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Next
-            </button>
-          </div>
         </div>
       )}
     </div>
@@ -525,6 +508,7 @@ function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
   const [brandFilter, setBrandFilter] = useState('All')
   const [search, setSearch] = useState('')
   const [emailItem, setEmailItem] = useState<any>(null)
+  const [detailItem, setDetailItem] = useState<any>(null)
 
   const openCreate = () =>
     openForm({ formType: 'opsProduction', mode: 'create', context: { moduleId, departmentId } })
@@ -650,7 +634,7 @@ function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
               {filtered.map((item: any) => {
                 const d = item.data
                 return (
-                  <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
+                  <tr key={item.id} className="clickable-row" onClick={() => setDetailItem(item)}>
                     <td className="font-mono text-xs text-[var(--accent)]">{d.poNumber}</td>
                     <td className="font-medium text-[var(--text-primary)]">{d.product}</td>
                     <td className="text-[var(--text-secondary)]">{d.cm}</td>
@@ -692,7 +676,7 @@ function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
                     const d = item.data
                     const color = statusColor(d.status)
                     return (
-                      <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
+                      <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => setDetailItem(item)}>
                         <div className="flex items-center justify-between">
                           <span className="badge" style={{ background: `${color}20`, color }}>{d.status}</span>
                           <div className="flex items-center gap-1">
@@ -736,6 +720,7 @@ function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
       )}
 
       <ProductionEmailModal item={emailItem} open={!!emailItem} onClose={() => setEmailItem(null)} />
+      <ProductionOrderDrawer open={!!detailItem} item={detailItem} moduleId={moduleId} departmentId={departmentId} onClose={() => setDetailItem(null)} />
     </div>
   )
 }

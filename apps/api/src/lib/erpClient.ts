@@ -169,6 +169,15 @@ const SYNTHETIC_ERP_SKUS: SyntheticSeed[] = [
   { sku: 'K4415510', name: 'Goddess Strength Cocoon Mask 12oz', brand: "Carol's Daughter", upc: '0885221044519', status: 'Active', onHand: 1167, committed: 88, unitPrice: 16.99, category: 'Haircare' },
   { sku: 'K3905507', name: 'Black Vanilla Replenish Shampoo 12oz', brand: "Carol's Daughter", upc: '0885221039055', status: 'Active', onHand: 3821, committed: 180, unitPrice: 9.99, category: 'Haircare' },
   { sku: 'K3386201', name: 'Black Vanilla Shampoo 8.5oz', brand: "Carol's Daughter", upc: '0885221033862', status: 'Discontinued', onHand: 1, committed: 245, unitPrice: 9.99, category: 'Haircare' },
+  // Ambi
+  { sku: 'A2210100', name: 'Ambi Even & Clear Cleanser 6oz', brand: 'Ambi', upc: '0309971221010', status: 'Active', onHand: 3120, committed: 640, unitPrice: 7.49, category: 'Skincare' },
+  { sku: 'A2210200', name: 'Ambi Fade Cream Normal Skin 2oz', brand: 'Ambi', upc: '0309971221027', status: 'Active', onHand: 1875, committed: 410, unitPrice: 8.99, category: 'Skincare' },
+  { sku: 'A2210300', name: 'Ambi Soothing & Even Moisturizer SPF 30', brand: 'Ambi', upc: '0309971221034', status: 'Active', onHand: 940, committed: 220, unitPrice: 9.49, category: 'Skincare' },
+  { sku: 'A2210400', name: 'Ambi Even & Clear Daily Moisturizer 3.5oz', brand: 'Ambi', upc: '0309971221041', status: 'Pending', onHand: 0, committed: 0, unitPrice: 8.49, category: 'Skincare' },
+  // AcneFree
+  { sku: 'F5510100', name: 'AcneFree Oil-Free Acne Cleanser 8oz', brand: 'AcneFree', upc: '0220551551010', status: 'Active', onHand: 5210, committed: 1340, unitPrice: 9.29, category: 'Skincare' },
+  { sku: 'F5510200', name: 'AcneFree Severe Acne 24HR Kit', brand: 'AcneFree', upc: '0220551551027', status: 'Active', onHand: 410, committed: 95, unitPrice: 24.99, category: 'Skincare' },
+  { sku: 'F5510300', name: 'AcneFree Witch Hazel Toner 8oz', brand: 'AcneFree', upc: '0220551551034', status: 'Active', onHand: 2680, committed: 300, unitPrice: 6.99, category: 'Skincare' },
 ]
 
 function syntheticFeed(): ErpSku[] {
