@@ -30,6 +30,16 @@ export interface ErpSku {
   source: 'ERP_KAREVE'
 }
 
+/** A raw inventory / stock-level record from the ERP. */
+export interface ErpInventory {
+  sku: string
+  name: string
+  onHand: number
+  committed: number
+  available: number
+  source: 'ERP_KAREVE'
+}
+
 /** A raw component / part master record from the ERP. */
 export interface ErpComponent {
   partNumber: string
@@ -219,30 +229,22 @@ export async function fetchErpSkus(prisma: PrismaClient): Promise<ErpSku[]> {
     return syntheticFeed()
   }
 
-  try {
-    const records = await fetchErpRecords(
-      apiUrl,
-      apiKey,
-      ['/products', '/inventory', '/skus'],
-      ['products', 'inventory', 'skus'],
-    )
-    const mapped = records.map(mapErpRecord).filter((r) => r.sku)
-    if (mapped.length === 0) {
-      throw new Error('ERP returned no usable SKU records')
-    }
-    return mapped
-  } catch (err) {
-    // Configured, but the ERP was unreachable, unauthorized, or returned a
-    // non-JSON response (e.g. an HTML page). Rather than failing the whole
-    // sync, fall back to the labelled synthetic feed so the module still
-    // populates. The warning makes the real cause visible in the logs.
-    console.warn(
-      `[erp] Falling back to synthetic SKU feed — ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    )
-    return syntheticFeed()
+  // Configured → REAL data only. On failure (unreachable, unauthorized,
+  // HTML/non-JSON, or zero usable records) we THROW rather than fall back to
+  // synthetic. The sync orchestrator (syncErp) isolates and logs the failed
+  // feed, so a live ERP outage never silently overwrites real data with
+  // sample values. Synthetic is reserved for the unconfigured dev case above.
+  const records = await fetchErpRecords(
+    apiUrl,
+    apiKey,
+    ['/products', '/inventory', '/skus'],
+    ['products', 'inventory', 'skus'],
+  )
+  const mapped = records.map(mapErpRecord).filter((r) => r.sku)
+  if (mapped.length === 0) {
+    throw new Error('ERP returned no usable SKU records')
   }
+  return mapped
 }
 
 // ─── Shared real-ERP fetch helper ───────────────────────────
@@ -307,6 +309,69 @@ function candidatePaths(path: string | undefined, ...defaults: string[]): string
   return trimmed ? [trimmed, ...defaults.filter((d) => d !== trimmed)] : defaults
 }
 
+// ─── Inventory / Stock levels ───────────────────────────────
+// The ERP inventory feed reuses the product/inventory endpoints' quantity
+// fields. Same dev-fallback contract as the SKU feed: real data when
+// configured, otherwise a labelled synthetic snapshot.
+function syntheticInventory(): ErpInventory[] {
+  return SYNTHETIC_ERP_SKUS.map((s) => ({
+    sku: s.sku,
+    name: s.name,
+    onHand: s.onHand,
+    committed: s.committed,
+    available: Math.max(s.onHand - s.committed, 0),
+    source: 'ERP_KAREVE',
+  }))
+}
+
+function mapErpInventory(raw: Record<string, any>): ErpInventory {
+  const onHand =
+    Number(raw.onHand ?? raw.on_hand ?? raw.quantityOnHand ?? raw.quantity ?? 0) || 0
+  const committed =
+    Number(raw.committed ?? raw.allocated ?? raw.quantityCommitted ?? raw.quantityAllocated ?? 0) || 0
+  const available =
+    raw.available != null
+      ? Number(raw.available) || 0
+      : raw.quantityAvailable != null
+        ? Number(raw.quantityAvailable) || 0
+        : Math.max(onHand - committed, 0)
+  return {
+    sku: String(raw.sku ?? raw.skuNumber ?? raw.sellableSku ?? raw.itemCode ?? raw.code ?? ''),
+    name: String(raw.name ?? raw.itemName ?? raw.description ?? raw.productName ?? ''),
+    onHand,
+    committed,
+    available,
+    source: 'ERP_KAREVE',
+  }
+}
+
+/**
+ * Fetch inventory / stock-level data from the ERP. Returns the real feed when
+ * configured (trying `path` then `/inventory` then `/products`), otherwise a
+ * labelled synthetic dev feed. Falls back to synthetic on any fetch error or
+ * when the ERP returns zero usable records.
+ */
+export async function fetchErpInventory(
+  prisma: PrismaClient,
+  path?: string,
+): Promise<ErpInventory[]> {
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+  if (!configured || !apiUrl || !apiKey) return syntheticInventory()
+  // Configured → REAL data only: throw on failure or zero usable records so the
+  // sync orchestrator isolates/logs it instead of writing synthetic stock.
+  const records = await fetchErpRecords(
+    apiUrl,
+    apiKey,
+    candidatePaths(path, '/inventory', '/products'),
+    ['inventory', 'products'],
+  )
+  const mapped = records.map(mapErpInventory).filter((r) => r.sku)
+  if (mapped.length === 0) {
+    throw new Error('ERP returned no usable inventory records')
+  }
+  return mapped
+}
+
 // ─── Components / Parts ─────────────────────────────────────
 interface SyntheticComponent {
   partNumber: string
@@ -366,20 +431,14 @@ export async function fetchErpComponents(
 ): Promise<ErpComponent[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
   if (!configured || !apiUrl || !apiKey) return syntheticComponents()
-  let records: Record<string, any>[]
-  try {
-    records = await fetchErpRecords(
-      apiUrl,
-      apiKey,
-      candidatePaths(path, '/components', '/parts'),
-      ['components', 'parts'],
-    )
-  } catch (err) {
-    console.warn(
-      `[erp] Falling back to synthetic component feed — ${err instanceof Error ? err.message : String(err)}`,
-    )
-    return syntheticComponents()
-  }
+  // Configured → REAL data only: throw on failure so the sync orchestrator
+  // isolates/logs it instead of writing synthetic components.
+  const records = await fetchErpRecords(
+    apiUrl,
+    apiKey,
+    candidatePaths(path, '/components', '/parts'),
+    ['components', 'parts'],
+  )
   return records.map(mapErpComponent).filter((r) => r.partNumber)
 }
 
@@ -426,20 +485,14 @@ export async function fetchErpPricing(
 ): Promise<ErpPricing[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
   if (!configured || !apiUrl || !apiKey) return syntheticPricing()
-  let records: Record<string, any>[]
-  try {
-    records = await fetchErpRecords(
-      apiUrl,
-      apiKey,
-      candidatePaths(path, '/pricing', '/costs'),
-      ['pricing', 'costs'],
-    )
-  } catch (err) {
-    console.warn(
-      `[erp] Falling back to synthetic pricing feed — ${err instanceof Error ? err.message : String(err)}`,
-    )
-    return syntheticPricing()
-  }
+  // Configured → REAL data only: throw on failure so the sync orchestrator
+  // isolates/logs it instead of writing synthetic pricing.
+  const records = await fetchErpRecords(
+    apiUrl,
+    apiKey,
+    candidatePaths(path, '/pricing', '/costs'),
+    ['pricing', 'costs'],
+  )
   return records.map(mapErpPricing).filter((r) => r.fgPartNumber)
 }
 
@@ -495,19 +548,13 @@ function mapErpCm(raw: Record<string, any>): ErpCm {
 export async function fetchErpCms(prisma: PrismaClient, path?: string): Promise<ErpCm[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
   if (!configured || !apiUrl || !apiKey) return syntheticCms()
-  let records: Record<string, any>[]
-  try {
-    records = await fetchErpRecords(
-      apiUrl,
-      apiKey,
-      candidatePaths(path, '/vendors', '/cms'),
-      ['vendors', 'cms'],
-    )
-  } catch (err) {
-    console.warn(
-      `[erp] Falling back to synthetic CM/vendor feed — ${err instanceof Error ? err.message : String(err)}`,
-    )
-    return syntheticCms()
-  }
+  // Configured → REAL data only: throw on failure so the sync orchestrator
+  // isolates/logs it instead of writing synthetic CM/vendor rows.
+  const records = await fetchErpRecords(
+    apiUrl,
+    apiKey,
+    candidatePaths(path, '/vendors', '/cms'),
+    ['vendors', 'cms'],
+  )
   return records.map(mapErpCm).filter((r) => r.name)
 }

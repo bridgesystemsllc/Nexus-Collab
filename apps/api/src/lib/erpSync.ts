@@ -1,35 +1,17 @@
 import type { PrismaClient } from '@prisma/client'
 import {
   fetchErpSkus,
+  fetchErpInventory,
   fetchErpComponents,
   fetchErpPricing,
   fetchErpCms,
 } from './erpClient'
 import { ERP_FEEDS, getRouting, resolveTargetModule } from './erpRouting'
 
-// Simulated ERP master inventory feed for Kareve Beauty Group.
-// In production this would be fetched from the ERP API; here we model a
-// realistic snapshot and apply small live fluctuations per sync so the
-// Inventory Health module reflects an evolving feed.
-interface ErpInventoryRecord {
-  sku: string
-  name: string
-  baseOnHand: number
-  committed: number
-}
-
-const ERP_INVENTORY_FEED: ErpInventoryRecord[] = [
-  { sku: 'K4415110', name: 'Goddess Strength Shampoo 11oz', baseOnHand: 2, committed: 8778 },
-  { sku: 'K3386201', name: 'BLK Vanilla Shmp 8.5oz', baseOnHand: 1, committed: 245 },
-  { sku: 'K5517804', name: 'Born to Repair Cond 11oz', baseOnHand: 19, committed: 353 },
-  { sku: 'K3692911', name: 'GS Conditioner 11oz', baseOnHand: 4154, committed: 1200 },
-  { sku: 'K3905507', name: 'BV Replenish Shampoo 12oz', baseOnHand: 3821, committed: 180 },
-  { sku: 'K5036900', name: 'GS Cocoon Mask 12oz', baseOnHand: 1167, committed: 88 },
-  { sku: 'K6001100', name: 'CD Scalp Detox Shampoo 8oz', baseOnHand: 540, committed: 410 },
-  { sku: 'K2271509', name: 'Ambi Even & Clear Cleanser 6oz', baseOnHand: 2890, committed: 760 },
-]
-
 // Average monthly demand per SKU (units), used to derive coverage months.
+// Demand is NOT part of the ERP stock feed, so it is supplied here for the
+// known core SKUs and can also be overridden per-item via a locally-stored
+// `monthlyDemand` field on the inventory module item.
 const MONTHLY_DEMAND: Record<string, number> = {
   K4415110: 2900,
   K3386201: 120,
@@ -41,16 +23,19 @@ const MONTHLY_DEMAND: Record<string, number> = {
   K2271509: 350,
 }
 
-function jitter(base: number): number {
-  if (base <= 5) return base
-  const delta = Math.round(base * (Math.random() * 0.2 - 0.1)) // ±10%
-  return Math.max(0, base + delta)
-}
-
 function statusFor(coverageMonths: number): string {
   if (coverageMonths <= 0) return 'emergency'
   if (coverageMonths < 1) return 'critical'
   if (coverageMonths > 20) return 'overstock'
+  return 'healthy'
+}
+
+// Fallback status when no demand figure is available to compute coverage:
+// derive a coarse health signal from the available stock alone.
+function statusFromStock(available: number): string {
+  if (available <= 0) return 'emergency'
+  if (available < 250) return 'critical'
+  if (available > 15000) return 'overstock'
   return 'healthy'
 }
 
@@ -61,13 +46,17 @@ export interface ErpSyncResult {
 }
 
 /**
- * Pull the ERP inventory feed and upsert it into the Operations
- * INVENTORY_HEALTH module. Matches existing items by SKU, updates their
- * stock figures, and creates items for any new SKUs.
+ * Pull the ERP inventory / stock feed and upsert it into the Operations
+ * INVENTORY_HEALTH module. The ERP OWNS the stock figures (onHand/committed/
+ * available); coverage + status are derived from a monthly-demand figure that
+ * is NOT in the ERP feed — so we prefer a locally-stored per-item
+ * `monthlyDemand`, then the known-SKU demand table, and otherwise fall back to
+ * a stock-based status. Locally-managed fields on each item are preserved.
  */
 export async function syncErpInventory(
   prisma: PrismaClient,
   targetModuleId?: string,
+  erpPath?: string,
 ): Promise<ErpSyncResult> {
   // Honor an explicit target module when provided (routing-driven); otherwise
   // fall back to the first INVENTORY_HEALTH module (back-compat behavior).
@@ -85,30 +74,36 @@ export async function syncErpInventory(
     if (sku) bySku.set(sku, item)
   }
 
+  const records = await fetchErpInventory(prisma, erpPath)
+  const now = new Date().toISOString()
+
   let created = 0
   let updated = 0
 
-  for (const rec of ERP_INVENTORY_FEED) {
-    const onHand = jitter(rec.baseOnHand)
-    const committed = rec.committed
-    const available = Math.max(onHand - committed, 0)
-    const demand = MONTHLY_DEMAND[rec.sku] || 0
-    const coverageMonths = demand > 0 ? Math.round((available / demand) * 10) / 10 : available > 0 ? 99 : 0
-    const status = statusFor(coverageMonths)
+  for (const rec of records) {
+    const match = bySku.get(rec.sku)
+    const prev = (match?.data as any) || {}
+
+    const demand = Number(prev.monthlyDemand ?? MONTHLY_DEMAND[rec.sku] ?? 0) || 0
+    const coverageMonths =
+      demand > 0 ? Math.round((rec.available / demand) * 10) / 10 : null
+    const status =
+      coverageMonths != null ? statusFor(coverageMonths) : statusFromStock(rec.available)
 
     const data = {
+      ...prev,
       sku: rec.sku,
-      name: rec.name,
-      onHand,
-      committed,
-      available,
+      name: rec.name || prev.name || rec.sku,
+      onHand: rec.onHand,
+      committed: rec.committed,
+      available: rec.available,
+      monthlyDemand: demand > 0 ? demand : (prev.monthlyDemand ?? null),
       coverageMonths,
       status,
       source: 'ERP_KAREVE',
-      lastSyncedAt: new Date().toISOString(),
+      lastSyncedAt: now,
     }
 
-    const match = bySku.get(rec.sku)
     if (match) {
       await prisma.moduleItem.update({
         where: { id: match.id },
@@ -138,7 +133,8 @@ const FEED_SYNCS: Record<
   ) => Promise<ErpSyncResult>
 > = {
   skus: (prisma, moduleId) => syncErpSkuPipeline(prisma, moduleId),
-  inventory: (prisma, moduleId) => syncErpInventory(prisma, moduleId),
+  inventory: (prisma, moduleId, erpPath) =>
+    syncErpInventory(prisma, moduleId, erpPath ?? undefined),
   components: (prisma, moduleId, erpPath) =>
     syncErpComponents(prisma, moduleId, erpPath ?? undefined),
   pricing: (prisma, moduleId, erpPath) =>
