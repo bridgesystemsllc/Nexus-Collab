@@ -56,25 +56,58 @@ function noteAuthorOf(n: ProductionNote): string {
 export function buildProductionUpdateEmail(
   item: Partial<ProductionOrder> | null | undefined
 ): ProductionUpdateEmail {
-  const d = (item || {}) as Partial<ProductionOrder>
+  // Tolerate both the rich ProductionOrder shape and the legacy compact shape
+  // used by seeded/live items (product/poNumber/progress/qty/value/eta/priority).
+  // Reading both keeps the email meaningful instead of emitting blanks/zeros.
+  const d = (item || {}) as Partial<ProductionOrder> & {
+    product?: string
+    poNumber?: string
+    progress?: number
+    qty?: number
+    value?: number
+    eta?: string
+    priority?: string
+    coworkPending?: boolean
+  }
 
-  const description = d.description?.trim() || 'Production Item'
-  const ref = d.salesOrder?.trim() || d.itemNumber?.trim() || '—'
+  const description = d.description?.trim() || d.product?.trim() || 'Production Item'
+  const ref = d.salesOrder?.trim() || d.itemNumber?.trim() || d.poNumber?.trim() || '—'
   const subject = `Production Update — ${description} (${ref})`
 
   const brand = d.brand?.trim() || '—'
   const cm = d.cm?.trim() || '—'
   const status = d.status?.trim() || '—'
-  const progress = Number(d.progressPct) || 0
+  const progress = Number(d.progressPct ?? d.progress) || 0
 
-  const qtyOrdered = Number(d.qtyOrdered) || 0
+  // qtyOrdered falls back to the legacy single `qty`; produced/remaining derive
+  // from it when not separately tracked so the email never shows bare zeros.
+  const qtyOrdered = Number(d.qtyOrdered ?? d.qty) || 0
   const qtyProduced = Number(d.qtyProduced) || 0
-  const qtyRemaining = Number(d.qtyRemaining) || 0
+  const qtyRemaining =
+    d.qtyRemaining != null ? Number(d.qtyRemaining) || 0 : Math.max(0, qtyOrdered - qtyProduced)
 
   const onHold = status === 'On Hold'
-  const isEmergency = !!d.isEmergency
+  const isEmergency = !!d.isEmergency || d.priority === 'emergency'
+
+  // Order value: prefer rich `orderValue`, fall back to legacy `value` (only when
+  // it's a real non-zero amount — seed `value` is often 0).
+  const orderValueRaw = d.orderValue != null ? d.orderValue : d.value
+  const hasOrderValue = orderValueRaw != null && Number(orderValueRaw) > 0
+
+  // Dates: rich shape has order/ship/promised; legacy shape carries a single
+  // `eta` we surface as the ship/promised date.
+  const orderDate = d.orderDate
+  const shipDate = d.shipDate ?? d.eta
+  const promisedDate = d.promisedDate ?? d.eta
 
   const notes = sortedNotes(d.notes)
+
+  // Reference line for the header/subheader: prefer SO + Item #, otherwise fall
+  // back to the PO number so legacy items still show an identifier (not "SO —").
+  const metaRef =
+    d.salesOrder?.trim() || d.itemNumber?.trim()
+      ? `SO ${esc(d.salesOrder || '—')} &middot; Item #${esc(d.itemNumber || '—')}`
+      : `PO ${esc(ref)}`
 
   // ── Plain text ──────────────────────────────────────────────────────────
   const textLines: string[] = []
@@ -83,7 +116,7 @@ export function buildProductionUpdateEmail(
   textLines.push(`${description}`)
   textLines.push(`Brand: ${brand}   |   CM: ${cm}`)
   textLines.push(`Sales Order: ${d.salesOrder || '—'}   |   Item #: ${d.itemNumber || '—'}`)
-  if (d.customerPo) textLines.push(`Customer PO: ${d.customerPo}`)
+  if (d.customerPo || d.poNumber) textLines.push(`Customer PO: ${d.customerPo || d.poNumber}`)
   textLines.push(`Status: ${status}   |   Progress: ${progress}%`)
   if (isEmergency || onHold) {
     const flags = [isEmergency ? 'EMERGENCY / RUSH' : null, onHold ? 'ON HOLD' : null]
@@ -96,12 +129,12 @@ export function buildProductionUpdateEmail(
   textLines.push(`  Produced:  ${fmtNum(qtyProduced)}`)
   textLines.push(`  Remaining: ${fmtNum(qtyRemaining)}`)
   textLines.push(`  Ordered:   ${fmtNum(qtyOrdered)}`)
-  if (d.orderValue != null) textLines.push(`  Order Value: ${formatCurrency(Number(d.orderValue) || 0)}`)
+  if (hasOrderValue) textLines.push(`  Order Value: ${formatCurrency(Number(orderValueRaw) || 0)}`)
   textLines.push(``)
   textLines.push(`Key Dates`)
-  textLines.push(`  Order Date:    ${fmtDate(d.orderDate)}`)
-  textLines.push(`  Ship Date:     ${fmtDate(d.shipDate)}`)
-  textLines.push(`  Promised Date: ${fmtDate(d.promisedDate)}`)
+  textLines.push(`  Order Date:    ${fmtDate(orderDate)}`)
+  textLines.push(`  Ship Date:     ${fmtDate(shipDate)}`)
+  textLines.push(`  Promised Date: ${fmtDate(promisedDate)}`)
   textLines.push(``)
   textLines.push(`Latest Updates`)
   if (notes.length === 0) {
@@ -160,9 +193,7 @@ export function buildProductionUpdateEmail(
         <h1 style="margin:6px 0 4px;font-size:20px;font-weight:600;color:#1a1a1a;line-height:1.3;">${esc(
           description
         )}</h1>
-        <div style="font-size:13px;color:#80868b;">${esc(brand)} &middot; ${esc(cm)} &middot; SO ${esc(
-    d.salesOrder || '—'
-  )} &middot; Item #${esc(d.itemNumber || '—')}</div>
+        <div style="font-size:13px;color:#80868b;">${esc(brand)} &middot; ${esc(cm)} &middot; ${metaRef}</div>
         ${
           flagBadges.length
             ? `<div style="margin-top:12px;">${flagBadges.join('&nbsp;')}</div>`
@@ -210,15 +241,15 @@ export function buildProductionUpdateEmail(
         <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">
           <tr>
             <td style="${labelStyle}">Order Date</td>
-            <td style="${rowStyle};text-align:right;">${esc(fmtDate(d.orderDate))}</td>
+            <td style="${rowStyle};text-align:right;">${esc(fmtDate(orderDate))}</td>
           </tr>
           <tr>
             <td style="${labelStyle}">Ship Date</td>
-            <td style="${rowStyle};text-align:right;">${esc(fmtDate(d.shipDate))}</td>
+            <td style="${rowStyle};text-align:right;">${esc(fmtDate(shipDate))}</td>
           </tr>
           <tr>
             <td style="${labelStyle};border-bottom:none;">Promised Date</td>
-            <td style="${rowStyle};border-bottom:none;text-align:right;">${esc(fmtDate(d.promisedDate))}</td>
+            <td style="${rowStyle};border-bottom:none;text-align:right;">${esc(fmtDate(promisedDate))}</td>
           </tr>
         </table>
       </div>

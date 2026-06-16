@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
-import { X, Send, Copy, Plus, Check, Mail, AlertTriangle } from 'lucide-react'
+import { X, Send, Copy, Check, Mail, AlertTriangle } from 'lucide-react'
 import { useMembers, useDepartments, useSendProductionEmail } from '@/hooks/useData'
 import type { ProductionEmailRecipient } from '@/hooks/useData'
 import { Toast } from '@/components/shared/Toast'
@@ -152,7 +152,8 @@ export function ProductionEmailModal({ item, open, onClose }: ProductionEmailMod
               Create Production Update Email
             </h2>
             <p className="text-[13px] text-[var(--text-tertiary)] mt-0.5 truncate">
-              {d.salesOrder || d.itemNumber || '—'} &mdash; {d.description || 'Production Item'}
+              {d.salesOrder || d.itemNumber || (d as any).poNumber || '—'} &mdash;{' '}
+              {d.description || (d as any).product || 'Production Item'}
             </p>
           </div>
           <button
