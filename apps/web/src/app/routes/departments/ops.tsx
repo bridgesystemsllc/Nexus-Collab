@@ -26,6 +26,7 @@ import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowo
 import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
 import { ProductionEmailModal } from '@/components/ops/production/ProductionEmailModal'
 import { ProductionOrderDrawer } from '@/components/ops/production/ProductionOrderDrawer'
+import { CMTab } from '@/components/cm/CMTab'
 import { ComponentsTab } from '@/components/ops/ComponentsTab'
 import { BOMTab } from '@/components/ops/BOMTab'
 import { brandLabel } from '@/components/ops/brandLabel'
@@ -46,7 +47,7 @@ function relativeTime(dateStr: string): string {
 }
 
 // ─── Types ─────────────────────────────────────────────────
-type OpsTab = 'sku' | 'inventory' | 'production' | 'brand' | 'components' | 'bom'
+type OpsTab = 'sku' | 'inventory' | 'production' | 'brand' | 'components' | 'bom' | 'cm'
 
 const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'sku', label: 'SKU Pipeline', icon: Package },
@@ -55,6 +56,7 @@ const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'brand', label: 'Brand Transition', icon: TrendingUp },
   { key: 'components', label: 'Components', icon: Boxes },
   { key: 'bom', label: 'Bill of Materials', icon: ClipboardList },
+  { key: 'cm', label: 'CM Productivity', icon: Users },
 ]
 
 interface TabProps {
@@ -831,6 +833,7 @@ const MODULE_TYPE_BY_TAB: Record<OpsTab, string> = {
   brand: 'BRAND_TRANSITION',
   components: 'COMPONENTS',
   bom: 'BILL_OF_MATERIALS',
+  cm: 'CM_PRODUCTIVITY',
 }
 
 const FORM_TYPE_BY_MODULE: Record<string, string> = {
@@ -864,6 +867,18 @@ export function OpsPage() {
   }, [departments])
 
   const { data: deptDetail, isLoading: detailLoading, refetch: refetchDept } = useDepartment(opsDept?.id || '')
+
+  // CM Productivity is one shared module owned by R&D, surfaced here in Operations
+  // (and in Finance) — edits write to the same module, so all three stay in sync.
+  const rdDept = useMemo(
+    () => (Array.isArray(departments) ? departments.find((d: any) => d.type === 'BUILTIN_RD') : null),
+    [departments],
+  )
+  const { data: rdDetail, refetch: refetchRd } = useDepartment(rdDept?.id || '')
+  const cmModule = useMemo(() => {
+    const mods = (rdDetail?.modules as any[]) || []
+    return mods.find((m: any) => m.type === 'CM_PRODUCTIVITY') || null
+  }, [rdDetail])
 
   const isLoading = deptsLoading || detailLoading
 
@@ -981,6 +996,8 @@ export function OpsPage() {
             <ComponentsTab items={moduleData.components} moduleId={moduleIds.components} departmentId={deptId} onRefresh={() => refetchDept()} />
           ) : activeTab === 'bom' ? (
             <BOMTab items={moduleData.bom} moduleId={moduleIds.bom} departmentId={deptId} onRefresh={() => refetchDept()} components={moduleData.components} skuItems={moduleData.sku} />
+          ) : activeTab === 'cm' ? (
+            <CMTab items={cmModule?.items || []} moduleId={cmModule?.id ?? null} departmentId={rdDept?.id ?? null} onRefresh={() => refetchRd()} productionItems={moduleData.production} />
           ) : (
             <BrandTransitionTab items={moduleData.brand} moduleId={moduleIds.brand} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'BRAND_TRANSITION' })} />
           )}

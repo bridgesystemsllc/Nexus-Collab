@@ -58,7 +58,9 @@ export const ERP_FEEDS: ErpFeed[] = [
 ]
 
 /** Feed keys whose syncs are implemented today (default-enabled). */
-const IMPLEMENTED_FEED_KEYS = new Set(['skus', 'inventory'])
+// Feeds enabled by default on a fresh integration. CMs sync by default so every
+// contract manufacturer created in the ERP is created in Nexus automatically.
+const IMPLEMENTED_FEED_KEYS = new Set(['skus', 'inventory', 'cm'])
 
 /** A routing decision for a single feed. */
 export interface RouteEntry {

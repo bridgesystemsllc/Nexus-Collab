@@ -451,6 +451,10 @@ const SYNTHETIC_ERP_CMS: SyntheticCm[] = [
   { name: 'ACT Labs', brands: ["Carol's Daughter"], status: 'active', avgLeadTime: '8-10 wks', onTime: 92, quality: 97, activePOs: 5 },
   { name: 'TricorBraun', brands: ["Carol's Daughter", 'Ambi'], status: 'attention', avgLeadTime: '4-6 wks', onTime: 77, quality: 89, activePOs: 3 },
   { name: 'Jansy', brands: ["Carol's Daughter"], status: 'active', avgLeadTime: '3-5 wks', onTime: 96, quality: 96, activePOs: 2 },
+  // CMs that exist in the ERP but not yet in Nexus — these get created on sync.
+  { name: 'Kolmar Korea', brands: ['Ambi', "Carol's Daughter"], status: 'active', avgLeadTime: '10-12 wks', onTime: 88, quality: 93, activePOs: 4 },
+  { name: 'Cosmetic Solutions', brands: ['AcneFree'], status: 'active', avgLeadTime: '5-7 wks', onTime: 90, quality: 94, activePOs: 3 },
+  { name: 'Mana Products', brands: ["Carol's Daughter"], status: 'attention', avgLeadTime: '6-9 wks', onTime: 81, quality: 91, activePOs: 2 },
 ]
 
 function syntheticCms(): ErpCm[] {
