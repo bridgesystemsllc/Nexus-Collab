@@ -258,6 +258,54 @@ export function useSyncIntegration() {
   })
 }
 
+// ─── ERP Data Routing ───────────────────────────────────────
+// GET returns which ERP feeds flow to which Nexus modules. PATCH updates a
+// partial routing map (admin / OPS_MANAGER only — a 403 surfaces in the UI).
+export interface ErpRoutingFeed {
+  key: string
+  label: string
+  description: string
+  enabled: boolean
+  targetModuleId: string | null
+  targetModuleType: string | null
+  erpPath: string | null
+}
+
+export interface ErpRoutingResponse {
+  connected: boolean
+  feeds: ErpRoutingFeed[]
+}
+
+export type ErpRoutingPatch = Record<string, {
+  enabled?: boolean
+  targetModuleId?: string | null
+  targetModuleType?: string | null
+  erpPath?: string | null
+}>
+
+const ERP_ROUTING_KEY = ['integration-routing', 'ERP_KAREVE_SYNC'] as const
+
+export function useErpRouting(enabled = true) {
+  return useQuery<ErpRoutingResponse>({
+    queryKey: ERP_ROUTING_KEY,
+    queryFn: () => api.get('/integrations/ERP_KAREVE_SYNC/routing').then(r => r.data),
+    enabled,
+    retry: false,
+  })
+}
+
+export function useUpdateErpRouting() {
+  const qc = useQueryClient()
+  return useMutation<{ feeds: ErpRoutingFeed[] }, any, ErpRoutingPatch>({
+    mutationFn: (routing: ErpRoutingPatch) =>
+      api.patch('/integrations/ERP_KAREVE_SYNC/routing', { routing }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ERP_ROUTING_KEY })
+      qc.invalidateQueries({ queryKey: ['integrations'] })
+    },
+  })
+}
+
 // ─── AI ─────────────────────────────────────────────────────
 export function useAIBriefing() {
   return useQuery({ queryKey: ['ai-briefing'], queryFn: () => api.get('/ai/briefing').then(r => r.data) })
