@@ -22,7 +22,77 @@ export const webhookRoutes: ReturnType<typeof Router> = Router()
 
 const FRONTEND_URL = () => process.env.FRONTEND_URL || 'http://localhost:5173'
 
-// ─── List all integrations ──────────────────────────────────
+// ─── ERP live-connection probe (shared by /connect and /test) ───────────────
+// Verifies the saved credentials can actually READ DATA from the ERP. A public
+// /health endpoint says nothing about whether the API key works, so we probe
+// the real data endpoints the sync uses. Only a 2xx counts as live-verified.
+interface ErpProbeResult {
+  ok: boolean
+  endpoint?: string
+  authRejected: boolean
+  reachable: boolean
+  lastError: string | null
+}
+
+async function probeErpLive(base: string, apiKey: string): Promise<ErpProbeResult> {
+  const authHeaders = {
+    'X-API-Key': apiKey,
+    Authorization: `Bearer ${apiKey}`,
+    Accept: 'application/json',
+  }
+  const dataPaths = ['/skus', '/products', '/components', '/pricing', '/vendors']
+  let authRejected = false
+  let reachable = false
+  let lastError: string | null = null
+  for (const path of dataPaths) {
+    try {
+      const response = await fetch(`${base}${path}`, {
+        headers: authHeaders,
+        signal: AbortSignal.timeout(8000),
+      })
+      if (response.ok) {
+        return { ok: true, endpoint: path, authRejected: false, reachable: true, lastError: null }
+      }
+      reachable = true
+      if (response.status === 401 || response.status === 403) authRejected = true
+      lastError = `HTTP ${response.status} from ${path}`
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err)
+    }
+  }
+  return { ok: false, authRejected, reachable, lastError }
+}
+
+function erpProbeError(probe: ErpProbeResult, base: string): string {
+  if (probe.authRejected) {
+    return 'The ERP rejected the API key (HTTP 401/403). Check that the API key is correct and has permission to read data.'
+  }
+  if (probe.reachable) {
+    return `Reached the server, but no ERP data endpoint responded (${probe.lastError}). Check that the API URL is the ERP's data API base — it should serve /skus or /products.`
+  }
+  return `Could not reach the ERP at ${base} (${probe.lastError}). Check that the API URL is correct and publicly reachable.`
+}
+
+// Persist the live-verification outcome onto the integration config (non-secret
+// metadata) so the UI can honestly show "live verified" vs "sample data mode"
+// without re-probing on every render.
+async function persistErpLiveResult(probe: ErpProbeResult, base: string): Promise<void> {
+  const integration = await prisma.integration.findFirst({ where: { type: 'ERP_KAREVE_SYNC' } })
+  if (!integration) return
+  const existing = (integration.config ?? {}) as Record<string, unknown>
+  await prisma.integration.update({
+    where: { id: integration.id },
+    data: {
+      config: {
+        ...existing,
+        liveVerified: probe.ok,
+        lastTestAt: new Date().toISOString(),
+        lastTestError: probe.ok ? null : erpProbeError(probe, base),
+      } as Record<string, unknown>,
+    },
+  })
+}
+
 integrationRoutes.get('/', async (_req: Request, res: Response) => {
   try {
     const integrations = await prisma.integration.findMany({
@@ -143,48 +213,6 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
         return res.status(400).json({ error: 'apiUrl and apiKey are required' })
       }
 
-      let testResult: 'success' | 'skipped' = 'skipped'
-
-      try {
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 5000)
-
-        // Send both auth styles so either ERP auth scheme works.
-        const authHeaders = {
-          'X-API-Key': apiKey,
-          Authorization: `Bearer ${apiKey}`,
-        }
-
-        let response = await fetch(`${apiUrl}/ping`, {
-          headers: authHeaders,
-          signal: controller.signal,
-        })
-
-        clearTimeout(timeout)
-
-        if (response.ok) {
-          testResult = 'success'
-        } else {
-          // Fallback to /health
-          const controller2 = new AbortController()
-          const timeout2 = setTimeout(() => controller2.abort(), 5000)
-
-          response = await fetch(`${apiUrl}/health`, {
-            headers: authHeaders,
-            signal: controller2.signal,
-          })
-
-          clearTimeout(timeout2)
-
-          if (response.ok) {
-            testResult = 'success'
-          }
-        }
-      } catch {
-        // Connection test failed — still allow connection
-        testResult = 'skipped'
-      }
-
       const encryptedConfig = encryptJson({ apiUrl, apiKey })
 
       // Preserve any existing routing while rewriting the creds blob, so
@@ -195,6 +223,9 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
           ?.routing ?? {}
       const config = setRoutingOnConfig(encryptedConfig, existingRouting)
 
+      // The integration stays CONNECTED so the routing UI and sample-data sync
+      // remain available; whether LIVE ERP data is reachable is tracked
+      // separately by the probe below and surfaced honestly in the UI.
       await prisma.integration.updateMany({
         where: { type },
         data: {
@@ -203,7 +234,21 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
         },
       })
 
-      return res.json({ connected: true, testResult })
+      // Validate the saved credentials against the real data endpoints and
+      // record the outcome, so the response (and the UI) tells the user the
+      // truth instead of a blanket "connected".
+      const base = apiUrl.replace(/\/+$/, '')
+      const probe = await probeErpLive(base, apiKey)
+      await persistErpLiveResult(probe, base)
+
+      return res.json({
+        connected: true,
+        live: probe.ok,
+        message: probe.ok
+          ? `Connected — ERP returned live data at ${probe.endpoint}.`
+          : undefined,
+        error: probe.ok ? undefined : erpProbeError(probe, base),
+      })
     }
 
     // ── Default: generic connect ─────────────────────────────
@@ -236,41 +281,21 @@ integrationRoutes.post('/:type/test', async (req: Request, res: Response) => {
         })
       }
 
+      // Validate against the REAL data endpoints the sync uses (shared with
+      // /connect) and persist the outcome so the UI reflects live vs sample mode.
       const base = apiUrl.replace(/\/+$/, '')
-      const authHeaders = {
-        'X-API-Key': apiKey,
-        Authorization: `Bearer ${apiKey}`,
-        Accept: 'application/json',
+      const probe = await probeErpLive(base, apiKey)
+      await persistErpLiveResult(probe, base)
+
+      if (probe.ok) {
+        return res.json({
+          ok: true,
+          message: `Connected — ERP returned live data at ${probe.endpoint}.`,
+          endpoint: probe.endpoint,
+        })
       }
 
-      // Try the lightweight health endpoints first, then the real data
-      // endpoints — a 2xx from any of them means the URL + key are valid.
-      const paths = ['/ping', '/health', '/skus', '/products']
-      let lastStatus: number | null = null
-      let lastError: string | null = null
-
-      for (const path of paths) {
-        try {
-          const response = await fetch(`${base}${path}`, {
-            headers: authHeaders,
-            signal: AbortSignal.timeout(8000),
-          })
-          if (response.ok) {
-            return res.json({ ok: true, message: `Connected — ERP responded at ${path}.`, endpoint: path })
-          }
-          lastStatus = response.status
-          lastError = `HTTP ${response.status} from ${path}`
-        } catch (err) {
-          lastError = err instanceof Error ? err.message : String(err)
-        }
-      }
-
-      return res.status(502).json({
-        ok: false,
-        error: lastStatus
-          ? `Reached the server but it rejected the request (${lastError}). Check the API key, and that the URL is the ERP's API base.`
-          : `Could not reach the ERP at ${base} (${lastError}). Check that the API URL is correct and publicly reachable.`,
-      })
+      return res.status(502).json({ ok: false, error: erpProbeError(probe, base) })
     }
 
     // Generic integrations: treat a CONNECTED status as a passing test.

@@ -4,4 +4,5 @@
 - [Microsoft-only auth](microsoft-auth.md) — sole login is MS Entra, session-based (no passport); SESSION_SECRET required + session.regenerate on login; cookie.secure=false in dev; Member.clerkUserId stores MS oid.
 - [OAuth account-linking state](oauth-account-linking-state.md) — per-user connect flows need server-side single-use session-bound state + member match, not stateless HMAC (hijack risk).
 - [prisma db push drops session table](prisma-db-push-drops-session-table.md) — session table isn't in schema; for additive changes use raw CREATE TABLE SQL, never --accept-data-loss.
+- [Testing writes vs live integrations](erp-integration-write-testing.md) — ERP /connect re-encrypts the whole creds blob; testing it with fake creds destroys the user's real saved key. Use /test or restore.
 - [Microsoft Graph attach features](microsoft-graph-attach.md) — actor-bound via graphGet(memberId,'/me/...'); not-connected → 412 → inline ConnectMicrosoft; OneDrive search quotes need doubling; attach = link, not copy.

@@ -85,11 +85,15 @@ function ErpSettingsSection({
     setSaving(true)
     setSaveMsg('')
     try {
-      await api.post('/integrations/ERP_KAREVE_SYNC/connect', {
+      const { data } = await api.post('/integrations/ERP_KAREVE_SYNC/connect', {
         apiUrl: apiUrl.trim(),
         apiKey: apiKey.trim() || undefined,
       })
-      setSaveMsg('Credentials updated')
+      setSaveMsg(
+        data?.live
+          ? 'Credentials updated — live data verified'
+          : data?.error || 'Saved, but live ERP data could not be verified',
+      )
       setEditing(false)
       setApiKey('')
     } catch (err: any) {
@@ -500,7 +504,11 @@ function IntegrationSettingsDrawer({
           <div>
             <p className="text-[14px] font-medium text-[var(--text-primary)]">Integration Status</p>
             <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">
-              {integration.status === 'CONNECTED' ? 'Active and syncing data' : 'Not connected'}
+              {integration.status === 'CONNECTED'
+                ? integration.config?.liveVerified
+                  ? 'Live ERP data verified'
+                  : 'Connected — sample data mode (live ERP not verified)'
+                : 'Not connected'}
             </p>
           </div>
           <button
@@ -766,7 +774,7 @@ function ErpConfigModal({
   onSuccess,
 }: {
   onClose: () => void
-  onSuccess: () => void
+  onSuccess: (message?: string) => void
 }) {
   const [apiUrl, setApiUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
@@ -777,11 +785,29 @@ function ErpConfigModal({
     setLoading(true)
     setError('')
     try {
-      await api.post('/integrations/ERP_KAREVE_SYNC/connect', { apiUrl, apiKey })
-      onSuccess()
-      onClose()
+      // Save the credentials AND validate them against the real ERP in one
+      // round trip. /connect now returns `live` (whether the ERP actually
+      // returned data) plus a precise error on failure (e.g. HTTP 401 = the ERP
+      // rejected the API key), so we give an honest result instead of always
+      // reporting success.
+      const { data } = await api.post('/integrations/ERP_KAREVE_SYNC/connect', { apiUrl, apiKey })
+      if (data?.live) {
+        onSuccess(data?.message || 'ERP connected — live data verified.')
+        onClose()
+      } else {
+        // Credentials are saved (sample-data sync still works), but live ERP
+        // data could not be verified — surface exactly why so the user can fix it.
+        setError(
+          data?.error ||
+            'Credentials saved, but live ERP data could not be verified. Check the API URL and key.',
+        )
+      }
     } catch (err: any) {
-      setError(err?.response?.data?.message || 'Connection failed. Check your credentials and try again.')
+      setError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          'Connection failed. Check your credentials and try again.',
+      )
     } finally {
       setLoading(false)
     }
@@ -1276,8 +1302,8 @@ export function IntegrationsPage() {
       {showErpModal && (
         <ErpConfigModal
           onClose={() => setShowErpModal(false)}
-          onSuccess={() => {
-            setToast({ type: 'success', message: 'ERP Kareve Sync connected successfully' })
+          onSuccess={(message?: string) => {
+            setToast({ type: 'success', message: message || 'ERP Kareve Sync connected successfully' })
             refetch()
           }}
         />
