@@ -34,6 +34,8 @@ export interface ErpSku {
 export interface ErpInventory {
   sku: string
   name: string
+  /** Full brand name resolved from the ERP brandId (may be blank if unknown). */
+  brand: string
   onHand: number
   committed: number
   available: number
@@ -424,6 +426,7 @@ function syntheticInventory(): ErpInventory[] {
   return SYNTHETIC_ERP_SKUS.map((s) => ({
     sku: s.sku,
     name: s.name,
+    brand: (s as any).brand ?? '',
     onHand: s.onHand,
     committed: s.committed,
     available: Math.max(s.onHand - s.committed, 0),
@@ -445,6 +448,7 @@ function mapErpInventory(raw: Record<string, any>): ErpInventory {
   return {
     sku: String(raw.sku ?? raw.skuNumber ?? raw.sellableSku ?? raw.itemCode ?? raw.code ?? ''),
     name: String(raw.name ?? raw.itemName ?? raw.description ?? raw.productName ?? ''),
+    brand: resolveBrand(raw),
     onHand,
     committed,
     available,

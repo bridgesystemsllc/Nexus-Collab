@@ -467,6 +467,7 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
 function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProps) {
   const openForm = useAppStore((s) => s.openForm)
   const [view, setView] = useState<ViewMode>('table')
+  const [brandFilter, setBrandFilter] = useState('All')
 
   const openCreate = () =>
     openForm({ formType: 'opsInventory', mode: 'create', context: { moduleId, departmentId } })
@@ -480,7 +481,12 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
     overstock: { badge: 'badge-info', rowClass: '' },
   }
   const sortOrder: Record<string, number> = { emergency: 0, critical: 1, healthy: 2, overstock: 3 }
-  const sorted = [...items].sort((a, b) => (sortOrder[a.data?.status] ?? 99) - (sortOrder[b.data?.status] ?? 99))
+
+  const brands = ['All', ...Array.from(new Set(items.map((item: any) => item.data?.brand).filter(Boolean)))]
+  const filtered = items.filter(
+    (item: any) => brandFilter === 'All' || item.data?.brand === brandFilter,
+  )
+  const sorted = [...filtered].sort((a, b) => (sortOrder[a.data?.status] ?? 99) - (sortOrder[b.data?.status] ?? 99))
 
   const cowork = (d: any, id: string): AddToCoworkItem => ({
     name: d.name || d.sku || 'Inventory',
@@ -494,10 +500,30 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
 
   return (
     <div className="space-y-4">
-      <TabHeader title="Inventory records" count={items.length} view={view} onView={setView} onNew={openCreate} newLabel="New Record" />
+      <TabHeader title="Inventory records" count={filtered.length} view={view} onView={setView} onNew={openCreate} newLabel="New Record" />
+
+      {brands.length > 1 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {brands.map((brand) => (
+            <button
+              key={brand}
+              onClick={() => setBrandFilter(brand)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                brandFilter === brand
+                  ? 'bg-[var(--accent)] text-white border-transparent'
+                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              {brand === 'All' ? 'All' : brandLabel(brand)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {items.length === 0 ? (
         <EmptyState text="No inventory data found." />
+      ) : sorted.length === 0 ? (
+        <EmptyState text="No inventory records for this brand." />
       ) : view === 'table' ? (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
           <table className="nexus-table">
@@ -505,6 +531,7 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
               <tr>
                 <th>SKU</th>
                 <th>Product Name</th>
+                <th>Brand</th>
                 <th>On-Hand</th>
                 <th>Committed</th>
                 <th>Available</th>
@@ -521,6 +548,7 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
                   <tr key={item.id} className={`clickable-row ${cfg.rowClass}`} onClick={() => onSelect(item)}>
                     <td className="font-mono text-xs text-[var(--text-secondary)]">{d.sku}</td>
                     <td className="font-medium text-[var(--text-primary)]">{d.name}</td>
+                    <td>{d.brand ? <BrandBadge brand={d.brand} /> : <span className="text-[var(--text-tertiary)]">—</span>}</td>
                     <td className="tabular-nums text-[var(--text-secondary)]">{d.onHand?.toLocaleString()}</td>
                     <td className="tabular-nums text-[var(--text-secondary)]">{d.committed?.toLocaleString()}</td>
                     <td className="tabular-nums text-[var(--text-secondary)]">{d.available?.toLocaleString()}</td>
@@ -544,6 +572,7 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
                   <p className="font-medium text-sm text-[var(--text-primary)] truncate">{d.name}</p>
                   <p className="font-mono text-xs text-[var(--text-tertiary)]">{d.sku}</p>
                 </div>
+                {d.brand && <BrandBadge brand={d.brand} />}
                 <div className="hidden sm:flex items-center gap-6 text-xs text-[var(--text-secondary)] tabular-nums">
                   <span>On-hand <strong className="text-[var(--text-primary)]">{d.onHand?.toLocaleString()}</strong></span>
                   <span>Available <strong className="text-[var(--text-primary)]">{d.available?.toLocaleString()}</strong></span>

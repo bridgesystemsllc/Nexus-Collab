@@ -94,6 +94,7 @@ export async function syncErpInventory(
       ...prev,
       sku: rec.sku,
       name: rec.name || prev.name || rec.sku,
+      brand: rec.brand || prev.brand || '',
       onHand: rec.onHand,
       committed: rec.committed,
       available: rec.available,
