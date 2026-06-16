@@ -480,10 +480,13 @@ function IntegrationSettingsDrawer({
     setTesting(true)
     setTestResult(null)
     try {
-      await api.post(`/integrations/${integration.type}/test`)
-      setTestResult({ ok: true, message: 'Connection successful' })
-    } catch {
-      setTestResult({ ok: false, message: 'Connection failed' })
+      const { data } = await api.post(`/integrations/${integration.type}/test`)
+      setTestResult({ ok: true, message: data?.message || 'Connection successful' })
+    } catch (err: any) {
+      setTestResult({
+        ok: false,
+        message: err?.response?.data?.error || 'Connection failed',
+      })
     } finally {
       setTesting(false)
     }

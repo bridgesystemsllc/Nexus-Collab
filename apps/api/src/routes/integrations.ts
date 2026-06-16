@@ -9,6 +9,7 @@ import {
   exchangeGoogleToken,
 } from '../lib/oauth'
 import { syncErp } from '../lib/erpSync'
+import { getErpConfig } from '../lib/erpClient'
 import {
   ERP_FEEDS,
   getRouting,
@@ -214,6 +215,73 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
   } catch (error) {
     console.error('[integrations] POST /:type/connect error:', error)
     res.status(500).json({ error: 'Failed to connect integration' })
+  }
+})
+
+// ─── Test an integration connection ─────────────────────────
+// The UI's "Test Connection" button posts here AFTER credentials are saved, so
+// the test uses the stored (encrypted) credentials rather than anything in the
+// body. For the ERP it actually reaches out to the configured URL; for other
+// integrations it reports whether the integration is currently connected.
+integrationRoutes.post('/:type/test', async (req: Request, res: Response) => {
+  try {
+    const { type } = req.params
+
+    if (type === 'ERP_KAREVE_SYNC') {
+      const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+      if (!configured || !apiUrl || !apiKey) {
+        return res.status(400).json({
+          ok: false,
+          error: 'No ERP credentials saved yet. Enter an API URL and API key, click Save Credentials, then test.',
+        })
+      }
+
+      const base = apiUrl.replace(/\/+$/, '')
+      const authHeaders = {
+        'X-API-Key': apiKey,
+        Authorization: `Bearer ${apiKey}`,
+        Accept: 'application/json',
+      }
+
+      // Try the lightweight health endpoints first, then the real data
+      // endpoints — a 2xx from any of them means the URL + key are valid.
+      const paths = ['/ping', '/health', '/skus', '/products']
+      let lastStatus: number | null = null
+      let lastError: string | null = null
+
+      for (const path of paths) {
+        try {
+          const response = await fetch(`${base}${path}`, {
+            headers: authHeaders,
+            signal: AbortSignal.timeout(8000),
+          })
+          if (response.ok) {
+            return res.json({ ok: true, message: `Connected — ERP responded at ${path}.`, endpoint: path })
+          }
+          lastStatus = response.status
+          lastError = `HTTP ${response.status} from ${path}`
+        } catch (err) {
+          lastError = err instanceof Error ? err.message : String(err)
+        }
+      }
+
+      return res.status(502).json({
+        ok: false,
+        error: lastStatus
+          ? `Reached the server but it rejected the request (${lastError}). Check the API key, and that the URL is the ERP's API base.`
+          : `Could not reach the ERP at ${base} (${lastError}). Check that the API URL is correct and publicly reachable.`,
+      })
+    }
+
+    // Generic integrations: treat a CONNECTED status as a passing test.
+    const integration = await prisma.integration.findFirst({ where: { type } })
+    if (!integration || integration.status !== 'CONNECTED') {
+      return res.status(400).json({ ok: false, error: 'This integration is not connected yet.' })
+    }
+    return res.json({ ok: true, message: 'Connection is active.' })
+  } catch (error) {
+    console.error('[integrations] POST /:type/test error:', error)
+    res.status(500).json({ ok: false, error: 'Failed to test connection.' })
   }
 })
 
