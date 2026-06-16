@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import { fetchErpSkus } from './erpClient'
+import { ERP_FEEDS, getRouting, resolveTargetModule } from './erpRouting'
 
 // Simulated ERP master inventory feed for Kareve Beauty Group.
 // In production this would be fetched from the ERP API; here we model a
@@ -59,10 +60,15 @@ export interface ErpSyncResult {
  * INVENTORY_HEALTH module. Matches existing items by SKU, updates their
  * stock figures, and creates items for any new SKUs.
  */
-export async function syncErpInventory(prisma: PrismaClient): Promise<ErpSyncResult> {
-  const invModule = await prisma.departmentModule.findFirst({
-    where: { type: 'INVENTORY_HEALTH' },
-  })
+export async function syncErpInventory(
+  prisma: PrismaClient,
+  targetModuleId?: string,
+): Promise<ErpSyncResult> {
+  // Honor an explicit target module when provided (routing-driven); otherwise
+  // fall back to the first INVENTORY_HEALTH module (back-compat behavior).
+  const invModule = targetModuleId
+    ? await prisma.departmentModule.findUnique({ where: { id: targetModuleId } })
+    : await prisma.departmentModule.findFirst({ where: { type: 'INVENTORY_HEALTH' } })
   if (!invModule) {
     return { recordsProcessed: 0, created: 0, updated: 0 }
   }
@@ -115,6 +121,73 @@ export async function syncErpInventory(prisma: PrismaClient): Promise<ErpSyncRes
   return { recordsProcessed: created + updated, created, updated }
 }
 
+// Implemented sync functions, keyed by ERP feed key. Each takes the resolved
+// target module id. Feeds NOT listed here (components/pricing/cm) are wired in
+// the routing catalog but have no sync yet — syncErp leaves them inert.
+const FEED_SYNCS: Record<
+  string,
+  (prisma: PrismaClient, targetModuleId: string) => Promise<ErpSyncResult>
+> = {
+  skus: (prisma, moduleId) => syncErpSkuPipeline(prisma, moduleId),
+  inventory: (prisma, moduleId) => syncErpInventory(prisma, moduleId),
+}
+
+export interface ErpSyncOrchestratorResult {
+  feeds: Record<string, ErpSyncResult>
+  recordsProcessed: number
+}
+
+/**
+ * Routing-aware ERP sync orchestrator. Loads the ERP integration + its routing,
+ * then for each ENABLED feed with an implemented sync, resolves the target
+ * module and runs the sync into it. Disabled feeds and not-yet-implemented
+ * feeds (components/pricing/cm) are reported as inert {0,0,0} results.
+ *
+ * Fully defensive: missing routing → defaults; missing module → skip the feed
+ * (never throws for a single feed's resolution).
+ */
+export async function syncErp(prisma: PrismaClient): Promise<ErpSyncOrchestratorResult> {
+  const integration = await prisma.integration.findFirst({
+    where: { type: 'ERP_KAREVE_SYNC' },
+  })
+  const routing = getRouting(integration)
+
+  const feeds: Record<string, ErpSyncResult> = {}
+  let recordsProcessed = 0
+
+  for (const feed of ERP_FEEDS) {
+    const entry = routing[feed.key]
+    const inert: ErpSyncResult = { recordsProcessed: 0, created: 0, updated: 0 }
+
+    // Skip disabled feeds.
+    if (!entry?.enabled) {
+      feeds[feed.key] = inert
+      continue
+    }
+
+    const syncFn = FEED_SYNCS[feed.key]
+    if (!syncFn) {
+      // Wired in routing but no sync implemented yet — leave inert.
+      // TODO: implement components / pricing / cm syncs.
+      feeds[feed.key] = inert
+      continue
+    }
+
+    const targetModule = await resolveTargetModule(prisma, feed.key, routing)
+    if (!targetModule) {
+      // No module to write to — skip this feed without throwing.
+      feeds[feed.key] = inert
+      continue
+    }
+
+    const result = await syncFn(prisma, targetModule.id)
+    feeds[feed.key] = result
+    recordsProcessed += result.recordsProcessed
+  }
+
+  return { feeds, recordsProcessed }
+}
+
 /**
  * Pull the ERP SKU / product master feed and upsert it into the Operations
  * SKU_PIPELINE module. Matches existing items by SKU and MERGES the ERP
@@ -123,10 +196,15 @@ export async function syncErpInventory(prisma: PrismaClient): Promise<ErpSyncRes
  * blocker/status/linkedNpdId). New SKUs are created with sensible pipeline
  * defaults. Mirrors the syncErpInventory pattern.
  */
-export async function syncErpSkuPipeline(prisma: PrismaClient): Promise<ErpSyncResult> {
-  const skuModule = await prisma.departmentModule.findFirst({
-    where: { type: 'SKU_PIPELINE' },
-  })
+export async function syncErpSkuPipeline(
+  prisma: PrismaClient,
+  targetModuleId?: string,
+): Promise<ErpSyncResult> {
+  // Honor an explicit target module when provided (routing-driven); otherwise
+  // fall back to the first SKU_PIPELINE module (back-compat behavior).
+  const skuModule = targetModuleId
+    ? await prisma.departmentModule.findUnique({ where: { id: targetModuleId } })
+    : await prisma.departmentModule.findFirst({ where: { type: 'SKU_PIPELINE' } })
   if (!skuModule) {
     return { recordsProcessed: 0, created: 0, updated: 0 }
   }
