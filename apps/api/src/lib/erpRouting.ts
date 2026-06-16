@@ -139,6 +139,123 @@ export function setRoutingOnConfig(
   return { ...existing, routing: mergedRouting } as Prisma.InputJsonObject
 }
 
+// ─── ERP OUTBOUND push (Nexus → ERP) ────────────────────────
+//
+// The INVERSE of the inbound routing above: instead of pulling ERP feeds INTO
+// Nexus modules, outbound config controls which Nexus modules may be PUSHED to
+// the ERP. It lives on the SAME Integration.config object, under `.outbound`,
+// coexisting with the encrypted creds blob ({ iv, encrypted, tag }) AND the
+// inbound `.routing` — none of the three ever clobbers the others:
+//   - setOutboundOnConfig() preserves creds + .routing while merging .outbound.
+//   - setRoutingOnConfig() preserves creds (+ now .outbound) while merging .routing.
+//   - the connect handler preserves both .routing and .outbound when rewriting creds.
+//
+// Every outbound feed defaults to DISABLED — an admin must opt a feed in before
+// it will be pushed.
+
+/** A single outbound feed in the catalog (a Nexus module that can be pushed). */
+export interface ErpOutboundFeed {
+  key: string
+  label: string
+  /** The DepartmentModule.type that sources this feed's payloads. */
+  sourceModuleType: string
+  /** Default ERP API path to POST to (overridable per-feed via erpPath). */
+  defaultPath: string
+  description: string
+}
+
+/**
+ * Catalog of Nexus modules that can be pushed OUT to the ERP. All default to
+ * disabled — pushing is opt-in per feed by an admin.
+ */
+export const ERP_OUTBOUND_FEEDS: ErpOutboundFeed[] = [
+  {
+    key: 'components',
+    label: 'Components / Parts',
+    sourceModuleType: 'COMPONENTS',
+    defaultPath: '/components',
+    description: 'Push component / part master data (part number, vendor, cost) to the ERP.',
+  },
+  {
+    key: 'boms',
+    label: 'Bills of Materials',
+    sourceModuleType: 'BILL_OF_MATERIALS',
+    defaultPath: '/boms',
+    description: 'Push finished-good BOMs (FG part, fill spec, component lines) to the ERP.',
+  },
+  {
+    key: 'finance',
+    label: 'Finance Costing',
+    sourceModuleType: 'FINANCE_COSTING',
+    defaultPath: '/pricing',
+    description: 'Push finance costing (label/freight/overhead, margin, retail price) to the ERP.',
+  },
+]
+
+/** A push decision for a single outbound feed. */
+export interface OutboundEntry {
+  enabled: boolean
+  erpPath?: string | null
+  lastPushedAt?: string | null
+}
+
+export type Outbound = Record<string, OutboundEntry>
+
+type StoredConfigWithOutbound = StoredConfig & {
+  outbound?: Record<string, Partial<OutboundEntry>>
+}
+
+/** The default OutboundEntry for a feed: disabled, no explicit path, never pushed. */
+function defaultOutboundEntry(_feed: ErpOutboundFeed): OutboundEntry {
+  return { enabled: false, erpPath: null, lastPushedAt: null }
+}
+
+/**
+ * Read the outbound config off an Integration, merged with defaults so EVERY
+ * feed key in ERP_OUTBOUND_FEEDS has a complete OutboundEntry. Missing /
+ * malformed config falls back to defaults (disabled) defensively.
+ */
+export function getOutbound(integration: Integration | null | undefined): Outbound {
+  const config = (integration?.config ?? null) as StoredConfigWithOutbound | null
+  const stored = config?.outbound ?? {}
+
+  const outbound: Outbound = {}
+  for (const feed of ERP_OUTBOUND_FEEDS) {
+    const base = defaultOutboundEntry(feed)
+    const patch = (stored[feed.key] ?? {}) as Partial<OutboundEntry>
+    outbound[feed.key] = {
+      enabled: typeof patch.enabled === 'boolean' ? patch.enabled : base.enabled,
+      erpPath: patch.erpPath !== undefined ? patch.erpPath : base.erpPath,
+      lastPushedAt: patch.lastPushedAt !== undefined ? patch.lastPushedAt : base.lastPushedAt,
+    }
+  }
+  return outbound
+}
+
+/**
+ * Return a NEW config object that preserves the encrypted creds keys
+ * ({ iv, encrypted, tag }) AND the inbound `.routing`, while merging
+ * `outboundPatch` into `.outbound`. Per-feed patches are shallow-merged onto
+ * whatever outbound config is already stored, so updating one feed never drops
+ * the others — and routing / creds are never touched.
+ */
+export function setOutboundOnConfig(
+  existingConfig: unknown,
+  outboundPatch: Record<string, Partial<OutboundEntry>>,
+): Prisma.InputJsonObject {
+  const existing = (existingConfig ?? {}) as StoredConfigWithOutbound
+  const currentOutbound = (existing.outbound ?? {}) as Record<string, Partial<OutboundEntry>>
+
+  const mergedOutbound: Record<string, Partial<OutboundEntry>> = { ...currentOutbound }
+  for (const [key, patch] of Object.entries(outboundPatch || {})) {
+    if (!patch) continue
+    mergedOutbound[key] = { ...(currentOutbound[key] ?? {}), ...patch }
+  }
+
+  // Spread existing FIRST so creds ({iv,encrypted,tag}) and .routing survive.
+  return { ...existing, outbound: mergedOutbound } as Prisma.InputJsonObject
+}
+
 /**
  * Resolve the DepartmentModule a feed should write to:
  *   1. routing[feedKey].targetModuleId if set AND the module exists,
