@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useQueryClient } from '@tanstack/react-query'
+import { useComponentCosts } from '@/hooks/useData'
+import { fmtCurrency } from '@/components/finance/financeFormat'
 import { Loader2, Plus, Trash2, ArrowUp, ArrowDown, FileSpreadsheet, Printer, AlertTriangle } from 'lucide-react'
 import { FullPageForm } from '@/components/shared/FullPageForm'
 import { useAppStore, type ActiveForm } from '@/stores/appStore'
@@ -86,6 +88,30 @@ export function BOMFormPage({ form: activeForm }: { form: ActiveForm }) {
   const skuItems = ctx.skuItems ?? []
   const onPickSku = (v: SKUPickerValue) =>
     setForm((f) => ({ ...f, fgPartNumber: v.sku, productName: v.productName, brand: v.brand }))
+
+  // ─── rolled component cost (builder-only; never printed on the canonical BOM doc) ───
+  const { data: componentCosts } = useComponentCosts()
+  const costById = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const c of (componentCosts as any[]) || []) {
+      if (c?.id != null && typeof c.bestLandedUnitCost === 'number') m.set(c.id, c.bestLandedUnitCost)
+    }
+    return m
+  }, [componentCosts])
+
+  // Per-line cost: unit landed cost from the referenced component × qty (UM).
+  // UM '-' (pack-level) or non-numeric → unit cost shown, excluded from the qty multiply.
+  const lineCost = (line: BomLine): { unit: number | null; qty: number | null; total: number | null } => {
+    const unit = line.componentId != null && costById.has(line.componentId) ? costById.get(line.componentId)! : null
+    const qty = /^\d*\.?\d+$/.test((line.um ?? '').trim()) ? Number(line.um) : null
+    const total = unit == null ? null : unit * (qty ?? 1)
+    return { unit, qty, total }
+  }
+  const componentTotal = useMemo(
+    () => form.lines.reduce((sum, l) => sum + (lineCost(l).total ?? 0), 0),
+    [form.lines, costById],
+  )
+  const pricedLineCount = form.lines.filter((l) => lineCost(l).unit != null).length
 
   // ─── line operations ───
   const reindex = (lines: BomLine[]) => lines.map((l, i) => ({ ...l, lineNo: i + 1 }))
@@ -348,8 +374,31 @@ export function BOMFormPage({ form: activeForm }: { form: ActiveForm }) {
                         className="px-2.5 py-1.5 bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)]"
                       />
                     </div>
+                    {(() => {
+                      const { unit, qty, total } = lineCost(line)
+                      return (
+                        <div className="pl-8 text-[11px] text-[var(--text-tertiary)]">
+                          {unit == null ? (
+                            <span className="italic">No landed cost on file{line.partType === 'bulk' ? ' (bulk — costed via formulation)' : ''}</span>
+                          ) : (
+                            <span>
+                              Est. <span className="text-[var(--text-secondary)] font-medium">{fmtCurrency(unit)}</span>/unit
+                              {qty != null && qty !== 1 ? <> × {qty} = <span className="text-[var(--text-secondary)] font-medium">{fmtCurrency(total)}</span></> : null}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 ))}
+              </div>
+
+              {/* Rolled component cost (builder aid — not part of the exported BOM document) */}
+              <div className="flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-2.5">
+                <span className="text-[12px] text-[var(--text-tertiary)]">
+                  Est. component cost <span className="text-[var(--text-tertiary)]">({pricedLineCount}/{form.lines.length} lines priced)</span>
+                </span>
+                <span className="text-[14px] font-semibold text-[var(--text-primary)] tabular-nums">{fmtCurrency(componentTotal)}</span>
               </div>
             </section>
 
