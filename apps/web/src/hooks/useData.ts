@@ -117,6 +117,35 @@ export function useAssignDepartment() {
   })
 }
 
+// ─── Production Update Email ───────────────────────────────
+// POST /emails/production-update. The server gates actual sending: when email
+// isn't configured it returns { sent:false, configured:false } and the UI
+// offers a Copy fallback instead of treating it as an error.
+export interface ProductionEmailRecipient {
+  email: string
+  name?: string
+}
+
+export interface SendProductionEmailVars {
+  recipients: ProductionEmailRecipient[]
+  subject: string
+  html: string
+  itemId?: string
+}
+
+export interface SendProductionEmailResult {
+  sent: boolean
+  configured: boolean
+  messageId?: string
+  error?: string
+}
+
+export function useSendProductionEmail() {
+  return useMutation<SendProductionEmailResult, any, SendProductionEmailVars>({
+    mutationFn: (vars) => api.post('/emails/production-update', vars).then((r) => r.data),
+  })
+}
+
 // ─── Tasks ──────────────────────────────────────────────────
 export function useTasks(filters?: Record<string, string>) {
   const params = new URLSearchParams(filters || {}).toString()
