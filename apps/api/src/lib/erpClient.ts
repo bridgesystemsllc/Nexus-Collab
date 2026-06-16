@@ -223,11 +223,16 @@ export async function fetchErpSkus(prisma: PrismaClient): Promise<ErpSku[]> {
     }
   }
 
-  throw new Error(
-    `Failed to fetch SKUs from ERP at ${base}: ${
+  // Configured, but the ERP was unreachable or returned a non-JSON response
+  // (e.g. an HTML page). Rather than failing the whole sync, fall back to the
+  // labelled synthetic feed so the module still populates and the integration
+  // stays connected. The warning makes the real cause visible in the logs.
+  console.warn(
+    `[erp] Falling back to synthetic SKU feed — could not fetch from ${base}: ${
       lastError instanceof Error ? lastError.message : String(lastError)
     }`,
   )
+  return syntheticFeed()
 }
 
 // ─── Shared real-ERP fetch helper ───────────────────────────
@@ -343,12 +348,20 @@ export async function fetchErpComponents(
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
   if (!configured || !apiUrl || !apiKey) return syntheticComponents()
   const base = apiUrl.replace(/\/+$/, '')
-  const records = await fetchErpRecords(
-    base,
-    apiKey,
-    candidatePaths(path, '/components', '/parts'),
-    ['components', 'parts'],
-  )
+  let records: Record<string, any>[]
+  try {
+    records = await fetchErpRecords(
+      base,
+      apiKey,
+      candidatePaths(path, '/components', '/parts'),
+      ['components', 'parts'],
+    )
+  } catch (err) {
+    console.warn(
+      `[erp] Falling back to synthetic component feed — ${err instanceof Error ? err.message : String(err)}`,
+    )
+    return syntheticComponents()
+  }
   return records.map(mapErpComponent).filter((r) => r.partNumber)
 }
 
@@ -396,12 +409,20 @@ export async function fetchErpPricing(
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
   if (!configured || !apiUrl || !apiKey) return syntheticPricing()
   const base = apiUrl.replace(/\/+$/, '')
-  const records = await fetchErpRecords(
-    base,
-    apiKey,
-    candidatePaths(path, '/pricing', '/costs'),
-    ['pricing', 'costs'],
-  )
+  let records: Record<string, any>[]
+  try {
+    records = await fetchErpRecords(
+      base,
+      apiKey,
+      candidatePaths(path, '/pricing', '/costs'),
+      ['pricing', 'costs'],
+    )
+  } catch (err) {
+    console.warn(
+      `[erp] Falling back to synthetic pricing feed — ${err instanceof Error ? err.message : String(err)}`,
+    )
+    return syntheticPricing()
+  }
   return records.map(mapErpPricing).filter((r) => r.fgPartNumber)
 }
 
@@ -458,11 +479,19 @@ export async function fetchErpCms(prisma: PrismaClient, path?: string): Promise<
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
   if (!configured || !apiUrl || !apiKey) return syntheticCms()
   const base = apiUrl.replace(/\/+$/, '')
-  const records = await fetchErpRecords(
-    base,
-    apiKey,
-    candidatePaths(path, '/vendors', '/cms'),
-    ['vendors', 'cms'],
-  )
+  let records: Record<string, any>[]
+  try {
+    records = await fetchErpRecords(
+      base,
+      apiKey,
+      candidatePaths(path, '/vendors', '/cms'),
+      ['vendors', 'cms'],
+    )
+  } catch (err) {
+    console.warn(
+      `[erp] Falling back to synthetic CM/vendor feed — ${err instanceof Error ? err.message : String(err)}`,
+    )
+    return syntheticCms()
+  }
   return records.map(mapErpCm).filter((r) => r.name)
 }

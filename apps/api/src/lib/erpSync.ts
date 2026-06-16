@@ -193,9 +193,16 @@ export async function syncErp(prisma: PrismaClient): Promise<ErpSyncOrchestrator
       continue
     }
 
-    const result = await syncFn(prisma, targetModule.id, entry.erpPath)
-    feeds[feed.key] = result
-    recordsProcessed += result.recordsProcessed
+    // A single feed failing must never abort the whole sync (which would mark
+    // the integration as errored). Isolate each feed and leave it inert on error.
+    try {
+      const result = await syncFn(prisma, targetModule.id, entry.erpPath)
+      feeds[feed.key] = result
+      recordsProcessed += result.recordsProcessed
+    } catch (err) {
+      console.error(`[erp] feed "${feed.key}" failed, skipping:`, err)
+      feeds[feed.key] = inert
+    }
   }
 
   return { feeds, recordsProcessed }
