@@ -37,6 +37,20 @@ interface ErpProbeResult {
   authRejected: boolean
   reachable: boolean
   lastError: string | null
+  // The ERP's own error message (e.g. "API key is inactive"), surfaced so the
+  // user sees the real reason instead of a generic "rejected" message.
+  serverMessage?: string | null
+}
+
+// Pull the human-readable error out of an ERP JSON error body. The ERP wraps
+// errors as { error: { code, message } } (and sometimes a top-level message).
+function extractErpMessage(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed?.error?.message || parsed?.message || null
+  } catch {
+    return null
+  }
 }
 
 async function probeErpLive(base: string, apiKey: string): Promise<ErpProbeResult> {
@@ -49,6 +63,7 @@ async function probeErpLive(base: string, apiKey: string): Promise<ErpProbeResul
   let authRejected = false
   let reachable = false
   let lastError: string | null = null
+  let serverMessage: string | null = null
   for (const path of dataPaths) {
     try {
       const response = await fetch(`${base}${path}`, {
@@ -56,21 +71,31 @@ async function probeErpLive(base: string, apiKey: string): Promise<ErpProbeResul
         signal: AbortSignal.timeout(8000),
       })
       if (response.ok) {
-        return { ok: true, endpoint: path, authRejected: false, reachable: true, lastError: null }
+        return {
+          ok: true,
+          endpoint: path,
+          authRejected: false,
+          reachable: true,
+          lastError: null,
+          serverMessage: null,
+        }
       }
       reachable = true
       if (response.status === 401 || response.status === 403) authRejected = true
-      lastError = `HTTP ${response.status} from ${path}`
+      const detail = extractErpMessage(await response.text().catch(() => ''))
+      if (detail) serverMessage = detail
+      lastError = `HTTP ${response.status} from ${path}${detail ? ` — ${detail}` : ''}`
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err)
     }
   }
-  return { ok: false, authRejected, reachable, lastError }
+  return { ok: false, authRejected, reachable, lastError, serverMessage }
 }
 
 function erpProbeError(probe: ErpProbeResult, base: string): string {
   if (probe.authRejected) {
-    return 'The ERP rejected the API key (HTTP 401/403). Check that the API key is correct and has permission to read data.'
+    const detail = probe.serverMessage ? ` The ERP said: "${probe.serverMessage}".` : ''
+    return `The ERP rejected the API key (HTTP 401/403).${detail} Check that the API key is correct, active, and has permission to read data.`
   }
   if (probe.reachable) {
     return `Reached the server, but no ERP data endpoint responded (${probe.lastError}). Check that the API URL is the ERP's data API base — it should serve /skus or /products.`
