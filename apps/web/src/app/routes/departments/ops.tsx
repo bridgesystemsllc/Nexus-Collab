@@ -468,6 +468,9 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
   const openForm = useAppStore((s) => s.openForm)
   const [view, setView] = useState<ViewMode>('table')
   const [brandFilter, setBrandFilter] = useState('All')
+  const [statusFilter, setStatusFilter] = useState('All')
+  const [pageSize, setPageSize] = useState(50)
+  const [page, setPage] = useState(1)
 
   const openCreate = () =>
     openForm({ formType: 'opsInventory', mode: 'create', context: { moduleId, departmentId } })
@@ -483,10 +486,33 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
   const sortOrder: Record<string, number> = { emergency: 0, critical: 1, healthy: 2, overstock: 3 }
 
   const brands = ['All', ...Array.from(new Set(items.map((item: any) => item.data?.brand).filter(Boolean)))]
-  const filtered = items.filter(
-    (item: any) => brandFilter === 'All' || item.data?.brand === brandFilter,
-  )
+  const statuses = [
+    'All',
+    ...Array.from(new Set(items.map((item: any) => item.data?.status).filter(Boolean))).sort(
+      (a: any, b: any) => (sortOrder[a] ?? 99) - (sortOrder[b] ?? 99),
+    ),
+  ]
+  const filtered = items.filter((item: any) => {
+    const d = item.data || {}
+    if (brandFilter !== 'All' && d.brand !== brandFilter) return false
+    if (statusFilter !== 'All' && d.status !== statusFilter) return false
+    return true
+  })
   const sorted = [...filtered].sort((a, b) => (sortOrder[a.data?.status] ?? 99) - (sortOrder[b.data?.status] ?? 99))
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize))
+  // Clamp the current page when the list or page size shrinks (e.g. after
+  // changing a filter or the per-page count) so we never land past the end.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
+  // Reset to the first page whenever the filtered set or page size changes.
+  useEffect(() => {
+    setPage(1)
+  }, [brandFilter, statusFilter, pageSize])
+
+  const pageStart = (page - 1) * pageSize
+  const paged = sorted.slice(pageStart, pageStart + pageSize)
 
   const cowork = (d: any, id: string): AddToCoworkItem => ({
     name: d.name || d.sku || 'Inventory',
@@ -498,32 +524,64 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
   const coverageColor = (m: number) =>
     m === 0 ? 'var(--danger)' : m < 1 ? 'var(--warning)' : m > 20 ? 'var(--info)' : 'var(--text-secondary)'
 
+  const chip = (active: boolean) =>
+    `px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+      active
+        ? 'bg-[var(--accent)] text-white border-transparent'
+        : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
+    }`
+
   return (
     <div className="space-y-4">
       <TabHeader title="Inventory records" count={filtered.length} view={view} onView={setView} onNew={openCreate} newLabel="New Record" />
 
       {brands.length > 1 && (
         <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mr-1">Brand</span>
           {brands.map((brand) => (
-            <button
-              key={brand}
-              onClick={() => setBrandFilter(brand)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                brandFilter === brand
-                  ? 'bg-[var(--accent)] text-white border-transparent'
-                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
-              }`}
-            >
+            <button key={brand} onClick={() => setBrandFilter(brand)} className={chip(brandFilter === brand)}>
               {brand === 'All' ? 'All' : brandLabel(brand)}
             </button>
           ))}
         </div>
       )}
 
+      {statuses.length > 1 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mr-1">Status</span>
+          {statuses.map((status) => (
+            <button key={status} onClick={() => setStatusFilter(status)} className={chip(statusFilter === status)}>
+              {status === 'All' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {sorted.length > 0 && (
+        <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-[var(--text-secondary)]">
+          <span>
+            Showing {pageStart + 1}–{Math.min(pageStart + pageSize, sorted.length)} of {sorted.length}
+            {' · '}Page {page} of {totalPages}
+          </span>
+          <label className="flex items-center gap-2">
+            <span>Per page</span>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-1 text-xs text-[var(--text-primary)]"
+            >
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+            </select>
+          </label>
+        </div>
+      )}
+
       {items.length === 0 ? (
         <EmptyState text="No inventory data found." />
       ) : sorted.length === 0 ? (
-        <EmptyState text="No inventory records for this brand." />
+        <EmptyState text="No inventory records match these filters." />
       ) : view === 'table' ? (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
           <table className="nexus-table">
@@ -541,7 +599,7 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
               </tr>
             </thead>
             <tbody>
-              {sorted.map((item: any) => {
+              {paged.map((item: any) => {
                 const d = item.data
                 const cfg = statusConfig[d.status] || { badge: 'badge-accent', rowClass: '' }
                 return (
@@ -563,7 +621,7 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
         </div>
       ) : (
         <div className="space-y-2">
-          {sorted.map((item: any) => {
+          {paged.map((item: any) => {
             const d = item.data
             const cfg = statusConfig[d.status] || { badge: 'badge-accent', rowClass: '' }
             return (
@@ -583,6 +641,26 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
               </div>
             )
           })}
+        </div>
+      )}
+
+      {sorted.length > 0 && totalPages > 1 && (
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+          <span className="text-xs text-[var(--text-tertiary)]">Page {page} of {totalPages}</span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
         </div>
       )}
     </div>
