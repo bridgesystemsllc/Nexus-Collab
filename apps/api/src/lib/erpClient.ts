@@ -108,6 +108,31 @@ export async function getErpConfig(prisma: PrismaClient): Promise<ErpConfig> {
   return { apiUrl, apiKey, configured: Boolean(apiUrl && apiKey) }
 }
 
+/**
+ * Build the ordered list of base URLs to try for a configured ERP. Many ERP
+ * deployments expose their data API under an `/api/v1` prefix, but users often
+ * paste just the host (e.g. `https://erp.example.com`). We try the URL exactly
+ * as given first, then with `/api/v1` appended, so either form connects without
+ * forcing the user to know the exact prefix.
+ */
+export function erpBaseCandidates(apiUrl: string): string[] {
+  const base = apiUrl.replace(/\/+$/, '')
+  const candidates = [base]
+  if (!/\/api\/v\d+$/.test(base)) candidates.push(`${base}/api/v1`)
+  return candidates
+}
+
+/**
+ * True when a response body is actually JSON we can use. Some servers return
+ * their SPA's `index.html` with HTTP 200 for unknown routes; that must NOT be
+ * mistaken for a successful data fetch.
+ */
+export function looksLikeJson(contentType: string | null, body: string): boolean {
+  if (contentType && contentType.toLowerCase().includes('application/json')) return true
+  const trimmed = body.trimStart()
+  return trimmed.startsWith('{') || trimmed.startsWith('[')
+}
+
 // ─── Synthetic dev-fallback feed ────────────────────────────
 // Realistic Carol's Daughter / KarEve SKUs reusing the K6001xxx / K44xxxxx
 // code families seen in the seed + inventory feed. Used ONLY when no ERP
@@ -154,17 +179,26 @@ function syntheticFeed(): ErpSku[] {
   }))
 }
 
-// Map a raw ERP API record (shape unknown across deployments) into ErpSku.
+// Map a raw ERP API record (shape varies across deployments) into ErpSku.
+// Field aliases cover the KarEve Sync ERP shape (skuNumber/itemName/quantity/
+// quantityAvailable/quantityAllocated/unitUpc) as well as common alternates.
 function mapErpRecord(raw: Record<string, any>): ErpSku {
-  const onHand = Number(raw.onHand ?? raw.on_hand ?? raw.quantityOnHand ?? 0) || 0
-  const committed = Number(raw.committed ?? raw.allocated ?? raw.quantityCommitted ?? 0) || 0
-  const available = raw.available != null ? Number(raw.available) || 0 : Math.max(onHand - committed, 0)
+  const onHand =
+    Number(raw.onHand ?? raw.on_hand ?? raw.quantityOnHand ?? raw.quantity ?? 0) || 0
+  const committed =
+    Number(raw.committed ?? raw.allocated ?? raw.quantityCommitted ?? raw.quantityAllocated ?? 0) || 0
+  const available =
+    raw.available != null
+      ? Number(raw.available) || 0
+      : raw.quantityAvailable != null
+        ? Number(raw.quantityAvailable) || 0
+        : Math.max(onHand - committed, 0)
   return {
-    sku: String(raw.sku ?? raw.itemCode ?? raw.code ?? ''),
-    name: String(raw.name ?? raw.description ?? raw.productName ?? ''),
+    sku: String(raw.sku ?? raw.skuNumber ?? raw.sellableSku ?? raw.shopifySku ?? raw.itemCode ?? raw.code ?? ''),
+    name: String(raw.name ?? raw.itemName ?? raw.description ?? raw.productName ?? ''),
     brand: String(raw.brand ?? raw.brandName ?? ''),
-    upc: String(raw.upc ?? raw.gtin ?? raw.barcode ?? ''),
-    status: String(raw.status ?? 'Active'),
+    upc: String(raw.upc ?? raw.unitUpc ?? raw.sellableUpc ?? raw.gtin ?? raw.barcode ?? ''),
+    status: String(raw.status ?? (raw.isActive === false ? 'Inactive' : 'Active')),
     onHand,
     committed,
     available,
@@ -185,95 +219,80 @@ export async function fetchErpSkus(prisma: PrismaClient): Promise<ErpSku[]> {
     return syntheticFeed()
   }
 
-  const base = apiUrl.replace(/\/+$/, '')
-  let lastError: unknown = null
-
-  for (const path of ['/skus', '/products']) {
-    try {
-      const response = await fetch(`${base}${path}`, {
-        // Send both auth styles so either ERP auth scheme works.
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'X-API-Key': apiKey,
-          Accept: 'application/json',
-        },
-        signal: AbortSignal.timeout(10_000),
-      })
-
-      if (!response.ok) {
-        lastError = new Error(`ERP ${path} returned HTTP ${response.status}`)
-        continue
-      }
-
-      const body = (await response.json()) as unknown
-      const records: Record<string, any>[] = Array.isArray(body)
-        ? (body as Record<string, any>[])
-        : Array.isArray((body as any)?.data)
-          ? ((body as any).data as Record<string, any>[])
-          : Array.isArray((body as any)?.skus)
-            ? ((body as any).skus as Record<string, any>[])
-            : Array.isArray((body as any)?.products)
-              ? ((body as any).products as Record<string, any>[])
-              : []
-
-      return records.map(mapErpRecord).filter((r) => r.sku)
-    } catch (err) {
-      lastError = err
-      // Try the next path candidate.
+  try {
+    const records = await fetchErpRecords(
+      apiUrl,
+      apiKey,
+      ['/products', '/inventory', '/skus'],
+      ['products', 'inventory', 'skus'],
+    )
+    const mapped = records.map(mapErpRecord).filter((r) => r.sku)
+    if (mapped.length === 0) {
+      throw new Error('ERP returned no usable SKU records')
     }
+    return mapped
+  } catch (err) {
+    // Configured, but the ERP was unreachable, unauthorized, or returned a
+    // non-JSON response (e.g. an HTML page). Rather than failing the whole
+    // sync, fall back to the labelled synthetic feed so the module still
+    // populates. The warning makes the real cause visible in the logs.
+    console.warn(
+      `[erp] Falling back to synthetic SKU feed — ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    )
+    return syntheticFeed()
   }
-
-  // Configured, but the ERP was unreachable or returned a non-JSON response
-  // (e.g. an HTML page). Rather than failing the whole sync, fall back to the
-  // labelled synthetic feed so the module still populates and the integration
-  // stays connected. The warning makes the real cause visible in the logs.
-  console.warn(
-    `[erp] Falling back to synthetic SKU feed — could not fetch from ${base}: ${
-      lastError instanceof Error ? lastError.message : String(lastError)
-    }`,
-  )
-  return syntheticFeed()
 }
 
 // ─── Shared real-ERP fetch helper ───────────────────────────
-// Mirrors the fetchErpSkus request/auth/shape logic for the other feeds.
-// Tries each candidate path in order (an explicit routing `path` takes
-// precedence), sends both auth styles, and unwraps array / { data } /
-// { <resource> } response shapes. Throws if every candidate path fails.
+// Tries each base candidate (the URL as given, then with /api/v1 appended) ×
+// each candidate path in order (an explicit routing `path` takes precedence),
+// sends both auth styles, rejects HTML/non-JSON responses (an SPA index.html
+// returned for unknown routes), and unwraps array / { data } / { <resource> }
+// shapes. Throws if every candidate fails.
 async function fetchErpRecords(
-  base: string,
+  apiUrl: string,
   apiKey: string,
   paths: string[],
   resourceKeys: string[],
 ): Promise<Record<string, any>[]> {
   let lastError: unknown = null
-  for (const path of paths) {
-    try {
-      const response = await fetch(`${base}${path}`, {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'X-API-Key': apiKey,
-          Accept: 'application/json',
-        },
-        signal: AbortSignal.timeout(10_000),
-      })
-      if (!response.ok) {
-        lastError = new Error(`ERP ${path} returned HTTP ${response.status}`)
-        continue
+  for (const base of erpBaseCandidates(apiUrl)) {
+    for (const path of paths) {
+      try {
+        const response = await fetch(`${base}${path}`, {
+          // Send both auth styles so either ERP auth scheme works.
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'X-API-Key': apiKey,
+            Accept: 'application/json',
+          },
+          signal: AbortSignal.timeout(10_000),
+        })
+        if (!response.ok) {
+          lastError = new Error(`ERP ${base}${path} returned HTTP ${response.status}`)
+          continue
+        }
+        const raw = await response.text()
+        if (!looksLikeJson(response.headers.get('content-type'), raw)) {
+          lastError = new Error(`ERP ${base}${path} returned a non-JSON response`)
+          continue
+        }
+        const body = JSON.parse(raw) as unknown
+        if (Array.isArray(body)) return body as Record<string, any>[]
+        if (Array.isArray((body as any)?.data)) return (body as any).data as Record<string, any>[]
+        for (const key of resourceKeys) {
+          if (Array.isArray((body as any)?.[key])) return (body as any)[key] as Record<string, any>[]
+        }
+        return []
+      } catch (err) {
+        lastError = err
       }
-      const body = (await response.json()) as unknown
-      if (Array.isArray(body)) return body as Record<string, any>[]
-      if (Array.isArray((body as any)?.data)) return (body as any).data as Record<string, any>[]
-      for (const key of resourceKeys) {
-        if (Array.isArray((body as any)?.[key])) return (body as any)[key] as Record<string, any>[]
-      }
-      return []
-    } catch (err) {
-      lastError = err
     }
   }
   throw new Error(
-    `Failed to fetch ${resourceKeys[0]} from ERP at ${base}: ${
+    `Failed to fetch ${resourceKeys[0]} from ERP at ${apiUrl}: ${
       lastError instanceof Error ? lastError.message : String(lastError)
     }`,
   )
@@ -347,11 +366,10 @@ export async function fetchErpComponents(
 ): Promise<ErpComponent[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
   if (!configured || !apiUrl || !apiKey) return syntheticComponents()
-  const base = apiUrl.replace(/\/+$/, '')
   let records: Record<string, any>[]
   try {
     records = await fetchErpRecords(
-      base,
+      apiUrl,
       apiKey,
       candidatePaths(path, '/components', '/parts'),
       ['components', 'parts'],
@@ -408,11 +426,10 @@ export async function fetchErpPricing(
 ): Promise<ErpPricing[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
   if (!configured || !apiUrl || !apiKey) return syntheticPricing()
-  const base = apiUrl.replace(/\/+$/, '')
   let records: Record<string, any>[]
   try {
     records = await fetchErpRecords(
-      base,
+      apiUrl,
       apiKey,
       candidatePaths(path, '/pricing', '/costs'),
       ['pricing', 'costs'],
@@ -478,11 +495,10 @@ function mapErpCm(raw: Record<string, any>): ErpCm {
 export async function fetchErpCms(prisma: PrismaClient, path?: string): Promise<ErpCm[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
   if (!configured || !apiUrl || !apiKey) return syntheticCms()
-  const base = apiUrl.replace(/\/+$/, '')
   let records: Record<string, any>[]
   try {
     records = await fetchErpRecords(
-      base,
+      apiUrl,
       apiKey,
       candidatePaths(path, '/vendors', '/cms'),
       ['vendors', 'cms'],

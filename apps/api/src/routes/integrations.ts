@@ -9,7 +9,7 @@ import {
   exchangeGoogleToken,
 } from '../lib/oauth'
 import { syncErp } from '../lib/erpSync'
-import { getErpConfig } from '../lib/erpClient'
+import { getErpConfig, erpBaseCandidates, looksLikeJson } from '../lib/erpClient'
 import {
   ERP_FEEDS,
   getRouting,
@@ -53,40 +53,48 @@ function extractErpMessage(raw: string): string | null {
   }
 }
 
-async function probeErpLive(base: string, apiKey: string): Promise<ErpProbeResult> {
+async function probeErpLive(apiUrl: string, apiKey: string): Promise<ErpProbeResult> {
   const authHeaders = {
     'X-API-Key': apiKey,
     Authorization: `Bearer ${apiKey}`,
     Accept: 'application/json',
   }
-  const dataPaths = ['/skus', '/products', '/components', '/pricing', '/vendors']
+  // Probe the endpoints the SKU sync actually reads, across both base
+  // candidates (URL as given, then with /api/v1 appended).
+  const dataPaths = ['/products', '/inventory', '/skus']
   let authRejected = false
   let reachable = false
   let lastError: string | null = null
   let serverMessage: string | null = null
-  for (const path of dataPaths) {
-    try {
-      const response = await fetch(`${base}${path}`, {
-        headers: authHeaders,
-        signal: AbortSignal.timeout(8000),
-      })
-      if (response.ok) {
-        return {
-          ok: true,
-          endpoint: path,
-          authRejected: false,
-          reachable: true,
-          lastError: null,
-          serverMessage: null,
+  for (const base of erpBaseCandidates(apiUrl)) {
+    for (const path of dataPaths) {
+      try {
+        const response = await fetch(`${base}${path}`, {
+          headers: authHeaders,
+          signal: AbortSignal.timeout(8000),
+        })
+        const raw = await response.text().catch(() => '')
+        // A 200 that returns HTML (an SPA index.html for an unknown route) is
+        // NOT a live data endpoint — only count JSON as verified.
+        if (response.ok && looksLikeJson(response.headers.get('content-type'), raw)) {
+          return {
+            ok: true,
+            endpoint: `${base}${path}`,
+            authRejected: false,
+            reachable: true,
+            lastError: null,
+            serverMessage: null,
+          }
         }
+        reachable = true
+        if (response.status === 401 || response.status === 403) authRejected = true
+        const detail = extractErpMessage(raw)
+        if (detail) serverMessage = detail
+        const nonJson = response.ok ? ' — non-JSON response (wrong API base?)' : ''
+        lastError = `HTTP ${response.status} from ${base}${path}${detail ? ` — ${detail}` : nonJson}`
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err)
       }
-      reachable = true
-      if (response.status === 401 || response.status === 403) authRejected = true
-      const detail = extractErpMessage(await response.text().catch(() => ''))
-      if (detail) serverMessage = detail
-      lastError = `HTTP ${response.status} from ${path}${detail ? ` — ${detail}` : ''}`
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err)
     }
   }
   return { ok: false, authRejected, reachable, lastError, serverMessage }
@@ -279,7 +287,7 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
       // record the outcome, so the response (and the UI) tells the user the
       // truth instead of a blanket "connected".
       const base = apiUrl.replace(/\/+$/, '')
-      const probe = await probeErpLive(base, apiKey)
+      const probe = await probeErpLive(apiUrl, apiKey)
       await persistErpLiveResult(probe, base)
 
       return res.json({
@@ -325,7 +333,7 @@ integrationRoutes.post('/:type/test', async (req: Request, res: Response) => {
       // Validate against the REAL data endpoints the sync uses (shared with
       // /connect) and persist the outcome so the UI reflects live vs sample mode.
       const base = apiUrl.replace(/\/+$/, '')
-      const probe = await probeErpLive(base, apiKey)
+      const probe = await probeErpLive(apiUrl, apiKey)
       await persistErpLiveResult(probe, base)
 
       if (probe.ok) {
@@ -770,15 +778,18 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
       data: { status: 'SYNCING' },
     })
 
-    // Run the adapter. The ERP integration pulls inventory into the
-    // Inventory Health module; other integrations remain simulated.
-    setTimeout(async () => {
+    // Run the adapter out-of-band. The ERP integration pulls each enabled feed
+    // into its configured Nexus module; other integrations remain simulated.
+    //
+    // This MUST be bulletproof: it runs after the HTTP response has been sent,
+    // so any unhandled rejection here would crash the API process (and the
+    // workflow would auto-restart, leaving the integration stuck in SYNCING —
+    // which the UI renders as "Not connected"). Every await is wrapped, and the
+    // failure path itself is guarded so it can never reject.
+    const runSync = async () => {
       try {
         let recordsProcessed = Math.floor(Math.random() * 100)
         if (integration.type === 'ERP_KAREVE_SYNC') {
-          // Request-driven (no Redis required): run the routing-aware
-          // orchestrator, which pulls each enabled ERP feed into its
-          // configured Nexus module.
           const result = await syncErp(prisma)
           recordsProcessed = result.recordsProcessed
         }
@@ -795,16 +806,26 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
           },
         })
       } catch (err) {
-        await prisma.syncLog.update({
-          where: { id: syncLog.id },
-          data: { status: 'FAILED', errors: { message: String(err) } },
-        })
-        await prisma.integration.update({
-          where: { id: integration.id },
-          data: { status: 'ERROR' },
-        })
         console.error('[integrations] ERP sync adapter error:', err)
+        // Record the failure but keep the integration CONNECTED — the sync
+        // adapter falls back to sample data rather than truly disconnecting, so
+        // flipping to ERROR/SYNCING would misleadingly show "Not connected".
+        try {
+          await prisma.syncLog.update({
+            where: { id: syncLog.id },
+            data: { status: 'FAILED', completedAt: new Date(), errors: { message: String(err) } },
+          })
+          await prisma.integration.update({
+            where: { id: integration.id },
+            data: { status: 'CONNECTED' },
+          })
+        } catch (recordErr) {
+          console.error('[integrations] failed to record sync failure:', recordErr)
+        }
       }
+    }
+    setTimeout(() => {
+      void runSync()
     }, 2000)
 
     res.json({ success: true, syncLogId: syncLog.id })
