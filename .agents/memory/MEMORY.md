@@ -6,5 +6,6 @@
 - [prisma db push drops session table](prisma-db-push-drops-session-table.md) — session table isn't in schema; for additive changes use raw CREATE TABLE SQL, never --accept-data-loss.
 - [Testing writes vs live integrations](erp-integration-write-testing.md) — ERP /connect re-encrypts the whole creds blob; testing it with fake creds destroys the user's real saved key. Use /test or restore.
 - [Microsoft Graph attach features](microsoft-graph-attach.md) — actor-bound via graphGet(memberId,'/me/...'); not-connected → 412 → inline ConnectMicrosoft; OneDrive search quotes need doubling; attach = link, not copy.
+- [Microsoft Graph scopes & re-consent](microsoft-graph-scopes.md) — reply/send needs Mail.Send; adding a scope requires existing users to reconnect; 403 ErrorAccessDenied = missing scope (mapped to 412 reconnect), not a hard error.
 - [ERP brand name resolution](erp-brand-resolution.md) — KarEve ERP gives brandId only, no brand-name endpoint; names come from a static brandId→name map in erpClient.
 - [ERP sync fallback contract](erp-sync-fallback-contract.md) — ERP fetchers return synthetic ONLY when unconfigured; throw when configured; base needs /api/v1 + JSON guard; out-of-band sync must never reject.

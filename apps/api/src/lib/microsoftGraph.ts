@@ -20,6 +20,7 @@ export const MS_SCOPES = [
   'offline_access',
   'User.Read',
   'Mail.Read',
+  'Mail.Send',
   'Files.Read',
 ]
 
@@ -237,7 +238,15 @@ export async function graphGet<T = any>(memberId: string, pathWithQuery: string)
     throw new MicrosoftNotConnectedError()
   }
   if (!res.ok) {
-    throw new Error(`Graph request failed (${res.status}): ${await res.text()}`)
+    const text = await res.text()
+    // 403 ErrorAccessDenied means the token is valid but lacks a required
+    // permission (e.g. the member consented before a new scope was added).
+    // Re-consenting (reconnect) is the recovery, so surface it like a lapsed
+    // connection rather than a generic hard error.
+    if (res.status === 403 && text.includes('ErrorAccessDenied')) {
+      throw new MicrosoftNotConnectedError()
+    }
+    throw new Error(`Graph request failed (${res.status}): ${text}`)
   }
   return (await res.json()) as T
 }
@@ -254,7 +263,13 @@ export async function graphPost<T = any>(memberId: string, pathWithQuery: string
   })
   if (res.status === 401) throw new MicrosoftNotConnectedError()
   if (!res.ok) {
-    throw new Error(`Graph request failed (${res.status}): ${await res.text()}`)
+    const text = await res.text()
+    // See graphGet: a valid token missing a required scope (e.g. Mail.Send for
+    // replies) returns 403 ErrorAccessDenied — recover via reconnect/re-consent.
+    if (res.status === 403 && text.includes('ErrorAccessDenied')) {
+      throw new MicrosoftNotConnectedError()
+    }
+    throw new Error(`Graph request failed (${res.status}): ${text}`)
   }
   if (res.status === 202 || res.status === 204) return null
   const text = await res.text()
