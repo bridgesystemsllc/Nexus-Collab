@@ -594,7 +594,7 @@ export function useTaskAttachments(taskId: string, module: string) {
 export function useCreateEmailAttachment() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { taskId: string; module: string; subject: string; sender_name?: string; sender_email?: string; received_at?: string; snippet?: string; web_link?: string; source?: string; message_count?: number; createdBy?: string }) => {
+    mutationFn: (data: { taskId: string; module: string; external_id?: string; subject: string; sender_name?: string; sender_email?: string; received_at?: string; snippet?: string; web_link?: string; source?: string; message_count?: number; createdBy?: string }) => {
       const { taskId, ...body } = data
       return api.post(`/tasks/${taskId}/attachments/email`, body).then(r => r.data)
     },
@@ -623,6 +623,37 @@ export function useMailSearch(query: string, enabled: boolean) {
     enabled: enabled && q.length >= 2,
     retry: false,
     staleTime: 30_000,
+  })
+}
+
+export interface MailMessage {
+  id: string
+  subject: string
+  from_name: string | null
+  from_email: string | null
+  to: string[]
+  cc: string[]
+  received_at: string | null
+  body_content_type: string
+  body_content: string
+  web_link: string | null
+}
+
+// Fetch a single Outlook message's full content (to render in-app).
+export function useMailMessage(id: string | null) {
+  return useQuery<MailMessage>({
+    queryKey: ['microsoft', 'mail', 'message', id],
+    queryFn: () => api.get(`/integrations/microsoft/mail/${encodeURIComponent(id as string)}`).then(r => r.data),
+    enabled: !!id,
+    retry: false,
+  })
+}
+
+// Reply to an Outlook message in-app.
+export function useReplyToMail() {
+  return useMutation<{ sent: boolean }, any, { id: string; comment: string; replyAll?: boolean }>({
+    mutationFn: ({ id, comment, replyAll }) =>
+      api.post(`/integrations/microsoft/mail/${encodeURIComponent(id)}/reply`, { comment, replyAll }).then(r => r.data),
   })
 }
 
