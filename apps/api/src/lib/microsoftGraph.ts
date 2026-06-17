@@ -241,3 +241,22 @@ export async function graphGet<T = any>(memberId: string, pathWithQuery: string)
   }
   return (await res.json()) as T
 }
+
+// Authenticated POST against Microsoft Graph for the given member. Returns the
+// parsed JSON body, or null for empty responses (202 Accepted / 204 No Content,
+// e.g. /sendMail and /reply, which return no body).
+export async function graphPost<T = any>(memberId: string, pathWithQuery: string, body: unknown): Promise<T | null> {
+  const token = await getAccessTokenForMember(memberId)
+  const res = await fetch(`${GRAPH_BASE}${pathWithQuery}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body ?? {}),
+  })
+  if (res.status === 401) throw new MicrosoftNotConnectedError()
+  if (!res.ok) {
+    throw new Error(`Graph request failed (${res.status}): ${await res.text()}`)
+  }
+  if (res.status === 202 || res.status === 204) return null
+  const text = await res.text()
+  return (text ? JSON.parse(text) : null) as T | null
+}

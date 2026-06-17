@@ -4,6 +4,7 @@ import {
   useTaskAttachments, useCreateEmailAttachment, useCreateFileAttachment,
   useCreateFileFromUrl, useCreateCommentAttachment, useDeleteAttachment,
   useMicrosoftStatus, useMailSearch, type MailSearchResult,
+  useMailMessage, useReplyToMail,
 } from '@/hooks/useData'
 import { ConnectMicrosoft } from '@/components/shared/ConnectMicrosoft'
 import { OneDriveBrowser } from '@/components/shared/OneDrivePicker'
@@ -25,6 +26,7 @@ interface Attachment {
   type: 'email' | 'file' | 'comment'
   created_at: string
   // email fields
+  external_id?: string
   subject?: string
   sender_name?: string
   sender_email?: string
@@ -89,7 +91,7 @@ const borderByType: Record<string, string> = {
 
 // ─── Attachment Row ────────────────────────────────────────
 
-function AttachmentRow({ att, onDelete }: { att: Attachment; onDelete: () => void }) {
+function AttachmentRow({ att, onDelete, onOpen }: { att: Attachment; onDelete: () => void; onOpen?: () => void }) {
   const [hovered, setHovered] = useState(false)
   const accent = borderByType[att.type] ?? 'border-slate-400'
 
@@ -119,13 +121,13 @@ function AttachmentRow({ att, onDelete }: { att: Attachment; onDelete: () => voi
       {/* Body */}
       <div className="flex-1 min-w-0">
         {att.type === 'email' && (
-          <>
-            <p className="text-[13px] text-[var(--text-primary)] truncate font-medium">{att.subject}</p>
+          <button type="button" onClick={onOpen} className="text-left w-full group/email" title="Open email">
+            <p className="text-[13px] text-[var(--text-primary)] truncate font-medium group-hover/email:text-[var(--accent)] transition-colors">{att.subject}</p>
             <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
               from {att.sender_name || att.sender_email || 'unknown'} &middot; {relativeTime(att.created_at)}
               {att.message_count ? ` \u00B7 ${att.message_count} messages` : ''}
             </p>
-          </>
+          </button>
         )}
         {att.type === 'file' && (
           <>
@@ -243,6 +245,7 @@ function AttachEmailModal({ taskId, module, onClose }: { taskId: string; module:
       {
         taskId,
         module,
+        external_id: m.id,
         subject: m.subject,
         sender_name: m.from_name || undefined,
         sender_email: m.from_email || undefined,
@@ -573,12 +576,110 @@ function AddCommentModal({ taskId, module, onClose }: { taskId: string; module: 
   )
 }
 
+// ─── Email Viewer (in-app, with reply) ─────────────────────
+
+function EmailViewerModal({ att, onClose }: { att: Attachment; onClose: () => void }) {
+  const { data: msg, isLoading, error } = useMailMessage(att.external_id ?? null)
+  const reply = useReplyToMail()
+  const [replyOpen, setReplyOpen] = useState(false)
+  const [replyText, setReplyText] = useState('')
+  const [sent, setSent] = useState(false)
+
+  const notConnected = (error as any)?.response?.status === 412
+  const bodyHtml = msg?.body_content_type?.toLowerCase() === 'html' ? msg.body_content : null
+  const bodyText = msg && !bodyHtml ? msg.body_content : null
+
+  const sendReply = () => {
+    const comment = replyText.trim()
+    if (!comment || !att.external_id) return
+    reply.mutate(
+      { id: att.external_id, comment },
+      { onSuccess: () => { setSent(true); setReplyText(''); setReplyOpen(false) } },
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 flex flex-col w-full max-w-[640px] max-h-[85vh] rounded-[14px] bg-[var(--bg-elevated)] border border-[var(--border-default)] shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-start justify-between gap-3 flex-shrink-0">
+          <div className="min-w-0">
+            <p className="text-[15px] font-semibold text-[var(--text-primary)] truncate">{msg?.subject || att.subject || 'Email'}</p>
+            <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5">
+              from {msg?.from_name || msg?.from_email || att.sender_name || att.sender_email || 'unknown'}
+              {msg?.received_at ? ` · ${new Date(msg.received_at).toLocaleString()}` : ''}
+            </p>
+            {msg?.to?.length ? <p className="text-[11px] text-[var(--text-tertiary)] truncate">to {msg.to.join(', ')}</p> : null}
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors flex-shrink-0">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {!att.external_id ? (
+            <div className="p-5 text-[13px] text-[var(--text-secondary)]">
+              <p>{att.snippet || 'This email was attached before in-app viewing was available.'}</p>
+              {att.web_link && (
+                <a href={att.web_link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-3 text-[var(--accent)] hover:underline text-[12px]">
+                  <ExternalLink size={12} /> Open in Outlook
+                </a>
+              )}
+            </div>
+          ) : isLoading ? (
+            <div className="p-8 flex items-center justify-center text-[var(--text-tertiary)]"><Loader2 size={18} className="animate-spin" /></div>
+          ) : notConnected ? (
+            <div className="p-5"><ConnectMicrosoft variant="inline" purpose="to read this email" /></div>
+          ) : error ? (
+            <div className="p-5 text-[13px] text-[var(--danger)]">Couldn’t load this email. {att.web_link && <a href={att.web_link} target="_blank" rel="noopener noreferrer" className="underline">Open in Outlook</a>}</div>
+          ) : bodyHtml ? (
+            <iframe title="Email body" sandbox="" className="w-full min-h-[320px] bg-white" srcDoc={bodyHtml} />
+          ) : (
+            <pre className="p-5 text-[13px] text-[var(--text-primary)] whitespace-pre-wrap font-sans">{bodyText}</pre>
+          )}
+        </div>
+
+        {/* Reply */}
+        <div className="border-t border-[var(--border-subtle)] p-4 flex-shrink-0">
+          {sent && <p className="text-[12px] text-[var(--success)] mb-2">Reply sent.</p>}
+          {!att.external_id ? null : !replyOpen ? (
+            <button onClick={() => { setSent(false); setReplyOpen(true) }} className="btn-ghost flex items-center gap-2 px-3 py-2 text-[13px] rounded-lg">
+              <Send size={14} /> Reply
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <textarea
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                placeholder="Write your reply…"
+                rows={4}
+                autoFocus
+                className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)] resize-y"
+              />
+              {reply.isError && <p className="text-[12px] text-[var(--danger)]">{(reply.error as any)?.response?.status === 412 ? 'Connect your Microsoft account to reply.' : 'Failed to send reply.'}</p>}
+              <div className="flex items-center gap-2">
+                <button onClick={sendReply} disabled={!replyText.trim() || reply.isPending} className="btn-primary flex items-center gap-2 px-4 py-2 text-[13px] rounded-lg disabled:opacity-40">
+                  {reply.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Send reply
+                </button>
+                <button onClick={() => setReplyOpen(false)} className="btn-ghost px-3 py-2 text-[13px] rounded-lg">Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Component ────────────────────────────────────────
 
 export function TaskAttachments({ taskId, module }: TaskAttachmentsProps) {
   const [expanded, setExpanded] = useState(false)
   const [activeModal, setActiveModal] = useState<ModalType>(null)
   const [attToDelete, setAttToDelete] = useState<Attachment | null>(null)
+  const [viewingEmail, setViewingEmail] = useState<Attachment | null>(null)
   const { data: attachments = [], isLoading } = useTaskAttachments(taskId, module)
   const deleteAttachment = useDeleteAttachment()
 
@@ -650,7 +751,7 @@ export function TaskAttachments({ taskId, module }: TaskAttachmentsProps) {
             <p className="text-[11px] text-[var(--text-tertiary)] px-3 py-2">No attachments yet</p>
           )}
           {sorted.map((att) => (
-            <AttachmentRow key={att.id} att={att} onDelete={() => handleDelete(att)} />
+            <AttachmentRow key={att.id} att={att} onDelete={() => handleDelete(att)} onOpen={att.type === 'email' ? () => setViewingEmail(att) : undefined} />
           ))}
         </div>
       )}
@@ -664,6 +765,9 @@ export function TaskAttachments({ taskId, module }: TaskAttachmentsProps) {
       )}
       {activeModal === 'comment' && (
         <AddCommentModal taskId={taskId} module={module} onClose={() => setActiveModal(null)} />
+      )}
+      {viewingEmail && (
+        <EmailViewerModal att={viewingEmail} onClose={() => setViewingEmail(null)} />
       )}
 
       {/* Delete confirmation */}

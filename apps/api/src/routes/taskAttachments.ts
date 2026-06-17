@@ -54,6 +54,8 @@ taskAttachmentRoutes.get('/:taskId/attachments', async (req: Request, res: Respo
 // ─── Create email attachment ────────────────────────────────
 const emailPayloadSchema = z.object({
   thread_id: z.string().optional(),
+  // Graph message id — lets the UI open the email in-app and reply to it.
+  external_id: z.string().optional(),
   subject: z.string().min(1),
   sender_name: z.string().optional(),
   sender_email: z.string().optional(),

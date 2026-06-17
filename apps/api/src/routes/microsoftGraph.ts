@@ -11,6 +11,7 @@ import {
   getMicrosoftAccount,
   disconnectMember,
   graphGet,
+  graphPost,
   MicrosoftNotConnectedError,
 } from '../lib/microsoftGraph'
 import { upsertMemberFromMicrosoft } from '../auth/session'
@@ -214,6 +215,57 @@ microsoftGraphRoutes.get('/mail/search', async (req: Request, res: Response) => 
     }
     console.error('[microsoft] mail search error:', err)
     res.status(500).json({ error: 'Failed to search Outlook' })
+  }
+})
+
+// Fetch a single message's full content so the UI can render it in-app (instead
+// of bouncing the user to Outlook on the web). Returns 412 when not connected.
+microsoftGraphRoutes.get('/mail/:id', async (req: Request, res: Response) => {
+  const memberId = memberIdOrUnauthorized(req, res)
+  if (!memberId) return
+  const id = encodeURIComponent(String(req.params.id))
+  try {
+    const select = encodeURIComponent('id,subject,from,toRecipients,ccRecipients,receivedDateTime,body,webLink')
+    const m = await graphGet<any>(memberId, `/me/messages/${id}?$select=${select}`)
+    res.json({
+      id: m.id,
+      subject: m.subject || '(no subject)',
+      from_name: m.from?.emailAddress?.name ?? null,
+      from_email: m.from?.emailAddress?.address ?? null,
+      to: (m.toRecipients ?? []).map((r: any) => r.emailAddress?.address).filter(Boolean),
+      cc: (m.ccRecipients ?? []).map((r: any) => r.emailAddress?.address).filter(Boolean),
+      received_at: m.receivedDateTime ?? null,
+      body_content_type: m.body?.contentType ?? 'html',
+      body_content: m.body?.content ?? '',
+      web_link: m.webLink ?? null,
+    })
+  } catch (err) {
+    if (err instanceof MicrosoftNotConnectedError) {
+      return res.status(412).json({ error: 'microsoft_not_connected', message: 'Connect your Microsoft account to read this email.' })
+    }
+    console.error('[microsoft] mail get error:', err)
+    res.status(500).json({ error: 'Failed to load email' })
+  }
+})
+
+// Reply to a message in-app. Graph's /reply sends to the original sender with
+// the user's comment prepended above the quoted thread.
+microsoftGraphRoutes.post('/mail/:id/reply', async (req: Request, res: Response) => {
+  const memberId = memberIdOrUnauthorized(req, res)
+  if (!memberId) return
+  const id = encodeURIComponent(String(req.params.id))
+  const comment = String(req.body?.comment ?? '').trim()
+  const replyAll = req.body?.replyAll === true
+  if (!comment) return res.status(400).json({ error: 'comment is required' })
+  try {
+    await graphPost(memberId, `/me/messages/${id}/${replyAll ? 'replyAll' : 'reply'}`, { comment })
+    res.json({ sent: true })
+  } catch (err) {
+    if (err instanceof MicrosoftNotConnectedError) {
+      return res.status(412).json({ error: 'microsoft_not_connected', message: 'Connect your Microsoft account to reply.' })
+    }
+    console.error('[microsoft] mail reply error:', err)
+    res.status(500).json({ error: 'Failed to send reply' })
   }
 })
 
