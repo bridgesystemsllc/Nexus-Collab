@@ -8,7 +8,7 @@ import {
   exchangeMicrosoftToken,
   exchangeGoogleToken,
 } from '../lib/oauth'
-import { syncErp } from '../lib/erpSync'
+import { syncErp, syncErpOpenOrders } from '../lib/erpSync'
 import { getErpConfig, erpBaseCandidates, looksLikeJson } from '../lib/erpClient'
 import {
   ERP_FEEDS,
@@ -741,6 +741,20 @@ integrationRoutes.post('/:type/push', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[integrations] POST /:type/push error:', error)
     res.status(500).json({ error: 'Failed to push to ERP' })
+  }
+})
+
+// ─── Refresh open orders (Production Tracking → pull ERP PO feed) ───
+// Fired by the Refresh button in the Open-Order view. Pulls the ERP open-order
+// feed and upserts it into the PRODUCTION_TRACKING module (synthetic feed when
+// the ERP is unconfigured). Independent of the full multi-feed sync.
+integrationRoutes.post('/erp/refresh-open-orders', async (_req: Request, res: Response) => {
+  try {
+    const result = await syncErpOpenOrders(prisma)
+    res.json({ ok: true, ...result })
+  } catch (err) {
+    console.error('[integrations] POST /erp/refresh-open-orders error:', err)
+    res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) })
   }
 })
 
