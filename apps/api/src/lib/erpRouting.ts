@@ -198,6 +198,13 @@ export const ERP_OUTBOUND_FEEDS: ErpOutboundFeed[] = [
     defaultPath: '/pricing',
     description: 'Push finance costing (label/freight/overhead, margin, retail price) to the ERP.',
   },
+  {
+    key: 'openOrders',
+    label: 'Open Orders / PO Status',
+    sourceModuleType: 'PRODUCTION_TRACKING',
+    defaultPath: '/open-orders',
+    description: 'Push PO status, urgency, qty received, ETA, and notes back to the ERP.',
+  },
 ]
 
 /** A push decision for a single outbound feed. */
