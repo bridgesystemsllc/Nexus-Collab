@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import { decryptJson } from './encryption'
+import { mapErpOpenOrder, type ErpOpenOrder } from './erpOpenOrders'
 
 // ─── ERP KarEve Sync — external client ──────────────────────
 //
@@ -672,4 +673,44 @@ export async function fetchErpCms(prisma: PrismaClient, path?: string): Promise<
     ['vendors', 'cms'],
   )
   return records.map(mapErpCm).filter((r) => r.name)
+}
+
+// ─── Open Orders / Purchase Orders ──────────────────────────
+// Mirrors the ERP "Open Order Intelligence" data. Synthetic dev feed reflects
+// the manufacturers seen in the ERP UI (Paklab, Twincraft, Glenmark, Cosmax).
+const SYNTHETIC_ERP_OPEN_ORDERS: Array<Record<string, any>> = [
+  { poNumber: 'P06222026', erpPoId: 'PL-1', vendor: 'Paklab', status: 'Sent to Vendor', urgency: 'Normal', orderDate: '2026-06-21', deliveryDue: '2026-11-29', eta: '2026-11-29', qtyOrdered: 100000, qtyReceived: 0, lines: 2 },
+  { poNumber: 'PK03172026', erpPoId: 'PL-2', vendor: 'Paklab', status: 'Acknowledged', urgency: 'Normal', orderDate: '2026-03-15', deliveryDue: '2026-09-14', eta: '2026-09-14', qtyOrdered: 200000, qtyReceived: 0, lines: 5 },
+  { poNumber: 'P03132026', erpPoId: 'PL-3', vendor: 'Paklab', status: 'Sent to Vendor', urgency: 'Urgent', orderDate: '2026-03-12', deliveryDue: '2026-06-25', eta: '2026-06-25', qtyOrdered: 10000, qtyReceived: 0, lines: 2 },
+  { poNumber: 'TW-88010', erpPoId: 'TW-1', vendor: 'Twincraft', status: 'Acknowledged', urgency: 'Normal', orderDate: '2026-05-01', deliveryDue: '2026-10-10', eta: '2026-10-10', qtyOrdered: 300000, qtyReceived: 50000, lines: 3 },
+  { poNumber: 'GL-4402', erpPoId: 'GL-1', vendor: 'Glenmark', status: 'In Production', urgency: 'Normal', orderDate: '2026-04-18', deliveryDue: '2026-09-30', eta: '2026-09-30', qtyOrdered: 170400, qtyReceived: 0, lines: 3 },
+  { poNumber: 'CX-7781', erpPoId: 'CX-1', vendor: 'Cosmax', status: 'Sent to Vendor', urgency: 'Normal', orderDate: '2026-06-02', deliveryDue: '2026-12-01', eta: '2026-12-01', qtyOrdered: 50000, qtyReceived: 0, lines: 1 },
+]
+
+function syntheticOpenOrders(): ErpOpenOrder[] {
+  return SYNTHETIC_ERP_OPEN_ORDERS.map(mapErpOpenOrder)
+}
+
+/**
+ * Fetch open-order / purchase-order data from the ERP. Real feed when
+ * configured (trying `path` then `/open-orders` then `/purchase-orders` then
+ * `/pos`), otherwise a labelled synthetic dev feed. Throws on configured-but-
+ * failing so the sync orchestrator isolates the feed instead of writing sample
+ * data over real POs.
+ */
+export async function fetchErpOpenOrders(
+  prisma: PrismaClient,
+  path?: string,
+): Promise<ErpOpenOrder[]> {
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+  if (!configured || !apiUrl || !apiKey) return syntheticOpenOrders()
+  const records = await fetchErpRecords(
+    apiUrl,
+    apiKey,
+    candidatePaths(path, '/open-orders', '/purchase-orders', '/pos'),
+    ['openOrders', 'open_orders', 'purchaseOrders', 'pos', 'orders'],
+  )
+  const mapped = records.map(mapErpOpenOrder).filter((r) => r.poNumber)
+  if (mapped.length === 0) throw new Error('ERP returned no usable open-order records')
+  return mapped
 }
