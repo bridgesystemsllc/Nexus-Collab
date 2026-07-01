@@ -41,4 +41,16 @@ assert.equal(merged.notes[1].createdBy, 'KareEve ERP')
 const merged2 = mergeOpenOrderIntoData(merged, erp, '2026-07-01T01:00:00.000Z')
 assert.equal(merged2.notes.length, 2, 'no duplicate ERP note on re-sync')
 
+// live-shape alignment: merge writes poNumber + qty (what the live UI reads)
+const live = { poNumber: 'PO-2026-041', product: 'GS Shampoo 11oz', cm: 'ACT Labs', qty: 50000, status: 'Awaiting Materials', progress: 15, eta: '2026-05-15' }
+const liveErp = mapErpOpenOrder({ poNumber: 'PO-2026-041', erpPoId: 'x9', status: 'Acknowledged', qtyOrdered: 50000, qtyReceived: 12000, lines: 3, orderDate: '2026-03-01', deliveryDue: '2026-05-15' })
+const liveMerged = mergeOpenOrderIntoData(live, liveErp, '2026-07-01T00:00:00.000Z')
+assert.equal(liveMerged.poNumber, 'PO-2026-041', 'poNumber preserved for live UI')
+assert.equal(liveMerged.qty, 50000, 'qty (live ordered-qty field) set')
+assert.equal(liveMerged.qtyReceived, 12000, 'qtyReceived from ERP')
+assert.equal(liveMerged.qtyRemaining, 38000, 'qtyRemaining derived')
+assert.equal(liveMerged.poStatus, 'Acknowledged', 'poStatus set')
+assert.equal(liveMerged.status, 'Awaiting Materials', 'production status untouched')
+assert.equal(liveMerged.product, 'GS Shampoo 11oz', 'live product preserved')
+
 console.log('openOrders.check: all assertions passed')
