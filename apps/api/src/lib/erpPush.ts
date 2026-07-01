@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client'
 import { getErpConfig } from './erpClient'
 import { ERP_OUTBOUND_FEEDS, getOutbound, type ErpOutboundFeed } from './erpRouting'
+import { mapOpenOrderForErp } from './erpOpenOrders'
 
 // ─── ERP OUTBOUND push (Nexus → ERP) ────────────────────────
 //
@@ -118,6 +119,7 @@ const MAPPERS: Record<string, (data: AnyData) => Record<string, any>> = {
   components: mapComponentForErp,
   boms: mapBomForErp,
   finance: mapFinanceForErp,
+  openOrders: mapOpenOrderForErp,
 }
 
 // ─── HTTP push ──────────────────────────────────────────────
