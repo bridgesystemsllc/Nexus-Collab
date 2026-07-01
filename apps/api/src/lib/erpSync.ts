@@ -561,8 +561,10 @@ export async function syncErpOpenOrders(
   const byPo = new Map<string, (typeof existing)[number]>()
   for (const item of existing) {
     const d = (item.data as any) ?? {}
+    // Live production items key on `poNumber`; the legacy shape used `customerPo`.
+    const po = d.poNumber ?? d.customerPo
     if (d.erpPoId) byErpId.set(String(d.erpPoId), item)
-    if (d.customerPo) byPo.set(String(d.customerPo), item)
+    if (po) byPo.set(String(po), item)
   }
 
   const records = await fetchErpOpenOrders(prisma, erpPath)
@@ -582,7 +584,7 @@ export async function syncErpOpenOrders(
       updated++
     } else {
       const data = mergeOpenOrderIntoData(
-        { customerPo: erp.poNumber, cm: erp.manufacturer, notes: [] },
+        { poNumber: erp.poNumber, cm: erp.manufacturer, notes: [] },
         erp,
         now,
       )

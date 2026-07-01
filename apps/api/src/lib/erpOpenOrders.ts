@@ -67,16 +67,17 @@ export function mapErpOpenOrder(raw: Record<string, any>): ErpOpenOrder {
 export function mapOpenOrderForErp(data: Record<string, any> | null | undefined): Record<string, any> {
   const d = data ?? {}
   const notesArr = Array.isArray(d.notes) ? d.notes : []
-  const notes = notesArr
-    .map((note: any) => {
-      const date = s(note?.noteDate ?? note?.date)
-      const text = s(note?.noteText ?? note?.text)
-      return date ? `${date} ${text}` : text
-    })
-    .filter(Boolean)
-    .join(' ')
+  const notes =
+    notesArr
+      .map((note: any) => {
+        const date = s(note?.noteDate ?? note?.date)
+        const text = s(note?.noteText ?? note?.text)
+        return date ? `${date} ${text}` : text
+      })
+      .filter(Boolean)
+      .join(' ') || s(d.cmNotes)
   return {
-    poNumber: s(d.customerPo ?? d.poNumber),
+    poNumber: s(d.poNumber ?? d.customerPo),
     erpPoId: s(d.erpPoId),
     poStatus: s(d.poStatus) || 'Draft',
     urgency: s(d.urgency) === 'Urgent' ? 'Urgent' : 'Normal',
@@ -99,15 +100,21 @@ export function mergeOpenOrderIntoData(
 ): Record<string, any> {
   const merged: Record<string, any> = { ...existing }
   merged.erpPoId = erp.erpPoId || existing.erpPoId || ''
+  // Live production items key on `poNumber`; keep `customerPo` as an alias so
+  // both the live UI and the legacy shape resolve the PO.
+  merged.poNumber = existing.poNumber || erp.poNumber
   merged.customerPo = existing.customerPo || erp.poNumber
   merged.cm = existing.cm || erp.manufacturer
   merged.poStatus = erp.poStatus
   merged.urgency = erp.urgency
+  // Ordered qty: the live UI reads `qty`; keep `qtyOrdered` as an alias.
+  merged.qty = erp.qtyOrdered || existing.qty || 0
   merged.qtyOrdered = erp.qtyOrdered
   merged.qtyReceived = erp.qtyReceived
   merged.qtyRemaining = erp.qtyRemaining
   merged.deliveryDue = erp.deliveryDue
-  merged.eta = erp.eta
+  merged.orderDate = erp.orderDate || existing.orderDate || ''
+  merged.eta = erp.eta || existing.eta || ''
   merged.lineCount = erp.lineCount
   merged.erpLastSyncAt = now
 
