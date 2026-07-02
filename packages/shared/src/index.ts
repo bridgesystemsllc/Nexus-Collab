@@ -40,3 +40,4 @@ export const WS_EVENTS = {
 
 // ─── Production tracking (ERP sync) ─────────────────────────
 export * from './productionStatus'
+export * from './productionOrder'
