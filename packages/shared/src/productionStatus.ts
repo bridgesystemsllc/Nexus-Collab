@@ -41,7 +41,7 @@ const MAP: Record<ErpPoStatus, StatusDisplay> = {
 
 const UNKNOWN: StatusDisplay = { label: 'Unknown', colorVar: '--text-tertiary' }
 
-export const ERP_PO_STATUSES = Object.keys(MAP) as ErpPoStatus[]
+export const ERP_PO_STATUSES = Object.keys(MAP) as readonly ErpPoStatus[]
 
 export function erpStatusToDisplay(status: string): StatusDisplay {
   return MAP[status as ErpPoStatus] ?? UNKNOWN

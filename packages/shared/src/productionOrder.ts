@@ -58,6 +58,8 @@ export function groupByManufacturer(orders: ProductionOrderDTO[]): ManufacturerG
       orders: list,
     })
   }
+  // Sort by units remaining, descending. Ties keep Map insertion order
+  // (first-seen manufacturer wins) — deterministic but not otherwise ranked.
   groups.sort((a, b) => b.unitsRemaining - a.unitsRemaining)
   return groups
 }

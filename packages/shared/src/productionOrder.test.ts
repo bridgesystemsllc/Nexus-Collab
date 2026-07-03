@@ -73,4 +73,13 @@ describe('computeSummary', () => {
     expect(s.receivedToDate).toBe(40)
     expect(s.pastDue).toBe(1) // only order 'a' is past 2026-07-02
   })
+
+  it('excludes fully-received orders from pastDue (exercises the qtyRemaining > 0 guard)', () => {
+    const now = new Date('2026-07-02T00:00:00Z')
+    const orders = [
+      // past its delivery date but fully received — must NOT count as past-due
+      toProductionOrderDTO(row({ id: 'c', qtyOrdered: 50, qtyReceived: 50, deliveryDue: '2026-05-01' })),
+    ]
+    expect(computeSummary(orders, now).pastDue).toBe(0)
+  })
 })
