@@ -29,6 +29,7 @@ model Organization {
   documents          Document[]
   integrations       Integration[]
   invites            OrganizationInvite[]
+  productionOrders   ProductionOrder[]
 }
 
 // ─── Organization Invite ────────────────────────────────────
@@ -303,6 +304,60 @@ model SyncLog {
   completedAt      DateTime?
 
   @@index([integrationId])
+}
+
+// ─── Production Orders (ERP-synced) ─────────────────────────
+model ProductionOrder {
+  id            String   @id @default(cuid())
+  erpId         String?  @unique // advanced_purchase_orders.id (UUID) in KarEve ERP
+  poNumber      String   @unique
+  manufacturer  String   @default("Unassigned")
+  brand         String?
+  status        String   @default("DRAFT") // ERP po_status enum value (see @nexus/shared productionStatus)
+  urgency       String   @default("NORMAL") // LOW, NORMAL, HIGH, CRITICAL
+  orderDate     DateTime?
+  deliveryDue   DateTime?
+  eta           DateTime?
+  qtyOrdered    Int      @default(0)
+  qtyReceived   Int      @default(0)
+  notes         String?
+  progress      Int      @default(0)
+  value         Float    @default(0)
+
+  // Sync metadata
+  lastSyncedAt   DateTime?
+  lastEditedSide String    @default("ERP") // NEXUS or ERP
+  lastEditedAt   DateTime  @default(now())
+  syncStatus     String    @default("SYNCED") // SYNCED, PENDING, ERROR
+  revisionHash   String?
+
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id])
+  lines ProductionOrderLine[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orgId])
+  @@index([manufacturer])
+  @@index([status])
+}
+
+model ProductionOrderLine {
+  id                String   @id @default(cuid())
+  productionOrderId String
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  erpLineId         String?  // advanced_purchase_order_lines.id (UUID)
+  sku               String?
+  description       String?
+  qtyOrdered        Int      @default(0)
+  qtyReceived       Int      @default(0)
+  lineStatus        String   @default("OPEN") // OPEN, PARTIAL, COMPLETE, CANCELLED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productionOrderId])
 }
 
 // ─── Pulse ──────────────────────────────────────────────────
