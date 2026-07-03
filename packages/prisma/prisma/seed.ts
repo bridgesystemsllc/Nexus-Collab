@@ -198,6 +198,35 @@ async function main() {
   ] })
   console.log('✅ Integrations: 6')
 
+  // ─── Production Orders (ERP-synced sample) ────────────────
+  const productionOrders = [
+    { poNumber: 'P06222026', manufacturer: 'Paklab', status: 'SENT_TO_VENDOR', urgency: 'NORMAL', orderDate: new Date('2026-06-21'), deliveryDue: new Date('2026-11-29'), qtyOrdered: 100000, qtyReceived: 0, value: 0 },
+    { poNumber: 'PK05272026', manufacturer: 'Paklab', status: 'ACKNOWLEDGED', urgency: 'NORMAL', orderDate: new Date('2026-05-25'), deliveryDue: new Date('2026-11-19'), qtyOrdered: 50000, qtyReceived: 0, value: 0 },
+    { poNumber: 'P05282026', manufacturer: 'Twincraft', status: 'SENT_TO_VENDOR', urgency: 'NORMAL', orderDate: new Date('2026-05-25'), deliveryDue: new Date('2026-12-14'), qtyOrdered: 100000, qtyReceived: 0, value: 0 },
+    { poNumber: 'P03172026', manufacturer: 'Glenmark', status: 'IN_PRODUCTION', urgency: 'HIGH', orderDate: new Date('2026-03-15'), deliveryDue: new Date('2026-08-06'), qtyOrdered: 75000, qtyReceived: 30000, value: 0 },
+    { poNumber: 'P02192026', manufacturer: 'Cosmax', status: 'PARTIALLY_RECEIVED', urgency: 'NORMAL', orderDate: new Date('2026-02-11'), deliveryDue: new Date('2026-06-13'), qtyOrdered: 42000, qtyReceived: 20000, value: 0 },
+  ]
+
+  for (const po of productionOrders) {
+    await prisma.productionOrder.upsert({
+      where: { poNumber: po.poNumber },
+      update: {},
+      create: {
+        ...po,
+        eta: po.deliveryDue,
+        orgId: org.id,
+        lastEditedSide: 'ERP',
+        syncStatus: 'SYNCED',
+        lines: {
+          create: [
+            { sku: `${po.poNumber}-L1`, description: 'Seeded line', qtyOrdered: po.qtyOrdered, qtyReceived: po.qtyReceived, lineStatus: 'OPEN' },
+          ],
+        },
+      },
+    })
+  }
+  console.log(`Seeded ${productionOrders.length} production orders`)
+
   // ─── Pulse
   await prisma.pulse.createMany({ data: [
     { type: 'ALERT', message: 'K4415110 GS Shampoo — 2 cases remaining. 208 orders at risk.', deptName: 'Warehouse', targetId: m[0].id },
