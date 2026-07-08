@@ -45,7 +45,8 @@ async function main() {
   const brandMod = await prisma.departmentModule.create({ data: { name: 'Brand Transition', type: 'BRAND_TRANSITION', departmentId: ops.id, sortOrder: 3 } })
   const componentsMod = await prisma.departmentModule.create({ data: { name: 'Components', type: 'COMPONENTS', departmentId: ops.id, sortOrder: 4 } })
   const bomMod = await prisma.departmentModule.create({ data: { name: 'Bill of Materials', type: 'BILL_OF_MATERIALS', departmentId: ops.id, sortOrder: 5 } })
-  console.log('✅ Modules: 12')
+  const openOrdersMod = await prisma.departmentModule.create({ data: { name: 'Open Orders', type: 'OPEN_ORDERS', departmentId: ops.id, sortOrder: 6 } })
+  console.log('✅ Modules: 13')
 
   // ─── Members
   const m = await Promise.all([

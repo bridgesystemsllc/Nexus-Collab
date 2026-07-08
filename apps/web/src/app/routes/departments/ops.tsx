@@ -8,6 +8,7 @@ import {
   Cog,
   DollarSign,
   Factory,
+  LayoutGrid,
   Loader2,
   Mail,
   Package,
@@ -15,6 +16,8 @@ import {
   Plus,
   RefreshCw,
   Search,
+  ShoppingCart,
+  Table2,
   TrendingUp,
   Users,
 } from 'lucide-react'
@@ -24,6 +27,7 @@ import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowork'
 import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
+import { OpenOrdersView } from '@/components/ops/production/OpenOrdersView'
 import { ProductionEmailModal } from '@/components/ops/production/ProductionEmailModal'
 import { ProductionOrderDrawer } from '@/components/ops/production/ProductionOrderDrawer'
 import { CMTab } from '@/components/cm/CMTab'
@@ -668,9 +672,19 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
 }
 
 // ─── Production Tracking Tab ───────────────────────────────
-function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
+function ProductionTab({
+  items,
+  moduleId,
+  departmentId,
+  onSelect,
+  openOrders,
+  openOrderModuleId,
+  onRefresh,
+}: TabProps & { openOrders: any[]; openOrderModuleId: string | null; onRefresh: () => void }) {
   const openForm = useAppStore((s) => s.openForm)
   const [view, setView] = useState<ViewMode>('table')
+  // Top-level mode: the production board/table vs the ERP-synced Open Orders view.
+  const [mode, setMode] = useState<'production' | 'openOrders'>('production')
   const [brandFilter, setBrandFilter] = useState('All')
   const [search, setSearch] = useState('')
   const [emailItem, setEmailItem] = useState<any>(null)
@@ -717,8 +731,70 @@ function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
     description: `${d.poNumber || ''} — ${d.cm || ''} (${d.status || ''})`.trim(),
   })
 
+  const seg = mode === 'openOrders' ? 'openOrders' : view === 'table' ? 'table' : 'board'
+  const SEGMENTS = [
+    { key: 'table', label: 'Table', icon: Table2 },
+    { key: 'board', label: 'Board', icon: LayoutGrid },
+    { key: 'openOrders', label: 'Open Orders', icon: ShoppingCart },
+  ] as const
+  const selectSeg = (key: 'table' | 'board' | 'openOrders') => {
+    if (key === 'openOrders') setMode('openOrders')
+    else {
+      setMode('production')
+      setView(key === 'table' ? 'table' : 'list')
+    }
+  }
+
   return (
     <div className="space-y-5">
+      {/* Header: title + 3-way view toggle (Table / Board / Open Orders) */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-medium text-[var(--text-primary)]">
+            {mode === 'openOrders' ? 'Open orders' : 'Production orders'}
+          </h2>
+          <span className="text-xs text-[var(--text-tertiary)]">
+            {mode === 'openOrders' ? openOrders.length : filtered.length}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {mode === 'production' && (
+            <OpenOrderImport items={items} moduleId={moduleId} departmentId={departmentId} />
+          )}
+          <div className="inline-flex items-center gap-1 p-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+            {SEGMENTS.map(({ key, label, icon: Icon }) => {
+              const active = seg === key
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => selectSeg(key)}
+                  aria-pressed={active}
+                  className={`flex items-center gap-1.5 px-3 h-8 rounded-md text-xs font-medium transition-all ${
+                    active
+                      ? 'bg-[var(--accent)] text-white shadow-sm'
+                      : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                  }`}
+                >
+                  <Icon size={14} />
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+          {mode === 'production' && (
+            <button onClick={openCreate} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm rounded-lg w-fit">
+              <Plus size={15} />
+              New Order
+            </button>
+          )}
+        </div>
+      </div>
+
+      {mode === 'openOrders' ? (
+        <OpenOrdersView items={openOrders} moduleId={openOrderModuleId} onRefresh={onRefresh} />
+      ) : (
+      <div className="space-y-5">
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="data-cell flex items-center gap-3 py-4">
           <Package size={18} className="text-[var(--accent)]" />
@@ -749,10 +825,6 @@ function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
           </div>
         </div>
       </div>
-
-      <TabHeader title="Production orders" count={filtered.length} view={view} onView={setView} onNew={openCreate} newLabel="New Order">
-        <OpenOrderImport items={items} moduleId={moduleId} departmentId={departmentId} />
-      </TabHeader>
 
       <div className="flex items-center gap-2 flex-wrap">
         {brands.map((brand) => (
@@ -883,6 +955,8 @@ function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
             )
           })}
         </div>
+      )}
+      </div>
       )}
 
       <ProductionEmailModal item={emailItem} open={!!emailItem} onClose={() => setEmailItem(null)} />
@@ -1058,6 +1132,7 @@ export function OpsPage() {
       brand: find('BRAND_TRANSITION'),
       components: find('COMPONENTS'),
       bom: find('BILL_OF_MATERIALS'),
+      openOrders: find('OPEN_ORDERS'),
     }
   }, [deptDetail])
 
@@ -1068,6 +1143,7 @@ export function OpsPage() {
     brand: moduleByType('BRAND_TRANSITION')?.id ?? null,
     components: moduleByType('COMPONENTS')?.id ?? null,
     bom: moduleByType('BILL_OF_MATERIALS')?.id ?? null,
+    openOrders: moduleByType('OPEN_ORDERS')?.id ?? null,
   }
 
   const emergencyCount = useMemo(
@@ -1155,7 +1231,7 @@ export function OpsPage() {
           ) : activeTab === 'inventory' ? (
             <InventoryHealthTab items={moduleData.inventory} moduleId={moduleIds.inventory} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
           ) : activeTab === 'production' ? (
-            <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} />
+            <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} openOrders={moduleData.openOrders} openOrderModuleId={moduleIds.openOrders} onRefresh={() => refetchDept()} />
           ) : activeTab === 'components' ? (
             <ComponentsTab items={moduleData.components} moduleId={moduleIds.components} departmentId={deptId} onRefresh={() => refetchDept()} />
           ) : activeTab === 'bom' ? (
