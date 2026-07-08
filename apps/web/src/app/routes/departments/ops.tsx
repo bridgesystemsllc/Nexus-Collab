@@ -26,7 +26,6 @@ import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowo
 import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
 import { ProductionEmailModal } from '@/components/ops/production/ProductionEmailModal'
 import { ProductionOrderDrawer } from '@/components/ops/production/ProductionOrderDrawer'
-import { OpenOrderView } from '@/components/ops/production/OpenOrderView'
 import { CMTab } from '@/components/cm/CMTab'
 import { ComponentsTab } from '@/components/ops/ComponentsTab'
 import { BOMTab } from '@/components/ops/BOMTab'
@@ -65,7 +64,6 @@ interface TabProps {
   moduleId: string | null
   departmentId: string | null
   onSelect: (item: any) => void
-  onRefresh?: () => void
 }
 
 // ─── Skeletons ─────────────────────────────────────────────
@@ -670,9 +668,8 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
 }
 
 // ─── Production Tracking Tab ───────────────────────────────
-function ProductionTab({ items, moduleId, departmentId, onSelect, onRefresh }: TabProps) {
+function ProductionTab({ items, moduleId, departmentId, onSelect }: TabProps) {
   const openForm = useAppStore((s) => s.openForm)
-  const [prodMode, setProdMode] = useState<'production' | 'openOrders'>('production')
   const [view, setView] = useState<ViewMode>('table')
   const [brandFilter, setBrandFilter] = useState('All')
   const [search, setSearch] = useState('')
@@ -722,30 +719,6 @@ function ProductionTab({ items, moduleId, departmentId, onSelect, onRefresh }: T
 
   return (
     <div className="space-y-5">
-      {/* Production ⇄ Open Orders mode switch */}
-      <div className="inline-flex items-center gap-1 p-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] w-fit">
-        {([
-          { key: 'production' as const, label: 'Production' },
-          { key: 'openOrders' as const, label: 'Open Orders' },
-        ]).map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setProdMode(key)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-              prodMode === key
-                ? 'bg-[var(--accent)] text-white shadow-sm'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {prodMode === 'openOrders' ? (
-        <OpenOrderView items={items} onOpen={setDetailItem} onRefresh={onRefresh} />
-      ) : (
-      <>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <div className="data-cell flex items-center gap-3 py-4">
           <Package size={18} className="text-[var(--accent)]" />
@@ -910,8 +883,6 @@ function ProductionTab({ items, moduleId, departmentId, onSelect, onRefresh }: T
             )
           })}
         </div>
-      )}
-      </>
       )}
 
       <ProductionEmailModal item={emailItem} open={!!emailItem} onClose={() => setEmailItem(null)} />
@@ -1184,7 +1155,7 @@ export function OpsPage() {
           ) : activeTab === 'inventory' ? (
             <InventoryHealthTab items={moduleData.inventory} moduleId={moduleIds.inventory} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
           ) : activeTab === 'production' ? (
-            <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} onRefresh={() => refetchDept()} />
+            <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} />
           ) : activeTab === 'components' ? (
             <ComponentsTab items={moduleData.components} moduleId={moduleIds.components} departmentId={deptId} onRefresh={() => refetchDept()} />
           ) : activeTab === 'bom' ? (
