@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import { decryptJson } from './encryption'
+import { mapErpOpenOrder, type ErpOpenOrder } from './erpOpenOrders'
 
 // ─── ERP KarEve Sync — external client ──────────────────────
 //
@@ -672,4 +673,111 @@ export async function fetchErpCms(prisma: PrismaClient, path?: string): Promise<
     ['vendors', 'cms'],
   )
   return records.map(mapErpCm).filter((r) => r.name)
+}
+
+// ─── Open Orders / Purchase Orders ──────────────────────────
+// Mirrors the ERP "Open Order Tracking" screen: POs grouped by manufacturer,
+// each with per-SKU line items. The synthetic dev feed reflects the
+// manufacturers + POs seen in the ERP UI (Paklab, Twincraft, Glenmark, Cosmax)
+// and carries real line items so the Nexus Open-Orders view is fully testable
+// before the real ERP endpoint is confirmed.
+const SYNTHETIC_ERP_OPEN_ORDERS: Array<Record<string, any>> = [
+  {
+    poNumber: 'P06222026', erpPoId: 'PL-1', vendor: 'Paklab', status: 'Sent to Vendor',
+    urgency: 'Normal', orderDate: '2026-06-21', deliveryDue: '2026-11-29', eta: '2026-11-29',
+    lines: [
+      { lineNo: 1, sku: 'A2210100', description: 'Ambi Even & Clear 10 vertical', qtyOrdered: 25000, qtyReceived: 0, unitPrice: 1.75 },
+      { lineNo: 2, sku: 'A2210200', description: 'Ambi Fade Cream 10 AMZ vertical', qtyOrdered: 75000, qtyReceived: 0, unitPrice: 1.75 },
+    ],
+  },
+  {
+    poNumber: 'P05282026', erpPoId: 'PL-2', vendor: 'Paklab', status: 'Sent to Vendor',
+    urgency: 'Normal', orderDate: '2026-05-25', deliveryDue: '2026-12-14', eta: '2026-12-14',
+    lines: [
+      { lineNo: 1, sku: 'F5510100', description: 'AcneFree Oil-Free Cleanser', qtyOrdered: 60000, qtyReceived: 0, unitPrice: 1.42 },
+      { lineNo: 2, sku: 'F5510300', description: 'AcneFree Witch Hazel Toner', qtyOrdered: 40000, qtyReceived: 0, unitPrice: 1.18 },
+    ],
+  },
+  {
+    poNumber: 'P05272026', erpPoId: 'PL-3', vendor: 'Paklab', status: 'Sent to Vendor',
+    urgency: 'Normal', orderDate: '2026-05-25', deliveryDue: '2026-10-29', eta: '2026-10-29',
+    lines: [
+      { lineNo: 1, sku: 'A2210300', description: 'Ambi Soothing Moisturizer SPF 30', qtyOrdered: 6000, qtyReceived: 0, unitPrice: 2.10 },
+      { lineNo: 2, sku: 'A2210400', description: 'Ambi Even & Clear Daily Moisturizer', qtyOrdered: 4000, qtyReceived: 0, unitPrice: 1.95 },
+    ],
+  },
+  {
+    poNumber: 'PK05272026', erpPoId: 'PL-4', vendor: 'Paklab', status: 'Acknowledged',
+    urgency: 'Normal', orderDate: '2026-05-25', deliveryDue: '2026-11-19', eta: '2026-11-19',
+    lines: [
+      { lineNo: 1, sku: 'F5510200', description: 'AcneFree Severe Acne 24HR Kit', qtyOrdered: 20000, qtyReceived: 0, unitPrice: 4.05 },
+      { lineNo: 2, sku: 'F5510100', description: 'AcneFree Oil-Free Cleanser', qtyOrdered: 20000, qtyReceived: 0, unitPrice: 1.42 },
+      { lineNo: 3, sku: 'F5510300', description: 'AcneFree Witch Hazel Toner', qtyOrdered: 10000, qtyReceived: 0, unitPrice: 1.18 },
+    ],
+  },
+  {
+    poNumber: 'P04232026', erpPoId: 'PL-5', vendor: 'Paklab', status: 'Sent to Vendor',
+    urgency: 'Normal', orderDate: '2026-04-16', deliveryDue: '2026-10-22', eta: '2026-10-22',
+    lines: [
+      { lineNo: 1, sku: 'A2210100', description: 'Ambi Even & Clear Cleanser', qtyOrdered: 100000, qtyReceived: 0, unitPrice: 1.75 },
+    ],
+  },
+  {
+    poNumber: 'P03132026', erpPoId: 'PL-6', vendor: 'Paklab', status: 'In Production',
+    urgency: 'Urgent', orderDate: '2026-03-12', deliveryDue: '2026-06-25', eta: '2026-06-25',
+    lines: [
+      { lineNo: 1, sku: 'A2210200', description: 'Ambi Fade Cream Normal Skin', qtyOrdered: 10000, qtyReceived: 0, unitPrice: 1.88 },
+    ],
+  },
+  {
+    poNumber: 'TW-88010', erpPoId: 'TW-1', vendor: 'Twincraft', status: 'Acknowledged',
+    urgency: 'Normal', orderDate: '2026-05-01', deliveryDue: '2026-10-10', eta: '2026-10-10',
+    lines: [
+      { lineNo: 1, sku: 'K6001100', description: 'CD Scalp & Edge Detox Shampoo 8oz', qtyOrdered: 150000, qtyReceived: 30000, unitPrice: 2.35 },
+      { lineNo: 2, sku: 'K6001200', description: 'CD Scalp & Edge Cleansing Oil 6oz', qtyOrdered: 150000, qtyReceived: 20000, unitPrice: 2.60 },
+    ],
+  },
+  {
+    poNumber: 'GL-4402', erpPoId: 'GL-1', vendor: 'Glenmark', status: 'In Production',
+    urgency: 'Normal', orderDate: '2026-04-18', deliveryDue: '2026-09-30', eta: '2026-09-30',
+    lines: [
+      { lineNo: 1, sku: 'K4415110', description: 'Goddess Strength Shampoo 11oz', qtyOrdered: 90400, qtyReceived: 0, unitPrice: 1.99 },
+      { lineNo: 2, sku: 'K4415210', description: 'Goddess Strength Conditioner 11oz', qtyOrdered: 80000, qtyReceived: 0, unitPrice: 1.99 },
+    ],
+  },
+  {
+    poNumber: 'CX-7781', erpPoId: 'CX-1', vendor: 'Cosmax', status: 'Sent to Vendor',
+    urgency: 'Normal', orderDate: '2026-06-02', deliveryDue: '2026-12-01', eta: '2026-12-01',
+    lines: [
+      { lineNo: 1, sku: 'A2210300', description: 'Ambi Soothing Moisturizer SPF 30', qtyOrdered: 50000, qtyReceived: 0, unitPrice: 2.10 },
+    ],
+  },
+]
+
+function syntheticOpenOrders(): ErpOpenOrder[] {
+  return SYNTHETIC_ERP_OPEN_ORDERS.map(mapErpOpenOrder)
+}
+
+/**
+ * Fetch open-order / purchase-order data from the ERP. Real feed when
+ * configured (trying `path` then `/open-orders` then `/purchase-orders` then
+ * `/pos`), otherwise a labelled synthetic dev feed. Throws on configured-but-
+ * failing (or zero usable records) so the sync orchestrator isolates the feed
+ * instead of writing sample data over real POs.
+ */
+export async function fetchErpOpenOrders(
+  prisma: PrismaClient,
+  path?: string,
+): Promise<ErpOpenOrder[]> {
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+  if (!configured || !apiUrl || !apiKey) return syntheticOpenOrders()
+  const records = await fetchErpRecords(
+    apiUrl,
+    apiKey,
+    candidatePaths(path, '/open-orders', '/purchase-orders', '/pos'),
+    ['openOrders', 'open_orders', 'purchaseOrders', 'pos', 'orders'],
+  )
+  const mapped = records.map(mapErpOpenOrder).filter((r) => r.poNumber)
+  if (mapped.length === 0) throw new Error('ERP returned no usable open-order records')
+  return mapped
 }

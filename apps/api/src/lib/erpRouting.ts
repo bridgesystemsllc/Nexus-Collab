@@ -55,12 +55,19 @@ export const ERP_FEEDS: ErpFeed[] = [
     defaultModuleType: 'CM_PRODUCTIVITY',
     description: 'Contract manufacturer / vendor records and productivity (not yet implemented).',
   },
+  {
+    key: 'openOrders',
+    label: 'Open Orders / Purchase Orders',
+    defaultModuleType: 'OPEN_ORDERS',
+    description:
+      'Purchase-order lifecycle: status, urgency, qty received, delivery due, ETA, line items.',
+  },
 ]
 
 /** Feed keys whose syncs are implemented today (default-enabled). */
 // Feeds enabled by default on a fresh integration. CMs sync by default so every
 // contract manufacturer created in the ERP is created in Nexus automatically.
-const IMPLEMENTED_FEED_KEYS = new Set(['skus', 'inventory', 'cm'])
+const IMPLEMENTED_FEED_KEYS = new Set(['skus', 'inventory', 'cm', 'openOrders'])
 
 /** A routing decision for a single feed. */
 export interface RouteEntry {
@@ -191,6 +198,13 @@ export const ERP_OUTBOUND_FEEDS: ErpOutboundFeed[] = [
     sourceModuleType: 'FINANCE_COSTING',
     defaultPath: '/pricing',
     description: 'Push finance costing (label/freight/overhead, margin, retail price) to the ERP.',
+  },
+  {
+    key: 'openOrders',
+    label: 'Open Orders / PO Status',
+    sourceModuleType: 'OPEN_ORDERS',
+    defaultPath: '/open-orders',
+    description: 'Push PO status, urgency, qty received, ETA, and notes back to the ERP.',
   },
 ]
 
