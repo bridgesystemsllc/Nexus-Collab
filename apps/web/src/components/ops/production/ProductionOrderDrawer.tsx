@@ -2,13 +2,12 @@ import { useState, useEffect, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   X, Send, Factory, Package, Calendar, MessageSquarePlus,
-  Pencil, Save, CalendarClock, History, ListChecks, Plus, Trash2, Check, Boxes,
+  Pencil, Save, CalendarClock, History, ListChecks, Plus, Trash2, Check,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Toast } from '@/components/shared/Toast'
 import type { ToastData } from '@/components/shared/Toast'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
-import { ALL_PO_STATUSES, PO_STATUS_COLORS } from './productionData'
 
 // Detail drawer for a production order (purchase order):
 //  - inline edit of the order fields
@@ -123,15 +122,6 @@ export function ProductionOrderDrawer({ open, item, moduleId, departmentId, onCl
     }
   }
 
-  // Best-effort push of this PO's status/notes to the ERP. Fire-and-forget:
-  // dry-run when the ERP is unconfigured; never blocks the UI.
-  const pushOpenOrder = () => {
-    if (!localItem?.id) return
-    api
-      .post(`/integrations/erp/push-open-order/${localItem.id}`)
-      .catch((err) => console.error('[open-order] push failed:', err))
-  }
-
   const startEdit = () => {
     setEditForm({ product: d.product ?? '', cm: d.cm ?? '', brand: d.brand ?? '', status: d.status ?? '', qty: d.qty ?? '', value: d.value ?? '', progress: d.progress ?? '' })
     setEditing(true)
@@ -169,7 +159,7 @@ export function ProductionOrderDrawer({ open, item, moduleId, departmentId, onCl
     const now = new Date()
     const note: ProductionNote = { id: crypto.randomUUID(), noteDate: now.toISOString().slice(0, 10), noteText: text, createdBy: 'User', createdAt: now.toISOString() }
     const ok = await patchData({ notes: [...((d.notes as ProductionNote[]) || []), note] }, 'Update added')
-    if (ok) { setNewNote(''); pushOpenOrder() }
+    if (ok) setNewNote('')
   }
 
   const addTask = async () => {
@@ -254,58 +244,6 @@ export function ProductionOrderDrawer({ open, item, moduleId, departmentId, onCl
               </div>
             </div>
           )}
-
-          {/* Open Order — ERP-synced PO lifecycle (distinct from production Status) */}
-          <div className="border-t border-[var(--border-subtle)] pt-4">
-            <p className="text-[12px] font-semibold text-[var(--text-primary)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Boxes size={14} className="text-[var(--accent)]" /> Open Order
-              {d.erpLastSyncAt && (
-                <span className="text-[10px] font-normal text-[var(--text-tertiary)] normal-case tracking-normal">
-                  · synced {String(d.erpLastSyncAt).slice(0, 10)}
-                </span>
-              )}
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1">PO Status</p>
-                {(() => {
-                  const poColor = PO_STATUS_COLORS[d.poStatus] ?? 'var(--text-tertiary)'
-                  return (
-                    <select
-                      className={fieldClass}
-                      style={{ color: d.poStatus ? poColor : undefined }}
-                      value={d.poStatus || ''}
-                      disabled={saving}
-                      onChange={async (e) => {
-                        const ok = await patchData({ poStatus: e.target.value }, 'PO status updated')
-                        if (ok) pushOpenOrder()
-                      }}
-                    >
-                      <option value="">—</option>
-                      {ALL_PO_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  )
-                })()}
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1">Urgency</p>
-                <select
-                  className={fieldClass}
-                  value={d.urgency || 'Normal'}
-                  disabled={saving}
-                  onChange={async (e) => {
-                    const ok = await patchData({ urgency: e.target.value }, 'Urgency updated')
-                    if (ok) pushOpenOrder()
-                  }}
-                >
-                  <option value="Normal">Normal</option>
-                  <option value="Urgent">Urgent</option>
-                </select>
-              </div>
-              <Detail label="Qty Received" value={d.qtyReceived != null ? Number(d.qtyReceived).toLocaleString() : '—'} />
-              <Detail label="Qty Remaining" value={d.qtyRemaining != null ? Number(d.qtyRemaining).toLocaleString() : '—'} />
-            </div>
-          </div>
 
           {/* Delivery date + change history */}
           <div className="border-t border-[var(--border-subtle)] pt-4">

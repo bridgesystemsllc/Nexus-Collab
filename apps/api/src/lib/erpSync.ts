@@ -5,10 +5,8 @@ import {
   fetchErpComponents,
   fetchErpPricing,
   fetchErpCms,
-  fetchErpOpenOrders,
 } from './erpClient'
 import { ERP_FEEDS, getRouting, resolveTargetModule } from './erpRouting'
-import { mergeOpenOrderIntoData } from './erpOpenOrders'
 
 // Average monthly demand per SKU (units), used to derive coverage months.
 // Demand is NOT part of the ERP stock feed, so it is supplied here for the
@@ -143,8 +141,6 @@ const FEED_SYNCS: Record<
   pricing: (prisma, moduleId, erpPath) =>
     syncErpPricing(prisma, moduleId, erpPath ?? undefined),
   cm: (prisma, moduleId, erpPath) => syncErpCm(prisma, moduleId, erpPath ?? undefined),
-  openOrders: (prisma, moduleId, erpPath) =>
-    syncErpOpenOrders(prisma, moduleId, erpPath ?? undefined),
 }
 
 export interface ErpSyncOrchestratorResult {
@@ -538,62 +534,4 @@ export async function syncErpCm(
   }
 
   return { recordsProcessed: created + updated, created, updated }
-}
-
-/**
- * Pull the ERP open-order feed and upsert it into the PRODUCTION_TRACKING
- * module. Matches on erpPoId first, then customerPo. ERP owns the PO fields;
- * mergeOpenOrderIntoData preserves every Nexus-only production field and unions
- * notes append-only. New POs seen only in the ERP are created as fresh items.
- */
-export async function syncErpOpenOrders(
-  prisma: PrismaClient,
-  targetModuleId?: string,
-  erpPath?: string,
-): Promise<ErpSyncResult> {
-  const mod = targetModuleId
-    ? await prisma.departmentModule.findUnique({ where: { id: targetModuleId } })
-    : await prisma.departmentModule.findFirst({ where: { type: 'PRODUCTION_TRACKING' } })
-  if (!mod) return { recordsProcessed: 0, created: 0, updated: 0 }
-
-  const existing = await prisma.moduleItem.findMany({ where: { moduleId: mod.id } })
-  const byErpId = new Map<string, (typeof existing)[number]>()
-  const byPo = new Map<string, (typeof existing)[number]>()
-  for (const item of existing) {
-    const d = (item.data as any) ?? {}
-    // Live production items key on `poNumber`; the legacy shape used `customerPo`.
-    const po = d.poNumber ?? d.customerPo
-    if (d.erpPoId) byErpId.set(String(d.erpPoId), item)
-    if (po) byPo.set(String(po), item)
-  }
-
-  const records = await fetchErpOpenOrders(prisma, erpPath)
-  const now = new Date().toISOString()
-  let created = 0
-  let updated = 0
-
-  for (const erp of records) {
-    const match =
-      (erp.erpPoId && byErpId.get(erp.erpPoId)) || (erp.poNumber && byPo.get(erp.poNumber)) || null
-    if (match) {
-      const data = mergeOpenOrderIntoData((match.data as any) ?? {}, erp, now)
-      await prisma.moduleItem.update({
-        where: { id: match.id },
-        data: { data, status: data.poStatus },
-      })
-      updated++
-    } else {
-      const data = mergeOpenOrderIntoData(
-        { poNumber: erp.poNumber, cm: erp.manufacturer, notes: [] },
-        erp,
-        now,
-      )
-      await prisma.moduleItem.create({
-        data: { moduleId: mod.id, data, status: data.poStatus, sortOrder: 0 },
-      })
-      created++
-    }
-  }
-
-  return { recordsProcessed: records.length, created, updated }
 }

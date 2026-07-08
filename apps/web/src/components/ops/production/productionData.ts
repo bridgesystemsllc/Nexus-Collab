@@ -11,16 +11,6 @@ export type ProductionStatus =
   | 'Shipped'
   | 'On Hold'
 
-export type PoStatus =
-  | 'Draft'
-  | 'Sent to Vendor'
-  | 'Acknowledged'
-  | 'In Production'
-  | 'Partially Received'
-  | 'Received'
-  | 'Closed'
-  | 'Cancelled'
-
 export type CoworkType =
   | 'PO Revision'
   | 'Artwork Update'
@@ -70,15 +60,6 @@ export interface ProductionOrder {
   coworkResolved: boolean
   coworkResolutionNote?: string
   isEmergency: boolean
-  // ─── ERP Open-Order (PO lifecycle) — synced with KareEve ERP ───
-  poStatus: PoStatus
-  urgency: 'Normal' | 'Urgent'
-  qtyReceived: number
-  deliveryDue: string
-  eta: string
-  lineCount: number
-  erpPoId: string
-  erpLastSyncAt: string
   notes: ProductionNote[]
   components: ProductionComponent[]
 }
@@ -128,28 +109,6 @@ export const ALL_STATUSES: ProductionStatus[] = [
   'Shipped',
   'On Hold',
 ]
-
-export const ALL_PO_STATUSES: PoStatus[] = [
-  'Draft',
-  'Sent to Vendor',
-  'Acknowledged',
-  'In Production',
-  'Partially Received',
-  'Received',
-  'Closed',
-  'Cancelled',
-]
-
-export const PO_STATUS_COLORS: Record<string, string> = {
-  Draft: '#8E8E93',
-  'Sent to Vendor': '#0A84FF',
-  Acknowledged: '#5E5CE6',
-  'In Production': '#7C3AED',
-  'Partially Received': '#FF9F0A',
-  Received: '#32D74B',
-  Closed: '#6E6E73',
-  Cancelled: '#FF453A',
-}
 
 export const BRANDS = ['AcneFree', 'Ambi', 'Baxter', "Carol's Daughter", 'Dermablend']
 
@@ -202,14 +161,6 @@ export const EMPTY_PRODUCTION_ORDER = {
   coworkAssignedTo: '',
   coworkResolved: false,
   isEmergency: false,
-  poStatus: 'Draft' as PoStatus,
-  urgency: 'Normal' as 'Normal' | 'Urgent',
-  qtyReceived: 0,
-  deliveryDue: '',
-  eta: '',
-  lineCount: 0,
-  erpPoId: '',
-  erpLastSyncAt: '',
   notes: [] as ProductionNote[],
   components: [] as ProductionComponent[],
 }
@@ -260,14 +211,6 @@ export const SEED_ORDERS: ProductionOrder[] = [
     coworkAssignedTo: '',
     coworkResolved: false,
     isEmergency: false,
-    poStatus: 'Sent to Vendor',
-    urgency: 'Normal',
-    qtyReceived: 0,
-    deliveryDue: '2026-04-28',
-    eta: '2026-04-25',
-    lineCount: 2,
-    erpPoId: 'ERP-PO-4401',
-    erpLastSyncAt: '',
     notes: [],
     components: [],
   },
@@ -311,14 +254,6 @@ export const SEED_ORDERS: ProductionOrder[] = [
     coworkAssignedTo: 'Ops Team',
     coworkResolved: false,
     isEmergency: false,
-    poStatus: 'In Production',
-    urgency: 'Normal',
-    qtyReceived: 24000,
-    deliveryDue: '2026-04-01',
-    eta: '2026-04-04',
-    lineCount: 3,
-    erpPoId: 'ERP-PO-4388',
-    erpLastSyncAt: '',
     notes: [],
     components: [],
   },
@@ -362,14 +297,6 @@ export const SEED_ORDERS: ProductionOrder[] = [
     coworkAssignedTo: '',
     coworkResolved: false,
     isEmergency: false,
-    poStatus: 'Partially Received',
-    urgency: 'Normal',
-    qtyReceived: 18000,
-    deliveryDue: '2026-03-25',
-    eta: '2026-03-31',
-    lineCount: 4,
-    erpPoId: 'ERP-PO-4350',
-    erpLastSyncAt: '',
     notes: [],
     components: [],
   },
@@ -413,14 +340,6 @@ export const SEED_ORDERS: ProductionOrder[] = [
     coworkAssignedTo: '',
     coworkResolved: false,
     isEmergency: true,
-    poStatus: 'Acknowledged',
-    urgency: 'Urgent',
-    qtyReceived: 0,
-    deliveryDue: '2026-05-12',
-    eta: '2026-05-15',
-    lineCount: 2,
-    erpPoId: 'ERP-PO-4412',
-    erpLastSyncAt: '',
     notes: [],
     components: [],
   },
@@ -438,40 +357,6 @@ export function getKPIs(orders: ProductionOrder[]) {
     totalValue: active.reduce((sum, o) => sum + o.orderValue, 0),
     emergencyCount: active.filter((o) => o.isEmergency).length,
     coworkPending: orders.filter((o) => o.isCowork && !o.coworkResolved).length,
-  }
-}
-
-/**
- * A PO is overdue when its ETA (or delivery-due date) is in the past AND it
- * has not reached a terminal received/closed/cancelled state. Overdue is
- * DERIVED, never stored.
- */
-export function isOverdue(o: Pick<ProductionOrder, 'eta' | 'deliveryDue' | 'poStatus'>): boolean {
-  const terminal: PoStatus[] = ['Received', 'Closed', 'Cancelled']
-  if (terminal.includes(o.poStatus)) return false
-  const raw = o.eta || o.deliveryDue
-  if (!raw) return false
-  const due = new Date(raw)
-  if (isNaN(due.getTime())) return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return due.getTime() < today.getTime()
-}
-
-/**
- * ERP-parity KPI cards: Open Orders, Total Lines, Units Remaining,
- * Units Received, Overdue. "Open" excludes terminal PO statuses.
- */
-export function getOpenOrderKPIs(orders: ProductionOrder[]) {
-  const open = orders.filter(
-    (o) => !['Received', 'Closed', 'Cancelled'].includes(o.poStatus),
-  )
-  return {
-    openOrders: open.length,
-    totalLines: open.reduce((s, o) => s + (o.lineCount || 0), 0),
-    unitsRemaining: open.reduce((s, o) => s + (o.qtyRemaining || 0), 0),
-    unitsReceived: orders.reduce((s, o) => s + (o.qtyReceived || 0), 0),
-    overdue: open.filter((o) => isOverdue(o)).length,
   }
 }
 
