@@ -1017,6 +1017,7 @@ function ProductionTab({
                       {mfrOrders.map((o) => {
                         const color = statusColor(o.poStatus)
                         const pct = receivedPct(o)
+                        const lastNote = o.notes.length > 0 ? o.notes[o.notes.length - 1] : null
                         return (
                           <div key={o.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => setDetail(o)}>
                             <div className="flex items-center justify-between">
@@ -1053,6 +1054,16 @@ function ProductionTab({
                                 <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
                               </div>
                             </div>
+                            {lastNote && (
+                              <div className="pt-1 border-t border-[var(--border-subtle)]">
+                                <p className="text-[10px] uppercase tracking-[0.06em] text-[var(--text-tertiary)]">Last update</p>
+                                <p className="text-xs text-[var(--text-secondary)] line-clamp-2">{lastNote.noteText}</p>
+                                <p className="text-[10px] text-[var(--text-tertiary)]">
+                                  {lastNote.createdBy}
+                                  {lastNote.noteDate ? ` · ${lastNote.noteDate}` : ''}
+                                </p>
+                              </div>
+                            )}
                           </div>
                         )
                       })}
