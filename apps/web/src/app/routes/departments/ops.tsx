@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, Fragment } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -7,6 +7,8 @@ import {
   ClipboardList,
   Cog,
   DollarSign,
+  ChevronRight,
+  ChevronDown,
   Eye,
   Factory,
   LayoutGrid,
@@ -689,7 +691,10 @@ function ProductionTab({
   const [search, setSearch] = useState('')
   const [detail, setDetail] = useState<OpenOrder | null>(null)
   const [emailItem, setEmailItem] = useState<any>(null)
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
   const [refreshing, setRefreshing] = useState(false)
+
+  const toggleRow = (id: string) => setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }))
 
   const coworkItem = (o: OpenOrder): AddToCoworkItem => ({
     name: `${o.poNumber} — ${o.manufacturer}`,
@@ -893,6 +898,7 @@ function ProductionTab({
               <table className="nexus-table">
                 <thead>
                   <tr>
+                    <th className="w-8"></th>
                     <th>PO</th>
                     <th>Product</th>
                     <th>Manufacturer</th>
@@ -906,37 +912,91 @@ function ProductionTab({
                 <tbody>
                   {filtered.map((o) => {
                     const color = statusColor(o.poStatus)
+                    const isOpen = expandedRows[o.id]
+                    const lastNote = o.notes.length > 0 ? o.notes[o.notes.length - 1] : null
+                    const expandable = o.lines.length > 0 || o.notes.length > 0
                     return (
-                      <tr key={o.id} className="clickable-row" onClick={() => setDetail(o)}>
-                        <td className="font-mono text-xs text-[var(--accent)]">{o.poNumber}</td>
-                        <td className="font-medium text-[var(--text-primary)]">{productLabel(o)}</td>
-                        <td className="text-[var(--text-secondary)]">{o.manufacturer}</td>
-                        <td className="tabular-nums text-[var(--text-secondary)]">{o.qtyOrdered.toLocaleString()}</td>
-                        <td>
-                          <span className="badge" style={{ background: `${color}20`, color }}>{o.poStatus}</span>
-                        </td>
-                        <td className="tabular-nums text-[var(--text-secondary)]">{receivedPct(o)}%</td>
-                        <td className="text-[var(--text-tertiary)]">{o.eta || '—'}</td>
-                        <td>
-                          <div className="flex justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              title="Email CM production update"
-                              onClick={() => setEmailItem(toProductionShape(o))}
-                              className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
-                            >
-                              <Mail size={15} />
-                            </button>
-                            <AddToCowork variant="icon" item={coworkItem(o)} />
-                            <button
-                              title="View / edit PO"
-                              onClick={() => setDetail(o)}
-                              className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
-                            >
-                              <Eye size={15} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                      <Fragment key={o.id}>
+                        <tr className="clickable-row" onClick={() => toggleRow(o.id)}>
+                          <td className="text-[var(--text-tertiary)]">
+                            {expandable && (isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
+                          </td>
+                          <td className="font-mono text-xs text-[var(--accent)]">{o.poNumber}</td>
+                          <td className="font-medium text-[var(--text-primary)]">{productLabel(o)}</td>
+                          <td className="text-[var(--text-secondary)]">{o.manufacturer}</td>
+                          <td className="tabular-nums text-[var(--text-secondary)]">{o.qtyOrdered.toLocaleString()}</td>
+                          <td>
+                            <span className="badge" style={{ background: `${color}20`, color }}>{o.poStatus}</span>
+                          </td>
+                          <td className="tabular-nums text-[var(--text-secondary)]">{receivedPct(o)}%</td>
+                          <td className="text-[var(--text-tertiary)]">{o.eta || '—'}</td>
+                          <td>
+                            <div className="flex justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                title="Email CM production update"
+                                onClick={() => setEmailItem(toProductionShape(o))}
+                                className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
+                              >
+                                <Mail size={15} />
+                              </button>
+                              <AddToCowork variant="icon" item={coworkItem(o)} />
+                              <button
+                                title="View / edit PO"
+                                onClick={() => setDetail(o)}
+                                className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
+                              >
+                                <Eye size={15} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr className="bg-[var(--bg-base)]">
+                            <td></td>
+                            <td colSpan={8} className="py-3">
+                              <div className="space-y-3">
+                                {/* Products in this PO */}
+                                <div>
+                                  <p className="text-[10px] uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                                    Products in this PO
+                                  </p>
+                                  {o.lines.length === 0 ? (
+                                    <p className="text-xs text-[var(--text-tertiary)]">No line items on this PO.</p>
+                                  ) : (
+                                    <div className="rounded-lg border border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)]">
+                                      {o.lines.map((l) => (
+                                        <div key={l.lineNo} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+                                          <span className="text-[var(--text-secondary)] min-w-0">
+                                            <span className="font-mono text-[var(--text-tertiary)]">{l.sku}</span> {l.description}
+                                          </span>
+                                          <span className="flex items-center gap-4 tabular-nums text-[var(--text-tertiary)] shrink-0">
+                                            <span>Ord {l.qtyOrdered.toLocaleString()}</span>
+                                            <span className="text-[var(--success)]">Rec {l.qtyReceived.toLocaleString()}</span>
+                                            <span>${l.unitPrice.toFixed(2)}</span>
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                {/* Last update */}
+                                {lastNote && (
+                                  <div>
+                                    <p className="text-[10px] uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1">
+                                      Last update
+                                    </p>
+                                    <p className="text-xs text-[var(--text-secondary)]">{lastNote.noteText}</p>
+                                    <p className="text-[10px] text-[var(--text-tertiary)]">
+                                      {lastNote.createdBy}
+                                      {lastNote.noteDate ? ` · ${lastNote.noteDate}` : ''}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     )
                   })}
                 </tbody>
