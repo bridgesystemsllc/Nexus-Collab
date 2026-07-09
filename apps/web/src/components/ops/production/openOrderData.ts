@@ -122,6 +122,56 @@ export interface OpenOrderKpis {
   pastDue: number
 }
 
+/** Total dollar value of a PO's lines (qty ordered × unit price). */
+export function lineValue(o: OpenOrder): number {
+  return o.lines.reduce((sum, l) => sum + l.qtyOrdered * l.unitPrice, 0)
+}
+
+/** Received progress as a whole percentage (0–100). */
+export function receivedPct(o: OpenOrder): number {
+  return o.qtyOrdered > 0 ? Math.round((o.qtyReceived / o.qtyOrdered) * 100) : 0
+}
+
+/** A short product label for a PO: the first line, with a "+N more" suffix. */
+export function productLabel(o: OpenOrder): string {
+  if (o.lines.length === 0) return '—'
+  const first = o.lines[0].description || o.lines[0].sku || '—'
+  return o.lines.length === 1 ? first : `${first} +${o.lines.length - 1} more`
+}
+
+/**
+ * Adapt an OpenOrder to the production-order `{ id, data }` shape that the
+ * existing ProductionEmailModal / productionEmail builder and AddToCowork read.
+ * Lets those components be reused unchanged against open-order records.
+ */
+export function toProductionShape(o: OpenOrder): { id: string; data: Record<string, any> } {
+  const value = lineValue(o)
+  return {
+    id: o.id,
+    data: {
+      poNumber: o.poNumber,
+      cm: o.manufacturer,
+      brand: '',
+      product: productLabel(o),
+      status: o.poStatus,
+      progress: receivedPct(o),
+      qty: o.qtyOrdered,
+      qtyOrdered: o.qtyOrdered,
+      qtyProduced: o.qtyReceived,
+      qtyReceived: o.qtyReceived,
+      qtyRemaining: o.qtyRemaining,
+      value,
+      orderValue: value,
+      orderDate: o.orderDate,
+      shipDate: o.deliveryDue,
+      promisedDate: o.eta,
+      eta: o.eta,
+      notes: o.notes,
+      priority: o.urgency === 'Urgent' ? 'emergency' : 'normal',
+    },
+  }
+}
+
 /** Compute the KPI-strip numbers shown across the top of the Open Orders view. */
 export function openOrderKpis(orders: OpenOrder[]): OpenOrderKpis {
   const today = new Date().toISOString().slice(0, 10)

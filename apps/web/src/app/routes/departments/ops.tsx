@@ -29,7 +29,7 @@ import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowork'
 import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
 import { OpenOrdersView, OpenOrderDrawer } from '@/components/ops/production/OpenOrdersView'
-import { toOpenOrder, type OpenOrder } from '@/components/ops/production/openOrderData'
+import { toOpenOrder, toProductionShape, type OpenOrder } from '@/components/ops/production/openOrderData'
 import { ProductionEmailModal } from '@/components/ops/production/ProductionEmailModal'
 import { ProductionOrderDrawer } from '@/components/ops/production/ProductionOrderDrawer'
 import { CMTab } from '@/components/cm/CMTab'
@@ -678,6 +678,7 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
 // ERP-synced OPEN_ORDERS module — so the tabs never diverge. Table/Board are the
 // production-tracker look; Open Orders is the ERP grouped view.
 function ProductionTab({
+  departmentId,
   openOrders,
   openOrderModuleId,
   onRefresh,
@@ -687,7 +688,15 @@ function ProductionTab({
   const [mfrFilter, setMfrFilter] = useState('All')
   const [search, setSearch] = useState('')
   const [detail, setDetail] = useState<OpenOrder | null>(null)
+  const [emailItem, setEmailItem] = useState<any>(null)
   const [refreshing, setRefreshing] = useState(false)
+
+  const coworkItem = (o: OpenOrder): AddToCoworkItem => ({
+    name: `${o.poNumber} — ${o.manufacturer}`,
+    type: 'Open Order',
+    id: o.id,
+    description: `${o.poStatus} · ${o.qtyRemaining.toLocaleString()} remaining`,
+  })
 
   const orders = useMemo(() => (openOrders || []).map(toOpenOrder), [openOrders])
   const manufacturers = useMemo(
@@ -798,14 +807,17 @@ function ProductionTab({
             })}
           </div>
           {mode === 'production' && (
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors disabled:opacity-60"
-            >
-              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-              {refreshing ? 'Syncing…' : 'Refresh from ERP'}
-            </button>
+            <>
+              <OpenOrderImport items={openOrders} moduleId={openOrderModuleId} departmentId={departmentId} />
+              <button
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors disabled:opacity-60"
+              >
+                <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+                {refreshing ? 'Syncing…' : 'Refresh from ERP'}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -906,10 +918,18 @@ function ProductionTab({
                         <td className="tabular-nums text-[var(--text-secondary)]">{receivedPct(o)}%</td>
                         <td className="text-[var(--text-tertiary)]">{o.eta || '—'}</td>
                         <td>
-                          <div className="flex justify-end items-center gap-1">
+                          <div className="flex justify-end items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              title="Email CM production update"
+                              onClick={() => setEmailItem(toProductionShape(o))}
+                              className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
+                            >
+                              <Mail size={15} />
+                            </button>
+                            <AddToCowork variant="icon" item={coworkItem(o)} />
                             <button
                               title="View / edit PO"
-                              onClick={(e) => { e.stopPropagation(); setDetail(o) }}
+                              onClick={() => setDetail(o)}
                               className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
                             >
                               <Eye size={15} />
@@ -940,10 +960,22 @@ function ProductionTab({
                         return (
                           <div key={o.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => setDetail(o)}>
                             <div className="flex items-center justify-between">
-                              <span className="badge" style={{ background: `${color}20`, color }}>{o.poStatus}</span>
-                              {o.urgency === 'Urgent' && (
-                                <span className="badge" style={{ background: 'var(--danger)20', color: 'var(--danger)' }}>Urgent</span>
-                              )}
+                              <div className="flex items-center gap-1.5">
+                                <span className="badge" style={{ background: `${color}20`, color }}>{o.poStatus}</span>
+                                {o.urgency === 'Urgent' && (
+                                  <span className="badge" style={{ background: 'var(--danger)20', color: 'var(--danger)' }}>Urgent</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  title="Email CM production update"
+                                  onClick={() => setEmailItem(toProductionShape(o))}
+                                  className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
+                                >
+                                  <Mail size={15} />
+                                </button>
+                                <AddToCowork variant="icon" item={coworkItem(o)} />
+                              </div>
                             </div>
                             <h3 className="font-medium text-sm text-[var(--text-primary)]">{productLabel(o)}</h3>
                             <div className="grid grid-cols-2 gap-2 text-xs text-[var(--text-secondary)]">
@@ -980,6 +1012,9 @@ function ProductionTab({
         onClose={() => setDetail(null)}
         onRefresh={onRefresh}
       />
+
+      {/* CM production-update email (row/card quick action) */}
+      <ProductionEmailModal item={emailItem} open={!!emailItem} onClose={() => setEmailItem(null)} />
     </div>
   )
 }
