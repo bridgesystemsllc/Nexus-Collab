@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import { decryptJson } from './encryption'
-import { mapErpOpenOrder, type ErpOpenOrder, type ErpOpenOrderLine } from './erpOpenOrders'
+import { mapErpOpenOrder, type ErpOpenOrder } from './erpOpenOrders'
 
 // ─── ERP KarEve Sync — external client ──────────────────────
 //
@@ -758,162 +758,15 @@ function syntheticOpenOrders(): ErpOpenOrder[] {
   return SYNTHETIC_ERP_OPEN_ORDERS.map(mapErpOpenOrder)
 }
 
-// ─── PO-file imports living in the ERP's sales-orders list ─────────────
-// The KarEve ERP's dedicated /open-orders and /purchase-orders feeds only
-// contain a handful of records; purchase orders imported via "Purchase Order
-// file" upload land in the general /orders list (32k+ sales orders, newest
-// first) tagged with this marker in their notes. We scan the newest pages for
-// them and pull each match's detail record for its line items.
-const PO_IMPORT_MARKER = /imported from purchase order file/i
-// Pages of /orders (newest-first, 100/page) scanned per sync. POs older than
-// this window were already upserted by earlier syncs and are never deleted —
-// only their live updates stop once they age out of the window.
-const PO_SCAN_MAX_PAGES = 10
-// Concurrent /orders/:id detail fetches — kept low, the ERP throttles bursts.
-const PO_DETAIL_CONCURRENCY = 3
-
-/** Title-case an ERP status like AWAITING_FULFILLMENT → "Awaiting Fulfillment". */
-function titleCaseStatus(v: string): string {
-  return v
-    .toLowerCase()
-    .split(/[_\s]+/)
-    .filter(Boolean)
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(' ')
-}
-
-/** Map an ERP sales-order record (a PO-file import) + items to an ErpOpenOrder. */
-function mapImportedPoOrder(
-  order: Record<string, any>,
-  items: Record<string, any>[],
-): ErpOpenOrder {
-  const shipped =
-    String(order.status ?? '').toUpperCase() === 'SHIPPED' || Boolean(order.shippedDate)
-  const lines: ErpOpenOrderLine[] = items.map((it, i) => {
-    const qtyOrdered = Number(it.quantity ?? it.qtyOrdered ?? 0) || 0
-    return {
-      lineNo: i + 1,
-      sku: String(it.sku ?? it.itemId ?? ''),
-      description: String(it.name ?? it.description ?? ''),
-      qtyOrdered,
-      qtyReceived: shipped ? qtyOrdered : Number(it.packed ?? 0) || 0,
-      unitPrice: Number(it.unitPrice ?? it.price ?? 0) || 0,
-    }
-  })
-  const qtyOrdered = lines.reduce((sum, l) => sum + l.qtyOrdered, 0)
-  const qtyReceived = lines.reduce((sum, l) => sum + l.qtyReceived, 0)
-  const notes = String(order.notes ?? '')
-  const vendor = notes.match(/Vendor:\s*([^|]+)/i)?.[1]?.trim()
-  const cancelDate = notes.match(/Cancel Date:\s*([^|\s]+)/i)?.[1]?.trim()
-  return {
-    erpPoId: `order-${order.id}`,
-    poNumber: String(order.poNumber ?? order.orderNumber ?? '').trim(),
-    manufacturer: vendor || String(order.customerName ?? '').trim(),
-    poStatus: titleCaseStatus(String(order.status ?? '')) || 'Pending',
-    urgency: 'Normal',
-    orderDate: String(order.orderDate ?? order.createdAt ?? ''),
-    deliveryDue: String(order.requestedDate ?? cancelDate ?? ''),
-    eta: String(order.shippedDate ?? order.requestedDate ?? ''),
-    qtyOrdered,
-    qtyReceived,
-    qtyRemaining: Math.max(qtyOrdered - qtyReceived, 0),
-    lines,
-    notes,
-    source: 'ERP_KAREVE',
-  }
-}
-
 /**
- * Scan the newest PO_SCAN_MAX_PAGES pages of the ERP /orders feed for records
- * tagged as Purchase Order file imports and return them mapped to open orders
- * (with line items from each order's detail endpoint). Throws when no base
- * candidate yields a readable /orders feed.
- */
-async function fetchErpImportedPoOrders(apiUrl: string, apiKey: string): Promise<ErpOpenOrder[]> {
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    'X-API-Key': apiKey,
-    Accept: 'application/json',
-  }
-  let lastError: unknown = null
-  for (const base of erpBaseCandidates(apiUrl)) {
-    try {
-      const matches: Record<string, any>[] = []
-      let worked = false
-      for (let page = 1; page <= PO_SCAN_MAX_PAGES; page++) {
-        const resp = await fetch(withPage(`${base}/orders`, page, ERP_PAGE_LIMIT), {
-          headers,
-          signal: AbortSignal.timeout(15_000),
-        })
-        if (!resp.ok) throw new Error(`ERP ${base}/orders page ${page} returned HTTP ${resp.status}`)
-        const text = await resp.text()
-        if (!looksLikeJson(resp.headers.get('content-type'), text)) {
-          throw new Error(`ERP ${base}/orders page ${page} returned a non-JSON response`)
-        }
-        const records = extractRecords(JSON.parse(text), ['orders'])
-        if (records == null) throw new Error(`ERP ${base}/orders returned an unrecognized JSON shape`)
-        worked = true
-        if (records.length === 0) break
-        for (const o of records) {
-          if (PO_IMPORT_MARKER.test(String(o.notes ?? ''))) matches.push(o)
-        }
-      }
-      if (!worked) continue
-      const out: ErpOpenOrder[] = []
-      for (let i = 0; i < matches.length; i += PO_DETAIL_CONCURRENCY) {
-        const batch = matches.slice(i, i + PO_DETAIL_CONCURRENCY)
-        const mapped = await Promise.all(
-          batch.map(async (o) => {
-            // Detail fetch is best-effort with retries + backoff (the ERP
-            // throttles bursts): on repeated failure fall back to the header
-            // record (no line items) rather than dropping the PO.
-            for (let attempt = 0; attempt < 3; attempt++) {
-              if (attempt > 0) await new Promise((res) => setTimeout(res, 1000 * attempt))
-              try {
-                const r = await fetch(`${base}/orders/${o.id}`, {
-                  headers,
-                  signal: AbortSignal.timeout(15_000),
-                })
-                if (r.ok) {
-                  const t = await r.text()
-                  if (looksLikeJson(r.headers.get('content-type'), t)) {
-                    const body = JSON.parse(t) as any
-                    const d = body?.data ?? body
-                    if (d && typeof d === 'object') {
-                      const items = Array.isArray(d.items) ? d.items : []
-                      return mapImportedPoOrder({ ...o, ...d }, items)
-                    }
-                  }
-                }
-              } catch {
-                // retry once, then fall through to header-only mapping
-              }
-            }
-            console.error(`[erpClient] order ${o.id} detail fetch failed; syncing header only`)
-            return mapImportedPoOrder(o, [])
-          }),
-        )
-        out.push(...mapped)
-      }
-      return out.filter((r) => r.poNumber)
-    } catch (err) {
-      lastError = err
-    }
-  }
-  throw new Error(
-    `Failed to scan ERP orders for imported POs: ${
-      lastError instanceof Error ? lastError.message : String(lastError)
-    }`,
-  )
-}
-
-/**
- * Fetch open-order / purchase-order data from the ERP. Real feed when
- * configured, otherwise a labelled synthetic dev feed. Merges TWO real
- * sources: the dedicated open-orders feed (trying `path` then `/open-orders`
- * then `/purchase-orders` then `/pos`) and Purchase Order file imports found
- * in the ERP's general /orders list. Either source alone is enough; throws
- * only when both fail or yield zero usable records, so the sync orchestrator
+ * Fetch purchase-order data from the ERP's two dedicated modules ONLY: the
+ * Purchase Order module (/purchase-orders) and the Open Order module
+ * (/open-orders, or the routing-supplied `path`). The general sales-orders
+ * list is deliberately NOT scanned — per user requirement, only records the
+ * ERP itself files under these two modules are imported. Records from both
+ * modules are merged and deduped by poNumber. Real feed when configured,
+ * otherwise a labelled synthetic dev feed. Throws when both module fetches
+ * fail or the merge yields zero usable records, so the sync orchestrator
  * isolates the feed instead of writing sample data over real POs.
  */
 export async function fetchErpOpenOrders(
@@ -923,39 +776,53 @@ export async function fetchErpOpenOrders(
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
   if (!configured || !apiUrl || !apiKey) return syntheticOpenOrders()
 
-  let feedRecords: ErpOpenOrder[] = []
-  let feedError: unknown = null
+  const results: ErpOpenOrder[] = []
+  const errors: unknown[] = []
+
+  // Purchase Order module.
   try {
     const records = await fetchErpRecords(
       apiUrl,
       apiKey,
-      candidatePaths(path, '/open-orders', '/purchase-orders', '/pos'),
-      ['openOrders', 'open_orders', 'purchaseOrders', 'pos', 'orders'],
+      ['/purchase-orders'],
+      ['purchaseOrders', 'purchase_orders', 'pos'],
     )
-    feedRecords = records.map(mapErpOpenOrder).filter((r) => r.poNumber)
+    results.push(...records.map(mapErpOpenOrder).filter((r) => r.poNumber))
   } catch (err) {
-    feedError = err
+    errors.push(err)
+    console.error('[erpClient] Purchase Order module fetch failed:', err)
   }
 
-  let importedPos: ErpOpenOrder[] = []
-  let importError: unknown = null
+  // Open Order module.
   try {
-    importedPos = await fetchErpImportedPoOrders(apiUrl, apiKey)
+    const records = await fetchErpRecords(
+      apiUrl,
+      apiKey,
+      candidatePaths(path, '/open-orders'),
+      ['openOrders', 'open_orders'],
+    )
+    results.push(...records.map(mapErpOpenOrder).filter((r) => r.poNumber))
   } catch (err) {
-    importError = err
-    console.error('[erpClient] PO-file import scan failed:', err)
+    errors.push(err)
+    console.error('[erpClient] Open Order module fetch failed:', err)
   }
 
-  if (feedError && importError) {
+  if (errors.length === 2) {
+    const first = errors[0]
     throw new Error(
-      `Failed to fetch open orders from ERP: ${
-        feedError instanceof Error ? feedError.message : String(feedError)
+      `Failed to fetch purchase/open orders from ERP: ${
+        first instanceof Error ? first.message : String(first)
       }`,
     )
   }
 
-  const have = new Set(feedRecords.map((r) => r.poNumber))
-  const merged = [...feedRecords, ...importedPos.filter((r) => !have.has(r.poNumber))]
+  // Dedupe by poNumber — Purchase Order module wins on collision.
+  const seen = new Set<string>()
+  const merged = results.filter((r) => {
+    if (seen.has(r.poNumber)) return false
+    seen.add(r.poNumber)
+    return true
+  })
   if (merged.length === 0) throw new Error('ERP returned no usable open-order records')
   return merged
 }

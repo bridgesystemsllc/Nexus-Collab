@@ -1,16 +1,15 @@
 ---
-name: ERP PO-file imports live in /orders
-description: Where the KarEve ERP actually keeps purchase orders and how NEXUS finds them
+name: ERP purchase-order sync scope
+description: Which ERP feeds NEXUS Open Orders syncs from, and the user's explicit scope decision
 ---
 
-The ERP's dedicated `/open-orders` feed publishes only a couple of records and `/purchase-orders` is empty. Real purchase orders (imported via "Purchase Order file" upload in the ERP) live in the general `/orders` list (32k+ sales orders, newest-first) tagged with notes containing "Imported from Purchase Order file".
+**Rule:** NEXUS Open Orders syncs ONLY from the ERP's two dedicated modules — `/purchase-orders` (Purchase Order module) and `/open-orders` (Open Order module), merged and deduped by poNumber. The general `/orders` sales list must NOT be scanned.
 
-**Constraints discovered:**
-- Server-side filters on `/orders` are IGNORED (total unchanged) except `?status=` works. Client-side filtering is required.
-- Page size caps at 100. The list is sorted newest-first, so recent PO imports sit in the first pages.
-- `/orders/:id` returns full line items (`items[]` with sku/name/quantity/picked/packed); the list rows have no items.
-- The ERP throttles bursts of detail fetches — keep concurrency low (~3) and retry with backoff; even then occasional fetches fail during a sync.
+**Why:** A previous fix scanned `/orders` (32k+ sales orders) for records tagged "Imported from Purchase Order file" and imported 38 of them. The user explicitly rejected this (July 2026): only the Purchase Order module and Open Order module should sync; the scanned imports were deleted.
 
-**Why:** NEXUS open-orders sync merges the dedicated feed + a newest-N-pages scan of `/orders`; header-only fallback records (no lines, zero qty) must never overwrite previously captured lines/quantities (merge guards against this).
+**Context that still holds:**
+- `/purchase-orders` currently publishes 0 records and `/open-orders` publishes 2, even though the user sees 20+ POs in their ERP UI — the ERP app isn't exposing its PO module data through its API. Fixing that belongs in the ERP app, not NEXUS.
+- Server-side filters on `/orders` are ignored (except `?status=`); page size caps at 100; the ERP throttles bursts of detail fetches.
+- `mergeOpenOrderIntoData` guards remain: a header-only inbound record (no lines, zero qty) never wipes previously captured lines/quantities.
 
-**How to apply:** If POs seem "missing" from Open Orders, they may be older than the scan window (newest ~1000 orders). Already-synced POs are never deleted — only their live updates stop once they age out. Deep backfill = temporarily raise the page cap.
+**How to apply:** If the user again reports missing POs, check what `/purchase-orders` publishes first — the fix is likely on the ERP side. Do not re-add an `/orders` scan without explicit user approval.
