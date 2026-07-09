@@ -167,13 +167,34 @@ export function mergeOpenOrderIntoData(
   merged.manufacturer = erp.manufacturer || existing.manufacturer || ''
   merged.poStatus = erp.poStatus
   merged.urgency = erp.urgency
-  merged.qtyOrdered = erp.qtyOrdered
-  merged.qtyReceived = erp.qtyReceived
-  merged.qtyRemaining = erp.qtyRemaining
   merged.orderDate = erp.orderDate || existing.orderDate || ''
   merged.deliveryDue = erp.deliveryDue
   merged.eta = erp.eta || existing.eta || ''
-  merged.lines = erp.lines
+  // ERP owns lines and quantities, but a header-only inbound record (e.g. a
+  // failed line-item detail fetch: no lines AND zero quantities) must not wipe
+  // the lines/quantities we already captured on an earlier sync.
+  const existingLines = Array.isArray(existing.lines) ? existing.lines : []
+  const headerOnly =
+    erp.lines.length === 0 &&
+    existingLines.length > 0 &&
+    erp.qtyOrdered === 0 &&
+    erp.qtyReceived === 0
+  merged.lines = headerOnly ? existingLines : erp.lines
+  if (headerOnly) {
+    // Keep existing quantities; if those are stale zeros, recompute from the
+    // preserved lines so quantities always agree with the line items shown.
+    const lineOrdered = existingLines.reduce((sum: number, l: any) => sum + n(l?.qtyOrdered), 0)
+    const lineReceived = existingLines.reduce((sum: number, l: any) => sum + n(l?.qtyReceived), 0)
+    const ordered = n(existing.qtyOrdered) || lineOrdered
+    const received = n(existing.qtyReceived) || lineReceived
+    merged.qtyOrdered = ordered
+    merged.qtyReceived = received
+    merged.qtyRemaining = n(existing.qtyRemaining) || Math.max(ordered - received, 0)
+  } else {
+    merged.qtyOrdered = erp.qtyOrdered
+    merged.qtyReceived = erp.qtyReceived
+    merged.qtyRemaining = erp.qtyRemaining
+  }
   merged.erpLastSyncAt = now
   merged.source = 'ERP_KAREVE'
 
