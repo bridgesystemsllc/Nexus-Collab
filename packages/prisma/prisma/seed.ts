@@ -299,13 +299,9 @@ async function main() {
   console.log('✅ Inventory: 6')
 
   // ─── Production Orders
-  for (const p of [
-    { poNumber: 'PO-2026-041', product: 'GS Shampoo 11oz', cm: 'ACT Labs', qty: 50000, value: 0, status: 'Awaiting Materials', eta: '2026-05-15', brand: "Carol's Daughter", progress: 15, priority: 'emergency', coworkPending: true },
-    { poNumber: 'PO-2026-038', product: 'Scalp Detox Shampoo 8oz', cm: 'ACT Labs', qty: 30000, value: 0, status: 'Production Scheduled', eta: '2026-05-01', brand: "Carol's Daughter", progress: 25 },
-    { poNumber: 'PO-2026-035', product: 'Ambi Even Tone Cream 2oz', cm: 'Paklab', qty: 20000, value: 0, status: 'In Production', eta: '2026-04-10', brand: 'Ambi', progress: 60 },
-    { poNumber: 'PO-2026-033', product: 'AF Sensitive Cleanser 6oz', cm: 'Paklab', qty: 15000, value: 0, status: 'QC Review', eta: '2026-03-30', brand: 'AcneFree', progress: 85 },
-  ]) await prisma.moduleItem.create({ data: { moduleId: prodMod.id, data: p, status: p.status } })
-  console.log('✅ Production: 4')
+  // Operations now runs off the ERP-synced OPEN_ORDERS module (Table / Board /
+  // Open Orders all read it), so no sample production orders are seeded — the
+  // Production Tracking module is populated by the ERP open-order feed instead.
 
   for (const b of [
     { product: 'CD Scalp Detox Shampoo 8oz', from: "L'Oreal Legacy", to: 'Kareve SKU Master', owner: 'Operations', progress: 50, status: 'Awaiting Artwork', blocker: null },
