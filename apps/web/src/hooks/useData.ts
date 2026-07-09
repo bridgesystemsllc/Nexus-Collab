@@ -276,7 +276,17 @@ export function useEverything(filters?: Record<string, string>) {
 
 // ─── Integrations ───────────────────────────────────────────
 export function useIntegrations() {
-  return useQuery({ queryKey: ['integrations'], queryFn: () => api.get('/integrations').then(r => r.data) })
+  return useQuery({
+    queryKey: ['integrations'],
+    queryFn: () => api.get('/integrations').then(r => r.data),
+    // While a sync is running the server briefly reports status SYNCING; keep
+    // polling until it settles back to CONNECTED so the UI never looks like
+    // the connection was lost.
+    refetchInterval: (query) => {
+      const list = query.state.data as any[] | undefined
+      return Array.isArray(list) && list.some((i: any) => i?.status === 'SYNCING') ? 2000 : false
+    },
+  })
 }
 
 export function useSyncIntegration() {

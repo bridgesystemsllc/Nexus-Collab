@@ -703,7 +703,7 @@ function IntegrationSettingsDrawer({
   onDisconnect: (integration: any) => void
   onReconnect: (integration: any) => void
 }) {
-  const [enabled, setEnabled] = useState(integration.status === 'CONNECTED')
+  const [enabled, setEnabled] = useState(integration.status === 'CONNECTED' || integration.status === 'SYNCING')
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [testing, setTesting] = useState(false)
 
@@ -713,7 +713,7 @@ function IntegrationSettingsDrawer({
   const isErp = integration.type === 'ERP_KAREVE_SYNC'
 
   // Live ERP routing — drives the incoming-data list below.
-  const { data: erpRouting } = useErpRouting(isErp && integration.status === 'CONNECTED')
+  const { data: erpRouting } = useErpRouting(isErp && (integration.status === 'CONNECTED' || integration.status === 'SYNCING'))
   const moduleTargets = useModuleTargets()
   const moduleNameById = new Map(moduleTargets.map((t) => [t.id, `${t.department} — ${t.name}`]))
 
@@ -741,11 +741,13 @@ function IntegrationSettingsDrawer({
           <div>
             <p className="text-[14px] font-medium text-[var(--text-primary)]">Integration Status</p>
             <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">
-              {integration.status === 'CONNECTED'
-                ? integration.config?.liveVerified
-                  ? 'Live ERP data verified'
-                  : 'Connected — sample data mode (live ERP not verified)'
-                : 'Not connected'}
+              {integration.status === 'SYNCING'
+                ? 'Sync in progress…'
+                : integration.status === 'CONNECTED'
+                  ? integration.config?.liveVerified
+                    ? 'Live ERP data verified'
+                    : 'Connected — sample data mode (live ERP not verified)'
+                  : 'Not connected'}
             </p>
           </div>
           <button
@@ -1262,8 +1264,12 @@ export function IntegrationsPage() {
   }, [refetch, qc])
 
   const integrationList = Array.isArray(integrations) ? integrations : []
-  const connected = integrationList.filter((i: any) => i.status === 'CONNECTED')
-  const available = integrationList.filter((i: any) => i.status !== 'CONNECTED')
+  // SYNCING is a transient state during a manual sync — the integration is
+  // still connected, so keep it in the Active section (with a Syncing badge)
+  // instead of dropping it back to "Available" as if the setup was lost.
+  const isActive = (i: any) => i.status === 'CONNECTED' || i.status === 'SYNCING'
+  const connected = integrationList.filter(isActive)
+  const available = integrationList.filter((i: any) => !isActive(i))
 
   const statusBadge = (status: string) => {
     switch (status) {
