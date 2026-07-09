@@ -360,7 +360,7 @@ export function OpenOrdersView({ items, moduleId, onRefresh }: OpenOrdersViewPro
 // Edits the Nexus-side view of a PO: poStatus, urgency, and an appended note.
 // Saves PATCH the OPEN_ORDERS item, then push the ERP-owned fields back to the
 // ERP (dry-run until the ERP write endpoint is live).
-function OpenOrderDrawer({
+export function OpenOrderDrawer({
   order,
   moduleId,
   onClose,

@@ -7,6 +7,7 @@ import {
   ClipboardList,
   Cog,
   DollarSign,
+  Eye,
   Factory,
   LayoutGrid,
   Loader2,
@@ -27,7 +28,8 @@ import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowork'
 import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
-import { OpenOrdersView } from '@/components/ops/production/OpenOrdersView'
+import { OpenOrdersView, OpenOrderDrawer } from '@/components/ops/production/OpenOrdersView'
+import { toOpenOrder, type OpenOrder } from '@/components/ops/production/openOrderData'
 import { ProductionEmailModal } from '@/components/ops/production/ProductionEmailModal'
 import { ProductionOrderDrawer } from '@/components/ops/production/ProductionOrderDrawer'
 import { CMTab } from '@/components/cm/CMTab'
@@ -672,64 +674,82 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
 }
 
 // ─── Production Tracking Tab ───────────────────────────────
+// All three layouts (Table / Board / Open Orders) render the SAME dataset — the
+// ERP-synced OPEN_ORDERS module — so the tabs never diverge. Table/Board are the
+// production-tracker look; Open Orders is the ERP grouped view.
 function ProductionTab({
-  items,
-  moduleId,
-  departmentId,
-  onSelect,
   openOrders,
   openOrderModuleId,
   onRefresh,
 }: TabProps & { openOrders: any[]; openOrderModuleId: string | null; onRefresh: () => void }) {
-  const openForm = useAppStore((s) => s.openForm)
   const [view, setView] = useState<ViewMode>('table')
-  // Top-level mode: the production board/table vs the ERP-synced Open Orders view.
   const [mode, setMode] = useState<'production' | 'openOrders'>('production')
-  const [brandFilter, setBrandFilter] = useState('All')
+  const [mfrFilter, setMfrFilter] = useState('All')
   const [search, setSearch] = useState('')
-  const [emailItem, setEmailItem] = useState<any>(null)
-  const [detailItem, setDetailItem] = useState<any>(null)
+  const [detail, setDetail] = useState<OpenOrder | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
-  const openCreate = () =>
-    openForm({ formType: 'opsProduction', mode: 'create', context: { moduleId, departmentId } })
-  const openEdit = (item: any) =>
-    openForm({ formType: 'opsProduction', mode: 'edit', recordId: item.id, context: { moduleId, departmentId, initialData: item.data } })
+  const orders = useMemo(() => (openOrders || []).map(toOpenOrder), [openOrders])
+  const manufacturers = useMemo(
+    () => ['All', ...Array.from(new Set(orders.map((o) => o.manufacturer))).sort()],
+    [orders],
+  )
+
+  const q = search.toLowerCase()
+  const filtered = useMemo(
+    () =>
+      orders.filter((o) => {
+        if (mfrFilter !== 'All' && o.manufacturer !== mfrFilter) return false
+        if (!q) return true
+        const hay = `${o.poNumber} ${o.manufacturer} ${o.lines
+          .map((l) => `${l.sku} ${l.description}`)
+          .join(' ')}`.toLowerCase()
+        return hay.includes(q)
+      }),
+    [orders, mfrFilter, q],
+  )
+
+  const lineValue = (o: OpenOrder) => o.lines.reduce((s, l) => s + l.qtyOrdered * l.unitPrice, 0)
+  const activePOs = filtered.length
+  const orderValue = filtered.reduce((s, o) => s + lineValue(o), 0)
+  const urgent = filtered.filter((o) => o.urgency === 'Urgent').length
+  const unitsRemaining = filtered.reduce((s, o) => s + o.qtyRemaining, 0)
 
   function statusColor(status: string): string {
     switch (status) {
-      case 'QC Review':
+      case 'Received':
+      case 'Shipped':
         return 'var(--success)'
       case 'In Production':
         return 'var(--info)'
-      case 'Production Scheduled':
+      case 'Acknowledged':
         return 'var(--accent)'
-      case 'Awaiting Materials':
+      case 'Sent to Vendor':
         return 'var(--warning)'
       default:
         return 'var(--text-tertiary)'
     }
   }
+  const receivedPct = (o: OpenOrder) =>
+    o.qtyOrdered > 0 ? Math.round((o.qtyReceived / o.qtyOrdered) * 100) : 0
+  const productLabel = (o: OpenOrder) =>
+    o.lines.length === 0
+      ? '—'
+      : o.lines.length === 1
+        ? o.lines[0].description || o.lines[0].sku
+        : `${o.lines[0].description || o.lines[0].sku} +${o.lines.length - 1} more`
 
-  const brands = ['All', ...Array.from(new Set(items.map((item: any) => item.data?.brand).filter(Boolean)))]
-  const q = search.toLowerCase()
-  const filtered = items.filter((item: any) => {
-    const d = item.data || {}
-    if (brandFilter !== 'All' && d.brand !== brandFilter) return false
-    if (!q) return true
-    return [d.poNumber, d.product, d.sku, d.cm].some((v: any) => (v ?? '').toString().toLowerCase().includes(q))
-  })
-
-  const activeOrders = filtered.length
-  const orderValue = filtered.reduce((sum: number, item: any) => sum + (item.data?.value ?? 0), 0)
-  const emergency = filtered.filter((item: any) => item.data?.priority === 'emergency').length
-  const coworkPending = filtered.filter((item: any) => item.data?.coworkPending).length
-
-  const cowork = (d: any, id: string): AddToCoworkItem => ({
-    name: d.product || d.poNumber || 'Production Order',
-    type: 'Production Order',
-    id,
-    description: `${d.poNumber || ''} — ${d.cm || ''} (${d.status || ''})`.trim(),
-  })
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      await api.post('/integrations/erp/refresh-open-orders')
+      onRefresh()
+    } catch (err) {
+      console.error('[production] refresh failed', err)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const seg = mode === 'openOrders' ? 'openOrders' : view === 'table' ? 'table' : 'board'
   const SEGMENTS = [
@@ -753,14 +773,9 @@ function ProductionTab({
           <h2 className="text-sm font-medium text-[var(--text-primary)]">
             {mode === 'openOrders' ? 'Open orders' : 'Production orders'}
           </h2>
-          <span className="text-xs text-[var(--text-tertiary)]">
-            {mode === 'openOrders' ? openOrders.length : filtered.length}
-          </span>
+          <span className="text-xs text-[var(--text-tertiary)]">{filtered.length}</span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {mode === 'production' && (
-            <OpenOrderImport items={items} moduleId={moduleId} departmentId={departmentId} />
-          )}
           <div className="inline-flex items-center gap-1 p-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]">
             {SEGMENTS.map(({ key, label, icon: Icon }) => {
               const active = seg === key
@@ -783,9 +798,13 @@ function ProductionTab({
             })}
           </div>
           {mode === 'production' && (
-            <button onClick={openCreate} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm rounded-lg w-fit">
-              <Plus size={15} />
-              New Order
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-default)] transition-colors disabled:opacity-60"
+            >
+              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+              {refreshing ? 'Syncing…' : 'Refresh from ERP'}
             </button>
           )}
         </div>
@@ -794,173 +813,173 @@ function ProductionTab({
       {mode === 'openOrders' ? (
         <OpenOrdersView items={openOrders} moduleId={openOrderModuleId} onRefresh={onRefresh} />
       ) : (
-      <div className="space-y-5">
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="data-cell flex items-center gap-3 py-4">
-          <Package size={18} className="text-[var(--accent)]" />
-          <div>
-            <p className="text-xs uppercase tracking-[0.06em] text-[var(--text-tertiary)]">Active Orders</p>
-            <p className="text-2xl font-semibold tabular-nums">{activeOrders}</p>
+        <div className="space-y-5">
+          {/* KPI strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="data-cell flex items-center gap-3 py-4">
+              <Package size={18} className="text-[var(--accent)]" />
+              <div>
+                <p className="text-xs uppercase tracking-[0.06em] text-[var(--text-tertiary)]">Active POs</p>
+                <p className="text-2xl font-semibold tabular-nums">{activePOs}</p>
+              </div>
+            </div>
+            <div className="data-cell flex items-center gap-3 py-4">
+              <DollarSign size={18} className="text-[var(--success)]" />
+              <div>
+                <p className="text-xs uppercase tracking-[0.06em] text-[var(--text-tertiary)]">Order Value</p>
+                <p className="text-2xl font-semibold tabular-nums">${Math.round(orderValue).toLocaleString()}</p>
+              </div>
+            </div>
+            <div className="data-cell flex items-center gap-3 py-4">
+              <AlertTriangle size={18} className="text-[var(--danger)]" />
+              <div>
+                <p className="text-xs uppercase tracking-[0.06em] text-[var(--text-tertiary)]">Urgent</p>
+                <p className="text-2xl font-semibold tabular-nums">{urgent}</p>
+              </div>
+            </div>
+            <div className="data-cell flex items-center gap-3 py-4">
+              <Package size={18} className="text-[var(--warning)]" />
+              <div>
+                <p className="text-xs uppercase tracking-[0.06em] text-[var(--text-tertiary)]">Units Remaining</p>
+                <p className="text-2xl font-semibold tabular-nums">{unitsRemaining.toLocaleString()}</p>
+              </div>
+            </div>
           </div>
-        </div>
-        <div className="data-cell flex items-center gap-3 py-4">
-          <DollarSign size={18} className="text-[var(--success)]" />
-          <div>
-            <p className="text-xs uppercase tracking-[0.06em] text-[var(--text-tertiary)]">Order Value</p>
-            <p className="text-2xl font-semibold tabular-nums">${orderValue.toLocaleString()}</p>
-          </div>
-        </div>
-        <div className="data-cell flex items-center gap-3 py-4">
-          <AlertTriangle size={18} className="text-[var(--danger)]" />
-          <div>
-            <p className="text-xs uppercase tracking-[0.06em] text-[var(--text-tertiary)]">Emergency</p>
-            <p className="text-2xl font-semibold tabular-nums">{emergency}</p>
-          </div>
-        </div>
-        <div className="data-cell flex items-center gap-3 py-4">
-          <Users size={18} className="text-[var(--warning)]" />
-          <div>
-            <p className="text-xs uppercase tracking-[0.06em] text-[var(--text-tertiary)]">Cowork Pending</p>
-            <p className="text-2xl font-semibold tabular-nums">{coworkPending}</p>
-          </div>
-        </div>
-      </div>
 
-      <div className="flex items-center gap-2 flex-wrap">
-        {brands.map((brand) => (
-          <button
-            key={brand}
-            onClick={() => setBrandFilter(brand)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-              brandFilter === brand
-                ? 'bg-[var(--accent)] text-white border-transparent'
-                : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
-            }`}
-          >
-            {brand}
-          </button>
-        ))}
-        <div className="relative min-w-[260px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)]"
-            placeholder="Search PO#, SKU, item#, description..."
-          />
-        </div>
-      </div>
+          {/* Manufacturer filter + search */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {manufacturers.map((mfr) => (
+              <button
+                key={mfr}
+                onClick={() => setMfrFilter(mfr)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                  mfrFilter === mfr
+                    ? 'bg-[var(--accent)] text-white border-transparent'
+                    : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                {mfr}
+              </button>
+            ))}
+            <div className="relative min-w-[260px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)]"
+                placeholder="Search PO#, manufacturer, SKU..."
+              />
+            </div>
+          </div>
 
-      {filtered.length === 0 ? (
-        <EmptyState text="No production orders found." />
-      ) : view === 'table' ? (
-        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
-          <table className="nexus-table">
-            <thead>
-              <tr>
-                <th>PO</th>
-                <th>Product</th>
-                <th>CM</th>
-                <th>Qty</th>
-                <th>Status</th>
-                <th>Progress</th>
-                <th>ETA</th>
-                <th className="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((item: any) => {
-                const d = item.data
-                return (
-                  <tr key={item.id} className="clickable-row" onClick={() => setDetailItem(item)}>
-                    <td className="font-mono text-xs text-[var(--accent)]">{d.poNumber}</td>
-                    <td className="font-medium text-[var(--text-primary)]">{d.product}</td>
-                    <td className="text-[var(--text-secondary)]">{d.cm}</td>
-                    <td className="tabular-nums text-[var(--text-secondary)]">{d.qty?.toLocaleString()}</td>
-                    <td><span className="badge" style={{ background: `${statusColor(d.status)}20`, color: statusColor(d.status) }}>{d.status}</span></td>
-                    <td className="tabular-nums text-[var(--text-secondary)]">{d.progress}%</td>
-                    <td className="text-[var(--text-tertiary)]">{d.eta}</td>
-                    <td>
-                      <div className="flex justify-end items-center gap-1">
-                        <button
-                          title="Create production update email"
-                          onClick={(e) => { e.stopPropagation(); setEmailItem(item) }}
-                          className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
-                        >
-                          <Mail size={15} />
-                        </button>
-                        <RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} />
-                      </div>
-                    </td>
+          {filtered.length === 0 ? (
+            <div className="data-cell text-center py-12 text-sm text-[var(--text-tertiary)]">
+              No open orders. Click <span className="text-[var(--text-secondary)] font-medium">Refresh from ERP</span> to pull the latest purchase orders.
+            </div>
+          ) : view === 'table' ? (
+            <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+              <table className="nexus-table">
+                <thead>
+                  <tr>
+                    <th>PO</th>
+                    <th>Product</th>
+                    <th>Manufacturer</th>
+                    <th>Qty Ordered</th>
+                    <th>Status</th>
+                    <th>Received</th>
+                    <th>ETA</th>
+                    <th className="text-right">Actions</th>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {Array.from(new Set(filtered.map((item: any) => item.data?.cm || 'Unassigned'))).map((cm) => {
-            const cmItems = filtered.filter((item: any) => (item.data?.cm || 'Unassigned') === cm)
-            return (
-              <div key={cm} className="space-y-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
-                  <Factory size={15} className="text-[var(--accent)]" />
-                  {cm}
-                  <span className="text-xs text-[var(--text-tertiary)]">{cmItems.length} active</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {cmItems.map((item: any) => {
-                    const d = item.data
-                    const color = statusColor(d.status)
+                </thead>
+                <tbody>
+                  {filtered.map((o) => {
+                    const color = statusColor(o.poStatus)
                     return (
-                      <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => setDetailItem(item)}>
-                        <div className="flex items-center justify-between">
-                          <span className="badge" style={{ background: `${color}20`, color }}>{d.status}</span>
-                          <div className="flex items-center gap-1">
+                      <tr key={o.id} className="clickable-row" onClick={() => setDetail(o)}>
+                        <td className="font-mono text-xs text-[var(--accent)]">{o.poNumber}</td>
+                        <td className="font-medium text-[var(--text-primary)]">{productLabel(o)}</td>
+                        <td className="text-[var(--text-secondary)]">{o.manufacturer}</td>
+                        <td className="tabular-nums text-[var(--text-secondary)]">{o.qtyOrdered.toLocaleString()}</td>
+                        <td>
+                          <span className="badge" style={{ background: `${color}20`, color }}>{o.poStatus}</span>
+                        </td>
+                        <td className="tabular-nums text-[var(--text-secondary)]">{receivedPct(o)}%</td>
+                        <td className="text-[var(--text-tertiary)]">{o.eta || '—'}</td>
+                        <td>
+                          <div className="flex justify-end items-center gap-1">
                             <button
-                              title="Create production update email"
-                              onClick={(e) => { e.stopPropagation(); setEmailItem(item) }}
+                              title="View / edit PO"
+                              onClick={(e) => { e.stopPropagation(); setDetail(o) }}
                               className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors"
                             >
-                              <Mail size={15} />
+                              <Eye size={15} />
                             </button>
-                            <RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} />
                           </div>
-                        </div>
-                        <h3 className="font-medium text-sm text-[var(--text-primary)]">{d.product}</h3>
-                        <div className="grid grid-cols-2 gap-2 text-xs text-[var(--text-secondary)]">
-                          <span className="font-mono">{d.poNumber}</span>
-                          <span className="tabular-nums">Qty: {d.qty?.toLocaleString()}</span>
-                          <span>Value: ${(d.value ?? 0).toLocaleString()}</span>
-                          <span>ETA: {d.eta}</span>
-                        </div>
-                        <div>
-                          <div className="flex items-center justify-between text-xs mb-1">
-                            <span className="text-[var(--text-tertiary)]">Progress</span>
-                            <span className="tabular-nums text-[var(--text-secondary)]">{d.progress}%</span>
-                          </div>
-                          <div className="h-2 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
-                            <div className="h-full rounded-full transition-all" style={{ width: `${d.progress}%`, background: color }} />
-                          </div>
-                        </div>
-                        {d.cmNotes && (
-                          <p className="text-xs text-[var(--text-tertiary)] line-clamp-2 pt-1 border-t border-[var(--border-subtle)]">{d.cmNotes}</p>
-                        )}
-                      </div>
+                        </td>
+                      </tr>
                     )
                   })}
-                </div>
-              </div>
-            )
-          })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {Array.from(new Set(filtered.map((o) => o.manufacturer))).map((mfr) => {
+                const mfrOrders = filtered.filter((o) => o.manufacturer === mfr)
+                return (
+                  <div key={mfr} className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
+                      <Factory size={15} className="text-[var(--accent)]" />
+                      {mfr}
+                      <span className="text-xs text-[var(--text-tertiary)]">{mfrOrders.length} POs</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {mfrOrders.map((o) => {
+                        const color = statusColor(o.poStatus)
+                        const pct = receivedPct(o)
+                        return (
+                          <div key={o.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => setDetail(o)}>
+                            <div className="flex items-center justify-between">
+                              <span className="badge" style={{ background: `${color}20`, color }}>{o.poStatus}</span>
+                              {o.urgency === 'Urgent' && (
+                                <span className="badge" style={{ background: 'var(--danger)20', color: 'var(--danger)' }}>Urgent</span>
+                              )}
+                            </div>
+                            <h3 className="font-medium text-sm text-[var(--text-primary)]">{productLabel(o)}</h3>
+                            <div className="grid grid-cols-2 gap-2 text-xs text-[var(--text-secondary)]">
+                              <span className="font-mono">{o.poNumber}</span>
+                              <span className="tabular-nums">Qty: {o.qtyOrdered.toLocaleString()}</span>
+                              <span className="tabular-nums">Remaining: {o.qtyRemaining.toLocaleString()}</span>
+                              <span>ETA: {o.eta || '—'}</span>
+                            </div>
+                            <div>
+                              <div className="flex items-center justify-between text-xs mb-1">
+                                <span className="text-[var(--text-tertiary)]">Received</span>
+                                <span className="tabular-nums text-[var(--text-secondary)]">{pct}%</span>
+                              </div>
+                              <div className="h-2 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+                                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
-      </div>
-      )}
 
-      <ProductionEmailModal item={emailItem} open={!!emailItem} onClose={() => setEmailItem(null)} />
-      <ProductionOrderDrawer open={!!detailItem} item={detailItem} moduleId={moduleId} departmentId={departmentId} onClose={() => setDetailItem(null)} />
+      {/* Shared PO detail/edit drawer for Table + Board */}
+      <OpenOrderDrawer
+        order={detail}
+        moduleId={openOrderModuleId}
+        onClose={() => setDetail(null)}
+        onRefresh={onRefresh}
+      />
     </div>
   )
 }
