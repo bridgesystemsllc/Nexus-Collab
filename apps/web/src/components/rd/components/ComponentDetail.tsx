@@ -244,27 +244,27 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
     annualVolumeUnits: 0,
   })
 
-  if (!open || !component) return null
-
-  const vendors = component.vendors || []
-  const moqTiers = component.moqTiers || []
-  const assignments = component.productAssignments || []
-  const tests = component.compatibilityTests || []
-  const milestones = component.milestones || []
-  const risks = component.risks || []
-  const files = component.files || []
-  const activityLog = component.activityLog || []
-  const brands = component.brands || []
-  const tags = component.tags || []
-  const certs = component.certifications || []
-
-  const typeColor = COMPONENT_TYPE_COLORS[component.type]
-  const statusColor = FEASIBILITY_STATUS_COLORS[component.status]
+  // NOTE: no early return before this point — all hooks (including the
+  // useMemos below) must run on every render, even when the drawer is closed
+  // or the component is missing. The `!open || !component` guard lives after
+  // the last hook; everything here must be null-safe.
+  const vendors = component?.vendors || []
+  const moqTiers = component?.moqTiers || []
+  const assignments = component?.productAssignments || []
+  const tests = component?.compatibilityTests || []
+  const milestones = component?.milestones || []
+  const risks = component?.risks || []
+  const files = component?.files || []
+  const activityLog = component?.activityLog || []
+  const brands = component?.brands || []
+  const tags = component?.tags || []
+  const certs = component?.certifications || []
+  const targetCostPerUnit = Number(component?.targetCostPerUnit) || 0
   const worstCompat = getWorstCompatibility(tests)
   const compatBadge = COMPATIBILITY_BADGES[worstCompat]
   const bestCost = getBestUnitCost(moqTiers)
-  const costIsUnder = component.targetCostPerUnit > 0 && bestCost > 0 && bestCost <= component.targetCostPerUnit
-  const costIsOver = component.targetCostPerUnit > 0 && bestCost > 0 && bestCost > component.targetCostPerUnit
+  const costIsUnder = targetCostPerUnit > 0 && bestCost > 0 && bestCost <= targetCostPerUnit
+  const costIsOver = targetCostPerUnit > 0 && bestCost > 0 && bestCost > targetCostPerUnit
   const primaryVendor = vendors.find((v) => v.vendorStatus === 'Primary')
   const activeAssignments = assignments.filter((a) => a.assignmentStatus === 'Active')
   const candidateAssignments = assignments.filter((a) => a.assignmentStatus === 'Candidate')
@@ -272,18 +272,18 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
     (a) => a.assignmentStatus !== 'Active' && a.assignmentStatus !== 'Candidate'
   )
 
-  const daysToApproval = component.targetApprovalDate
+  const daysToApproval = component?.targetApprovalDate
     ? Math.ceil(
         (new Date(component.targetApprovalDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
       )
     : null
 
-  const currentStageIndex = PIPELINE_STAGES.indexOf(component.status)
+  const currentStageIndex = component ? PIPELINE_STAGES.indexOf(component.status) : -1
 
   // ── Handlers ──────────────────────────────────────────────
 
   const handleStatusUpdate = () => {
-    if (!newStatus) return
+    if (!newStatus || !component) return
     onComponentUpdate({
       status: newStatus,
       feasibilityNotes: statusNotes ? `${component.feasibilityNotes}\n[${new Date().toISOString().slice(0, 10)}] ${statusNotes}` : component.feasibilityNotes,
@@ -370,9 +370,9 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
     const shipping = applicableTier.shippingCostPerUnit
     const duty = (unitCost * applicableTier.dutyRatePct) / 100
     const totalLanded = unitCost + toolingAmortized + shipping + duty
-    const delta = totalLanded - component.targetCostPerUnit
+    const delta = totalLanded - targetCostPerUnit
     return { unitCost, toolingAmortized, shipping, duty, totalLanded, delta }
-  }, [costQty, moqTiers, vendors, component.targetCostPerUnit])
+  }, [costQty, moqTiers, vendors, targetCostPerUnit])
 
   // ── Compatibility Matrix ──────────────────────────────────
 
@@ -396,6 +396,12 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
     })
     return { pass, conditional, fail, notTested }
   }, [tests])
+
+  // All hooks have run — safe to bail out now (Rules of Hooks).
+  if (!open || !component) return null
+
+  const typeColor = COMPONENT_TYPE_COLORS[component.type]
+  const statusColor = FEASIBILITY_STATUS_COLORS[component.status]
 
   // ── Render Tabs ───────────────────────────────────────────
 
