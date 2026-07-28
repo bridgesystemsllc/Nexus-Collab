@@ -1,11 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   X,
   ChevronRight,
   ChevronLeft,
   Plus,
   Trash2,
+  ImagePlus,
+  Loader2,
 } from 'lucide-react'
+import { api } from '../../../lib/api'
 import {
   COMPONENT_TYPES,
   SUB_TYPES,
@@ -85,6 +88,7 @@ export interface ComponentFormData {
   priority: string
   isReplacement: boolean
   tags: string
+  imageUrl: string
 
   // Step 2 — Physical Specs
   material: string
@@ -162,6 +166,7 @@ export const EMPTY_FORM: ComponentFormData = {
   priority: 'Standard',
   isReplacement: false,
   tags: '',
+  imageUrl: '',
 
   material: '',
   color: '',
@@ -389,6 +394,115 @@ function Toggle({
   )
 }
 
+// ─── Image Upload ──────────────────────────────────────────
+
+function ImageUpload({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (v: string) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Please choose an image file (PNG, JPG, WEBP…)')
+      return
+    }
+    setUploading(true)
+    setUploadError('')
+    try {
+      // 1) Ask the API for a presigned upload URL (metadata only).
+      const { data } = await api.post('/uploads/request-url', {
+        name: file.name,
+        size: file.size,
+        contentType: file.type,
+      })
+      // 2) Upload the file bytes directly to object storage.
+      const putRes = await fetch(data.uploadURL, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      })
+      if (!putRes.ok) throw new Error('Storage upload failed')
+      // 3) Finalize server-side: the API verifies the real stored bytes are an
+      // image within limits, binds ownership, and returns the canonical URL.
+      const { data: finalized } = await api.post('/uploads/finalize-image', {
+        objectPath: data.objectPath,
+      })
+      onChange(finalized.url)
+    } catch (err: any) {
+      console.error('Failed to upload component image:', err)
+      setUploadError(err?.response?.data?.error || 'Failed to upload image. Please try again.')
+    } finally {
+      setUploading(false)
+      if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) void handleFile(file)
+        }}
+      />
+      {value ? (
+        <div className="flex items-start gap-3">
+          <img
+            src={value}
+            alt="Component"
+            className="w-28 h-28 object-cover rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)]"
+          />
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+              className="px-3.5 py-1.5 rounded-lg text-[13px] font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:border-[var(--accent)] transition-all"
+            >
+              {uploading ? 'Uploading…' : 'Replace'}
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange('')}
+              className="px-3.5 py-1.5 rounded-lg text-[13px] font-medium border border-[var(--border-default)] text-[var(--danger)] hover:border-[var(--danger)] transition-all"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => inputRef.current?.click()}
+          className="w-full flex items-center justify-center gap-2 px-3.5 py-6 rounded-xl border border-dashed border-[var(--border-default)] text-[13px] font-medium text-[var(--text-secondary)] bg-[var(--bg-input)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all disabled:opacity-60"
+        >
+          {uploading ? (
+            <>
+              <Loader2 size={16} className="animate-spin" /> Uploading…
+            </>
+          ) : (
+            <>
+              <ImagePlus size={16} /> Upload a picture of this component
+            </>
+          )}
+        </button>
+      )}
+      {uploadError && <p className="text-[12px] text-[var(--danger)] mt-1">{uploadError}</p>}
+    </div>
+  )
+}
+
 // ─── Step Props ────────────────────────────────────────────
 
 interface StepProps {
@@ -402,6 +516,13 @@ interface StepProps {
 export function Step1({ form, setForm, errors }: StepProps) {
   return (
     <div className="space-y-5">
+      <FormField label="Component Photo">
+        <ImageUpload
+          value={form.imageUrl}
+          onChange={(v) => setForm({ ...form, imageUrl: v })}
+        />
+      </FormField>
+
       <FormField label="Component Name" required error={errors.name}>
         <TextInput
           value={form.name}
