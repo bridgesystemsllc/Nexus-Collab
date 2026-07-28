@@ -331,7 +331,15 @@ export async function syncErpComponents(
     if (pn) byPart.set(pn, item)
   }
 
-  const components = await fetchErpComponents(prisma, erpPath)
+  const fetched = await fetchErpComponents(prisma, erpPath)
+  // Dedupe incoming records by (trimmed) partNumber — a duplicated part in
+  // one ERP payload must not create duplicate module items. Last wins.
+  const byIncoming = new Map<string, (typeof fetched)[number]>()
+  for (const rec of fetched) {
+    const pn = rec.partNumber.trim()
+    if (pn) byIncoming.set(pn, { ...rec, partNumber: pn })
+  }
+  const components = [...byIncoming.values()]
   const now = new Date().toISOString()
 
   let created = 0

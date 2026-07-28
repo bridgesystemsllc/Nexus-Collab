@@ -17,3 +17,9 @@ The connection must point at `https://dashboard.kareve.com` (live). If it points
 
 ## Trigger
 The real sync endpoint is `POST /api/v1/integrations/erp/refresh-open-orders`. `POST /api/v1/ai/actions/sync-erp` is a stub that only bumps counters — do not use it to test syncing.
+
+## Components feed (July 2026)
+- The ERP publishes components at `/api/v1/nexus/sync/components` (NOT `/components` or `/parts` — those fall through to the SPA's HTML). Path is set as the components feed's `erpPath` in routing.
+- Shape: camelCase envelope `{data:[...], meta:{page,limit,total}}` with `skuNumber/itemName/category/quantity/unitCost/brandId/isActive`; paginated.
+- Access is gated by the ERP API key's `inventory:read` permission — a missing permission returns JSON 403 ("Missing permissions"), while a nonexistent route returns HTML 200. HTML = route absent (usually the ERP needs republishing); JSON 403 = grant the permission in the ERP.
+- Nexus target: a COMPONENTS DepartmentModule in Operations; sync dedupes incoming records by trimmed partNumber and preserves local moqTiers/vendors/targetCostPerUnit (unitCost stays undefined when non-numeric so it never zeroes local cost).

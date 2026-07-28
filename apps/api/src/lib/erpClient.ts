@@ -553,13 +553,26 @@ function syntheticComponents(): ErpComponent[] {
 function mapErpComponent(raw: Record<string, any>): ErpComponent {
   const unitCostRaw = raw.unitCost ?? raw.unit_cost ?? raw.cost
   return {
-    partNumber: String(raw.partNumber ?? raw.partNo ?? raw.part_number ?? raw.itemCode ?? raw.code ?? ''),
-    name: String(raw.name ?? raw.description ?? raw.partName ?? ''),
-    description: String(raw.description ?? raw.name ?? ''),
-    type: String(raw.type ?? raw.partType ?? raw.componentType ?? 'other'),
+    // Aliases cover the KarEve /nexus/sync/components shape
+    // (skuNumber/itemName/category/brandId) plus older generic shapes.
+    partNumber: String(
+      raw.partNumber ?? raw.partNo ?? raw.part_number ?? raw.skuNumber ?? raw.itemCode ?? raw.code ?? '',
+    ),
+    name: String(raw.name ?? raw.itemName ?? raw.description ?? raw.partName ?? ''),
+    description: String(raw.description ?? raw.name ?? raw.itemName ?? ''),
+    type: String(raw.type ?? raw.partType ?? raw.componentType ?? raw.category ?? 'other'),
     vendor: String(raw.vendor ?? raw.vendorName ?? raw.supplier ?? ''),
-    unitCost: unitCostRaw != null ? Number(unitCostRaw) || 0 : undefined,
-    status: raw.status != null ? String(raw.status) : undefined,
+    // Preserve undefined for missing/non-numeric costs so a malformed ERP
+    // value never zeroes out a locally-set targetCostPerUnit on merge.
+    unitCost: Number.isFinite(Number(unitCostRaw)) && String(unitCostRaw).trim() !== '' ? Number(unitCostRaw) : undefined,
+    status:
+      raw.status != null
+        ? String(raw.status)
+        : typeof raw.isActive === 'boolean'
+          ? raw.isActive
+            ? 'Active'
+            : 'Inactive'
+          : undefined,
     source: 'ERP_KAREVE',
   }
 }
@@ -580,10 +593,15 @@ export async function fetchErpComponents(
   const records = await fetchErpRecords(
     apiUrl,
     apiKey,
-    candidatePaths(path, '/components', '/parts'),
+    candidatePaths(path, '/nexus/sync/components', '/components', '/parts'),
     ['components', 'parts'],
   )
-  return records.map(mapErpComponent).filter((r) => r.partNumber)
+  const usable = records.map(mapErpComponent).filter((r) => r.partNumber)
+  // Same strictness as SKU/inventory: an endpoint that answers but yields
+  // zero usable records is a fault, not an empty catalog — surface it so the
+  // orchestrator logs the feed failure instead of silently "succeeding".
+  if (usable.length === 0) throw new Error('ERP returned no usable component records')
+  return usable
 }
 
 // ─── Pricing / Cost ─────────────────────────────────────────
