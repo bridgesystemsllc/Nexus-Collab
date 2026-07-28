@@ -47,16 +47,33 @@ function n(v: unknown): number {
 
 /** Map a raw ERP PO line (field shape varies) into a typed ErpOpenOrderLine. */
 export function mapErpOpenOrderLine(raw: Record<string, any>, index: number): ErpOpenOrderLine {
-  const qtyOrdered = n(raw.qtyOrdered ?? raw.quantityOrdered ?? raw.orderedQty ?? raw.quantity)
-  const qtyReceived = n(raw.qtyReceived ?? raw.quantityReceived ?? raw.receivedQty)
+  const qtyOrdered = n(
+    raw.qtyOrdered ?? raw.quantityOrdered ?? raw.orderedQty ?? raw.ordered_quantity ?? raw.quantity,
+  )
+  const qtyReceived = n(
+    raw.qtyReceived ?? raw.quantityReceived ?? raw.receivedQty ?? raw.received_quantity,
+  )
   return {
-    lineNo: n(raw.lineNo ?? raw.line ?? raw.lineNumber ?? index + 1) || index + 1,
-    sku: s(raw.sku ?? raw.itemCode ?? raw.skuNumber ?? raw.code),
-    description: s(raw.description ?? raw.itemName ?? raw.name ?? raw.productName),
+    lineNo: n(raw.lineNo ?? raw.line ?? raw.lineNumber ?? raw.line_number ?? index + 1) || index + 1,
+    sku: s(raw.sku ?? raw.itemCode ?? raw.skuNumber ?? raw.item_sku ?? raw.item_id ?? raw.code),
+    description: s(
+      raw.description ?? raw.itemName ?? raw.item_description ?? raw.name ?? raw.productName,
+    ),
     qtyOrdered,
     qtyReceived,
     unitPrice: n(raw.unitPrice ?? raw.price ?? raw.unit_price ?? raw.cost),
   }
+}
+
+/** Humanize an ERP enum-style status ("SENT_TO_VENDOR" → "Sent to Vendor"). */
+function humanizeStatus(v: string): string {
+  if (!v) return v
+  if (!/^[A-Z0-9_]+$/.test(v)) return v
+  return v
+    .toLowerCase()
+    .split('_')
+    .map((w) => (w === 'to' || w === 'of' ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(' ')
 }
 
 /** Map a raw ERP PO record (field shape varies) into a typed ErpOpenOrder. */
@@ -65,9 +82,11 @@ export function mapErpOpenOrder(raw: Record<string, any>): ErpOpenOrder {
     ? raw.lines
     : Array.isArray(raw.lineItems)
       ? raw.lineItems
-      : Array.isArray(raw.items)
-        ? raw.items
-        : []
+      : Array.isArray(raw.line_items)
+        ? raw.line_items
+        : Array.isArray(raw.items)
+          ? raw.items
+          : []
   const lines = rawLines.map((l: Record<string, any>, i: number) => mapErpOpenOrderLine(l, i))
 
   // Header quantities fall back to the sum of line quantities when the ERP
@@ -87,16 +106,33 @@ export function mapErpOpenOrder(raw: Record<string, any>): ErpOpenOrder {
       ? n(raw.qtyRemaining ?? raw.quantityRemaining)
       : Math.max(qtyOrdered - qtyReceived, 0)
 
-  const urgencyRaw = s(raw.urgency ?? raw.priority).toLowerCase()
+  const urgencyRaw = s(raw.urgency ?? raw.urgency_level ?? raw.priority).toLowerCase()
   return {
-    erpPoId: s(raw.erpPoId ?? raw.id ?? raw.poId ?? raw.poNumber ?? raw.poNo),
-    poNumber: s(raw.poNumber ?? raw.poNo ?? raw.purchaseOrder ?? raw.customerPo ?? raw.po),
-    manufacturer: s(raw.manufacturer ?? raw.vendor ?? raw.vendorName ?? raw.cm ?? raw.supplier),
-    poStatus: s(raw.poStatus ?? raw.status ?? 'Sent to Vendor') || 'Sent to Vendor',
+    erpPoId: s(raw.erpPoId ?? raw.id ?? raw.poId ?? raw.poNumber ?? raw.po_number ?? raw.poNo),
+    poNumber: s(
+      raw.poNumber ?? raw.po_number ?? raw.poNo ?? raw.purchaseOrder ?? raw.customerPo ?? raw.po,
+    ),
+    manufacturer: s(
+      raw.manufacturer ?? raw.vendor ?? raw.vendorName ?? raw.vendor_name ?? raw.cm ?? raw.supplier,
+    ),
+    poStatus: humanizeStatus(s(raw.poStatus ?? raw.status ?? 'Sent to Vendor')) || 'Sent to Vendor',
     urgency: urgencyRaw === 'urgent' ? 'Urgent' : 'Normal',
-    orderDate: s(raw.orderDate ?? raw.createdAt ?? raw.poDate),
-    deliveryDue: s(raw.deliveryDue ?? raw.dueDate ?? raw.requestedDelivery ?? raw.deliveryDate),
-    eta: s(raw.eta ?? raw.expectedDelivery ?? raw.promisedDate ?? raw.deliveryDue),
+    orderDate: s(raw.orderDate ?? raw.order_date ?? raw.createdAt ?? raw.poDate),
+    deliveryDue: s(
+      raw.deliveryDue ??
+        raw.dueDate ??
+        raw.requestedDelivery ??
+        raw.deliveryDate ??
+        raw.expected_delivery_date ??
+        raw.requested_delivery_date,
+    ),
+    eta: s(
+      raw.eta ??
+        raw.expectedDelivery ??
+        raw.promisedDate ??
+        raw.expected_delivery_date ??
+        raw.deliveryDue,
+    ),
     qtyOrdered,
     qtyReceived,
     qtyRemaining,

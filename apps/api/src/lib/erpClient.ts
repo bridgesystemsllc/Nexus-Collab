@@ -411,6 +411,38 @@ async function fetchErpRecords(
 }
 
 /**
+ * Fetch a single purchase-order detail record (with line_items) from
+ * /purchase-orders/<id>. Best-effort: returns null on any failure so a
+ * missing detail never fails the whole open-order feed.
+ */
+async function fetchErpPoDetail(
+  apiUrl: string,
+  apiKey: string,
+  id: string,
+): Promise<Record<string, any> | null> {
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'X-API-Key': apiKey,
+    Accept: 'application/json',
+  }
+  for (const base of erpBaseCandidates(apiUrl)) {
+    try {
+      const url = `${base}/purchase-orders/${encodeURIComponent(id)}`
+      const response = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) })
+      if (!response.ok) continue
+      const raw = await response.text()
+      if (!looksLikeJson(response.headers.get('content-type'), raw)) continue
+      const body = JSON.parse(raw) as any
+      const record = body?.data ?? body
+      if (record && typeof record === 'object' && !Array.isArray(record)) return record
+    } catch {
+      // best-effort — fall through to next base candidate
+    }
+  }
+  return null
+}
+
+/**
  * Build the ordered list of candidate paths to try: the routing-supplied
  * `path` first (when present), then the per-resource defaults.
  */
@@ -801,7 +833,31 @@ export async function fetchErpOpenOrders(
       candidatePaths(path, '/open-orders'),
       ['openOrders', 'open_orders'],
     )
-    results.push(...records.map(mapErpOpenOrder).filter((r) => r.poNumber))
+    const mapped: ErpOpenOrder[] = []
+    // Throttled detail fetches: newer ERP list responses are headers only (no
+    // line items); the full record (with line_items) lives at
+    // /purchase-orders/<uuid>. The list id is prefixed ("apo-<uuid>") — strip
+    // the prefix for the lookup. Best-effort: a failed detail fetch keeps the
+    // header record.
+    const BATCH = 5
+    for (let i = 0; i < records.length; i += BATCH) {
+      const batch = await Promise.all(
+        records.slice(i, i + BATCH).map(async (raw) => {
+          let rec = mapErpOpenOrder(raw)
+          if (rec.lines.length === 0 && rec.erpPoId) {
+            const detailId = rec.erpPoId.replace(/^apo-/, '')
+            const detail = await fetchErpPoDetail(apiUrl, apiKey, detailId)
+            if (detail) {
+              const enriched = mapErpOpenOrder(detail)
+              if (enriched.poNumber) rec = { ...enriched, erpPoId: rec.erpPoId }
+            }
+          }
+          return rec
+        }),
+      )
+      mapped.push(...batch)
+    }
+    results.push(...mapped.filter((r) => r.poNumber))
   } catch (err) {
     errors.push(err)
     console.error('[erpClient] Open Order module fetch failed:', err)
@@ -816,13 +872,20 @@ export async function fetchErpOpenOrders(
     )
   }
 
-  // Dedupe by poNumber — Purchase Order module wins on collision.
-  const seen = new Set<string>()
-  const merged = results.filter((r) => {
-    if (seen.has(r.poNumber)) return false
-    seen.add(r.poNumber)
-    return true
-  })
+  // Dedupe by poNumber — on collision keep the richer record (one with line
+  // items / non-zero quantities), so a header-only listing from one module
+  // never suppresses an enriched record from the other.
+  const byPo = new Map<string, ErpOpenOrder>()
+  for (const r of results) {
+    const prev = byPo.get(r.poNumber)
+    if (!prev) {
+      byPo.set(r.poNumber, r)
+      continue
+    }
+    const richness = (x: ErpOpenOrder) => x.lines.length * 1000 + (x.qtyOrdered > 0 ? 1 : 0)
+    if (richness(r) > richness(prev)) byPo.set(r.poNumber, r)
+  }
+  const merged = [...byPo.values()]
   if (merged.length === 0) throw new Error('ERP returned no usable open-order records')
   return merged
 }
