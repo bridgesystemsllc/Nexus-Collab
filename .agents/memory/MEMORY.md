@@ -9,4 +9,5 @@
 - [ERP purchase-order sync scope](erp-po-import-sync.md) — sync ONLY /purchase-orders + /open-orders (never the 32k /orders list); newer API is snake_case headers + per-id detail for lines; connection must point at live dashboard.kareve.com, not the ERP's dev URL.
 - [Microsoft Graph scopes & re-consent](microsoft-graph-scopes.md) — reply/send needs Mail.Send; adding a scope requires existing users to reconnect; 403 ErrorAccessDenied = missing scope (mapped to 412 reconnect), not a hard error.
 - [ERP brand name resolution](erp-brand-resolution.md) — KarEve ERP gives brandId only, no brand-name endpoint; names come from a static brandId→name map in erpClient.
+- [Preview pane grey vs app health](preview-pane-vs-app-health.md) — if curl+screenshot render fine, bisect with direct dev URL in new tab; grey preview = workspace pane issue, user reloads workspace tab.
 - [ERP sync fallback contract](erp-sync-fallback-contract.md) — ERP fetchers return synthetic ONLY when unconfigured; throw when configured; base needs /api/v1 + JSON guard; out-of-band sync must never reject.
