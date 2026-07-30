@@ -2,6 +2,7 @@ import { Worker, Queue } from 'bullmq'
 import IORedis from 'ioredis'
 import { PrismaClient } from '@prisma/client'
 import { syncErp } from './lib/erpSync'
+import { renewSubscriptions, isSubscriptionConfigured } from './services/emailAgent/subscription'
 
 const prisma = new PrismaClient()
 
@@ -12,6 +13,7 @@ const connection = new IORedis(redisUrl, { maxRetriesPerRequest: null })
 export const dailyBriefingQueue = new Queue('daily-briefing', { connection })
 export const erpSyncQueue = new Queue('erp-sync', { connection })
 export const escalationQueue = new Queue('escalation-check', { connection })
+export const graphSubscriptionQueue = new Queue('graph-subscription-renew', { connection })
 
 // ─── Daily Briefing Worker (9 AM) ───────────────────────────
 const briefingWorker = new Worker('daily-briefing', async () => {
@@ -142,6 +144,26 @@ const escalationWorker = new Worker('escalation-check', async () => {
   console.log(`[worker] Escalation check: ${overdueTasks.length} overdue tasks`)
 }, { connection })
 
+// ─── Graph Subscription Renewal Worker (every 12h) ──────────
+// Microsoft expires mailbox subscriptions after ~3 days with no warning and no
+// error — inbound mail just stops arriving. This job is the only thing keeping
+// the email agent and the supplier inventory feeds alive.
+const graphSubscriptionWorker = new Worker('graph-subscription-renew', async () => {
+  if (!isSubscriptionConfigured()) {
+    console.log('[worker] Graph subscription not configured — skipping renewal')
+    return
+  }
+
+  const results = await renewSubscriptions()
+  for (const r of results) {
+    if (r.action === 'failed') {
+      console.error(`[worker] Graph subscription renewal FAILED: ${r.reason}`)
+    } else {
+      console.log(`[worker] Graph subscription ${r.action}${r.expiresAt ? ` — expires ${r.expiresAt}` : ''}`)
+    }
+  }
+}, { connection })
+
 // ─── Schedule recurring jobs ────────────────────────────────
 async function scheduleJobs() {
   // Daily briefing at 9 AM
@@ -159,8 +181,14 @@ async function scheduleJobs() {
     every: 3_600_000,
   }, { name: 'escalation-check' })
 
+  // Graph subscription renewal every 12 hours. The renewal window is 24h, so
+  // one missed run still leaves a full cycle of margin before expiry.
+  await graphSubscriptionQueue.upsertJobScheduler('graph-subscription-interval', {
+    every: 43_200_000,
+  }, { name: 'graph-subscription-renew' })
+
   console.log('\n⚡ NEXUS Worker running')
-  console.log('📋 Jobs scheduled: daily-briefing (9AM), erp-sync (15min), escalation-check (1hr)\n')
+  console.log('📋 Jobs scheduled: daily-briefing (9AM), erp-sync (15min), escalation-check (1hr), graph-subscription-renew (12hr)\n')
 }
 
 scheduleJobs().catch(console.error)
