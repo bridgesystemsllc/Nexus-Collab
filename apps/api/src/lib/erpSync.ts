@@ -9,6 +9,7 @@ import {
 } from './erpClient'
 import { ERP_FEEDS, getRouting, resolveTargetModule } from './erpRouting'
 import { mergeOpenOrderIntoData } from './erpOpenOrders'
+import { statusFor, statusFromStock } from './inventoryStatus'
 
 // Average monthly demand per SKU (units), used to derive coverage months.
 // Demand is NOT part of the ERP stock feed, so it is supplied here for the
@@ -23,22 +24,6 @@ const MONTHLY_DEMAND: Record<string, number> = {
   K5036900: 21,
   K6001100: 260,
   K2271509: 350,
-}
-
-function statusFor(coverageMonths: number): string {
-  if (coverageMonths <= 0) return 'emergency'
-  if (coverageMonths < 1) return 'critical'
-  if (coverageMonths > 20) return 'overstock'
-  return 'healthy'
-}
-
-// Fallback status when no demand figure is available to compute coverage:
-// derive a coarse health signal from the available stock alone.
-function statusFromStock(available: number): string {
-  if (available <= 0) return 'emergency'
-  if (available < 250) return 'critical'
-  if (available > 15000) return 'overstock'
-  return 'healthy'
 }
 
 export interface ErpSyncResult {
