@@ -1,6 +1,10 @@
 import { Router, Request, Response } from 'express'
 import { prisma } from '../index'
 import { processIncomingEmail, setProcessorPrisma } from '../services/emailAgent/processor'
+import {
+  ensureSubscription,
+  isSubscriptionConfigured,
+} from '../services/emailAgent/subscription'
 
 export const emailAgentRoutes: ReturnType<typeof Router> = Router()
 
@@ -68,6 +72,9 @@ emailAgentRoutes.get('/status', async (_req: Request, res: Response) => {
       mailbox,
       hasGraphCreds,
       hasAnthropicKey,
+      // Without a live Graph subscription no mail ever reaches the webhook,
+      // so an agent that looks "active" can still be receiving nothing.
+      subscriptionConfigured: isSubscriptionConfigured(),
       authorizedSenders,
       totalProcessed,
       lastProcessed: lastProcessed
@@ -77,6 +84,20 @@ emailAgentRoutes.get('/status', async (_req: Request, res: Response) => {
   } catch (error) {
     console.error('[EmailAgent] Status error:', error)
     res.status(500).json({ error: 'Failed to get agent status' })
+  }
+})
+
+// ─── Graph subscription state ────────────────────────────────
+// Create or renew on demand. Exposed because a lapsed subscription is
+// completely invisible otherwise: mail simply stops arriving with no error
+// raised anywhere, and this is the only way to confirm the pipe is open.
+emailAgentRoutes.post('/subscription/ensure', async (_req: Request, res: Response) => {
+  try {
+    const state = await ensureSubscription()
+    res.status(state.action === 'failed' ? 502 : 200).json(state)
+  } catch (error: any) {
+    console.error('[EmailAgent] Subscription error:', error)
+    res.status(500).json({ error: error.message })
   }
 })
 

@@ -81,11 +81,20 @@ export function normalizeFeedConfig(raw: unknown): FeedConfig {
   const str = (value: unknown): string | undefined =>
     typeof value === 'string' && value.trim() ? value.trim() : undefined
 
+  // Match rules distinguish "not configured" from "deliberately cleared": an
+  // absent key falls back to the default, but a present-and-empty one means
+  // "do not constrain on this". Without that distinction a sender-only rule
+  // would be impossible to express, which matters when a supplier's subject
+  // lines vary between runs. matchFeed still refuses to match when BOTH ends
+  // up empty, so this cannot widen into matching all mail.
+  const rule = (key: string, fallback: string | undefined): string | undefined =>
+    key in match ? str(match[key]) : fallback
+
   return {
     targetModuleId: str(c.targetModuleId) ?? null,
     match: {
-      fromContains: str(match.fromContains) ?? DEFAULT_GEODIS_CONFIG.match.fromContains,
-      subjectContains: str(match.subjectContains) ?? DEFAULT_GEODIS_CONFIG.match.subjectContains,
+      fromContains: rule('fromContains', DEFAULT_GEODIS_CONFIG.match.fromContains),
+      subjectContains: rule('subjectContains', DEFAULT_GEODIS_CONFIG.match.subjectContains),
     },
     columnMap: {
       sku: str(columnMap.sku) ?? DEFAULT_GEODIS_COLUMN_MAP.sku,

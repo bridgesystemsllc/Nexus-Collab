@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeFeedConfig, DEFAULT_GEODIS_COLUMN_MAP, DEFAULT_GUARD } from './feedConfig'
+import { normalizeFeedConfig, DEFAULT_GEODIS_COLUMN_MAP, DEFAULT_GUARD, DEFAULT_GEODIS_CONFIG } from './feedConfig'
 
 describe('normalizeFeedConfig', () => {
   it('returns usable defaults for an empty config', () => {
@@ -53,6 +53,21 @@ describe('normalizeFeedConfig', () => {
   it('trims matching rules', () => {
     const config = normalizeFeedConfig({ match: { fromContains: '  geodis.com  ' } })
     expect(config.match.fromContains).toBe('geodis.com')
+  })
+
+  it('falls back to the default for a match rule that was never set', () => {
+    const config = normalizeFeedConfig({ match: { fromContains: 'geodis.com' } })
+    expect(config.match.subjectContains).toBe(DEFAULT_GEODIS_CONFIG.match.subjectContains)
+  })
+
+  it('allows a match rule to be deliberately cleared, enabling a sender-only feed', () => {
+    // Supplier subject lines vary between runs, so matching on sender alone
+    // must be expressible. An absent key defaults; an explicit blank clears.
+    const config = normalizeFeedConfig({
+      match: { fromContains: 'geodis.com', subjectContains: '' },
+    })
+    expect(config.match.fromContains).toBe('geodis.com')
+    expect(config.match.subjectContains).toBeUndefined()
   })
 
   it('normalizes a missing targetModuleId to null', () => {

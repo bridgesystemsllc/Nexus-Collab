@@ -36,6 +36,10 @@ import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
 import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
+import {
+  ensureSubscription,
+  isSubscriptionConfigured,
+} from './services/emailAgent/subscription'
 
 export const prisma = new PrismaClient()
 
@@ -175,6 +179,26 @@ async function start() {
     console.log(`📡 WebSocket ready`)
     console.log(`🔗 API base: http://localhost:${PORT}/api/v1\n`)
   })
+
+  // Establish the Graph mail subscription that drives the email agent and the
+  // supplier inventory feeds. Microsoft expires these after ~3 days silently,
+  // so boot-time ensure plus the worker's 12h renewal are what keep inbound
+  // mail alive. No-ops when Graph is unconfigured (i.e. local development),
+  // and never blocks startup — a Graph outage must not stop the API booting.
+  if (isSubscriptionConfigured()) {
+    ensureSubscription()
+      .then((state) => {
+        if (state.action === 'failed') {
+          console.error(`[EmailAgent] Graph subscription failed: ${state.reason}`)
+        } else {
+          console.log(
+            `[EmailAgent] Graph subscription ${state.action}` +
+              (state.expiresAt ? ` — expires ${state.expiresAt}` : ''),
+          )
+        }
+      })
+      .catch((err) => console.error('[EmailAgent] Graph subscription error:', err?.message))
+  }
 }
 
 start().catch((err) => {
