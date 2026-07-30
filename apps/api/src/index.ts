@@ -31,6 +31,7 @@ import { formulationDetailRoutes } from './routes/formulationDetail'
 import { formulationsGateRoutes, requireFormulationsUnlock } from './routes/formulationsGate'
 import { sharepointRoutes } from './routes/sharepoint'
 import { uploadRoutes } from './routes/uploads'
+import { inventoryImportRoutes } from './routes/inventoryImport'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
@@ -113,6 +114,8 @@ api.use('/formulations-gate', formulationsGateRoutes)
 api.use('/formulation-detail', requireFormulationsUnlock, formulationDetailRoutes)
 api.use('/sharepoint', requireFormulationsUnlock, sharepointRoutes)
 api.use('/uploads', uploadRoutes)
+// Supplier inventory feeds (Geodis 3PL stock imports).
+api.use('/inventory-import', inventoryImportRoutes)
 // Internal team production-update emails (any authenticated member).
 api.use('/emails', emailRoutes)
 
