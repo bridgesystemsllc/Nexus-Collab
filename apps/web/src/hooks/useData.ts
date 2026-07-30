@@ -876,3 +876,44 @@ export function useFormulationCostAnalysis(formulationId: string) {
     enabled: !!formulationId,
   })
 }
+
+// ─── Supplier inventory feeds (Geodis 3PL) ──────────────────
+export function useGeodisFeedStatus() {
+  return useQuery({
+    queryKey: ['inventory-import', 'geodis', 'status'],
+    queryFn: () => api.get('/inventory-import/geodis/status').then(r => r.data),
+    // The feed runs on the supplier's schedule, so a stale header is more
+    // misleading than a slightly chatty poll.
+    refetchInterval: 120_000,
+  })
+}
+
+export function useGeodisImportLogs() {
+  return useQuery({
+    queryKey: ['inventory-import', 'geodis', 'logs'],
+    queryFn: () => api.get('/inventory-import/geodis/logs').then(r => r.data),
+  })
+}
+
+export function useUploadGeodisInventory() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ file, overrideGuard }: { file: File; overrideGuard?: boolean }) => {
+      const form = new FormData()
+      form.append('file', file)
+      if (overrideGuard) form.append('overrideGuard', 'true')
+      return api
+        .post('/inventory-import/geodis/upload', form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          // A held import answers 409 by design; it carries the reason in the
+          // body and must reach the caller rather than throwing as an error.
+          validateStatus: (s) => s < 500,
+        })
+        .then((r) => ({ httpStatus: r.status, ...r.data }))
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inventory-import', 'geodis'] })
+      qc.invalidateQueries({ queryKey: ['department'] })
+    },
+  })
+}

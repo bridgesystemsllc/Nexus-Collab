@@ -27,6 +27,7 @@ import {
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { api } from '@/lib/api'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
+import { GeodisFeedHeader } from '@/components/ops/inventory/GeodisFeedHeader'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowork'
 import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
@@ -472,18 +473,73 @@ function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
 }
 
 // ─── Inventory Health Tab ──────────────────────────────────
-function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProps) {
+// A row's warehouse, plus the one piece of state that only exists for feed-fed
+// rows: a SKU the supplier stopped reporting is held at zero rather than
+// deleted, and that distinction has to be visible or it reads as real zero
+// stock with no explanation.
+function WarehouseTag({ warehouse, missingSince }: { warehouse?: string; missingSince?: string | null }) {
+  const isGeodis = warehouse === 'GEODIS'
+  if (missingSince) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap"
+        style={{ background: 'rgba(255, 159, 10, 0.12)', color: 'var(--warning)' }}
+        title={`Not on the ${isGeodis ? 'Geodis' : ''} report since ${new Date(missingSince).toLocaleDateString()}`}
+      >
+        {isGeodis ? 'Geodis' : 'KarEve'} · dropped
+      </span>
+    )
+  }
+  return (
+    <span
+      className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap"
+      style={
+        isGeodis
+          ? { background: 'var(--accent-subtle)', color: 'var(--accent)' }
+          : { background: 'var(--bg-overlay)', color: 'var(--text-secondary)' }
+      }
+    >
+      {isGeodis ? 'Geodis' : 'KarEve'}
+    </span>
+  )
+}
+
+// Warehouses are separate INVENTORY_HEALTH modules, so a SKU stocked in both
+// appears once per warehouse. The tab blends them into one list and lets the
+// segmented control narrow it, which is why every row carries __warehouse and
+// __moduleId — the row still needs to know where it came from to be edited.
+type WarehouseFilter = 'All' | 'KAREVE' | 'GEODIS'
+
+function InventoryHealthTab({
+  items,
+  geodisItems = [],
+  moduleId,
+  geodisModuleId = null,
+  departmentId,
+  onSelect,
+}: TabProps & { geodisItems?: any[]; geodisModuleId?: string | null }) {
   const openForm = useAppStore((s) => s.openForm)
   const [view, setView] = useState<ViewMode>('table')
   const [brandFilter, setBrandFilter] = useState('All')
   const [statusFilter, setStatusFilter] = useState('All')
+  const [warehouseFilter, setWarehouseFilter] = useState<WarehouseFilter>('All')
   const [pageSize, setPageSize] = useState(50)
   const [page, setPage] = useState(1)
 
+  const hasGeodis = geodisItems.length > 0 || !!geodisModuleId
+
+  // Manual records always belong to the KarEve module. Geodis rows are owned by
+  // the feed and overwritten on every import, so hand-editing them would be
+  // silently undone — "New Record" is hidden while viewing Geodis alone.
   const openCreate = () =>
     openForm({ formType: 'opsInventory', mode: 'create', context: { moduleId, departmentId } })
   const openEdit = (item: any) =>
-    openForm({ formType: 'opsInventory', mode: 'edit', recordId: item.id, context: { moduleId, departmentId, initialData: item.data } })
+    openForm({
+      formType: 'opsInventory',
+      mode: 'edit',
+      recordId: item.id,
+      context: { moduleId: item.__moduleId ?? moduleId, departmentId, initialData: item.data },
+    })
 
   const statusConfig: Record<string, { badge: string; rowClass: string }> = {
     emergency: { badge: 'badge-emergency', rowClass: 'emergency' },
@@ -493,20 +549,38 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
   }
   const sortOrder: Record<string, number> = { emergency: 0, critical: 1, healthy: 2, overstock: 3 }
 
-  const brands = ['All', ...Array.from(new Set(items.map((item: any) => item.data?.brand).filter(Boolean)))]
+  // Tag each row with its warehouse and owning module before blending, so the
+  // filters, the column, and the edit target all read from one source.
+  const allItems = useMemo(
+    () => [
+      ...items.map((i: any) => ({ ...i, __warehouse: 'KAREVE', __moduleId: moduleId })),
+      ...geodisItems.map((i: any) => ({ ...i, __warehouse: 'GEODIS', __moduleId: geodisModuleId })),
+    ],
+    [items, geodisItems, moduleId, geodisModuleId],
+  )
+
+  const warehouseScoped = allItems.filter(
+    (item: any) => warehouseFilter === 'All' || item.__warehouse === warehouseFilter,
+  )
+
+  // Brand and status options follow the warehouse in view — offering a filter
+  // that can only ever return nothing is worse than offering fewer.
+  const brands = ['All', ...Array.from(new Set(warehouseScoped.map((item: any) => item.data?.brand).filter(Boolean)))]
   const statuses = [
     'All',
-    ...Array.from(new Set(items.map((item: any) => item.data?.status).filter(Boolean))).sort(
+    ...Array.from(new Set(warehouseScoped.map((item: any) => item.data?.status).filter(Boolean))).sort(
       (a: any, b: any) => (sortOrder[a] ?? 99) - (sortOrder[b] ?? 99),
     ),
   ]
-  const filtered = items.filter((item: any) => {
+  const filtered = warehouseScoped.filter((item: any) => {
     const d = item.data || {}
     if (brandFilter !== 'All' && d.brand !== brandFilter) return false
     if (statusFilter !== 'All' && d.status !== statusFilter) return false
     return true
   })
   const sorted = [...filtered].sort((a, b) => (sortOrder[a.data?.status] ?? 99) - (sortOrder[b.data?.status] ?? 99))
+
+  const geodisCount = allItems.filter((i: any) => i.__warehouse === 'GEODIS').length
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize))
   // Clamp the current page when the list or page size shrinks (e.g. after
@@ -517,7 +591,14 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
   // Reset to the first page whenever the filtered set or page size changes.
   useEffect(() => {
     setPage(1)
-  }, [brandFilter, statusFilter, pageSize])
+  }, [brandFilter, statusFilter, warehouseFilter, pageSize])
+
+  // Switching warehouse can strip the option the brand/status chips are set to,
+  // which would show an empty table with no obvious cause. Clear them instead.
+  useEffect(() => {
+    setBrandFilter('All')
+    setStatusFilter('All')
+  }, [warehouseFilter])
 
   const pageStart = (page - 1) * pageSize
   const paged = sorted.slice(pageStart, pageStart + pageSize)
@@ -539,9 +620,44 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
         : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
     }`
 
+  const segment = (active: boolean) =>
+    `relative px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+      active
+        ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm'
+        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+    }`
+
   return (
     <div className="space-y-4">
-      <TabHeader title="Inventory records" count={filtered.length} view={view} onView={setView} onNew={openCreate} newLabel="New Record" />
+      <TabHeader
+        title="Inventory records"
+        count={filtered.length}
+        view={view}
+        onView={setView}
+        onNew={warehouseFilter === 'GEODIS' ? undefined : openCreate}
+        newLabel="New Record"
+      >
+        {hasGeodis && (
+          <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-[var(--bg-overlay)] border border-[var(--border-subtle)]">
+            {([
+              ['All', 'All', allItems.length],
+              ['KAREVE', 'KarEve', items.length],
+              ['GEODIS', 'Geodis', geodisCount],
+            ] as [WarehouseFilter, string, number][]).map(([key, label, count]) => (
+              <button
+                key={key}
+                onClick={() => setWarehouseFilter(key)}
+                className={segment(warehouseFilter === key)}
+              >
+                {label}
+                <span className="ml-1.5 tabular-nums text-[var(--text-tertiary)]">{count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </TabHeader>
+
+      {hasGeodis && warehouseFilter !== 'KAREVE' && <GeodisFeedHeader itemCount={geodisCount} />}
 
       {brands.length > 1 && (
         <div className="flex items-center gap-2 flex-wrap">
@@ -598,6 +714,7 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
                 <th>SKU</th>
                 <th>Product Name</th>
                 <th>Brand</th>
+                {hasGeodis && <th>Warehouse</th>}
                 <th>On-Hand</th>
                 <th>Committed</th>
                 <th>Available</th>
@@ -615,10 +732,20 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
                     <td className="font-mono text-xs text-[var(--text-secondary)]">{d.sku}</td>
                     <td className="font-medium text-[var(--text-primary)]">{d.name}</td>
                     <td>{d.brand ? <BrandBadge brand={d.brand} /> : <span className="text-[var(--text-tertiary)]">—</span>}</td>
+                    {hasGeodis && <td><WarehouseTag warehouse={item.__warehouse} missingSince={d.missingSince} /></td>}
                     <td className="tabular-nums text-[var(--text-secondary)]">{d.onHand?.toLocaleString()}</td>
                     <td className="tabular-nums text-[var(--text-secondary)]">{d.committed?.toLocaleString()}</td>
                     <td className="tabular-nums text-[var(--text-secondary)]">{d.available?.toLocaleString()}</td>
-                    <td className="tabular-nums"><span style={{ color: coverageColor(d.coverageMonths) }}>{d.coverageMonths}</span></td>
+                    <td className="tabular-nums">
+                      {d.coverageMonths == null ? (
+                        // Feed-fed warehouses carry no demand figure, so coverage
+                        // is genuinely unknown rather than zero. An empty cell
+                        // reads as a missing value; say so explicitly.
+                        <span className="text-[var(--text-tertiary)]" title="No monthly demand set for this SKU">—</span>
+                      ) : (
+                        <span style={{ color: coverageColor(d.coverageMonths) }}>{d.coverageMonths}</span>
+                      )}
+                    </td>
                     <td><span className={`badge ${cfg.badge}`}>{d.status}</span></td>
                     <td><div className="flex justify-end"><RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} /></div></td>
                   </tr>
@@ -639,10 +766,15 @@ function InventoryHealthTab({ items, moduleId, departmentId, onSelect }: TabProp
                   <p className="font-mono text-xs text-[var(--text-tertiary)]">{d.sku}</p>
                 </div>
                 {d.brand && <BrandBadge brand={d.brand} />}
+                {hasGeodis && <WarehouseTag warehouse={item.__warehouse} missingSince={d.missingSince} />}
                 <div className="hidden sm:flex items-center gap-6 text-xs text-[var(--text-secondary)] tabular-nums">
                   <span>On-hand <strong className="text-[var(--text-primary)]">{d.onHand?.toLocaleString()}</strong></span>
                   <span>Available <strong className="text-[var(--text-primary)]">{d.available?.toLocaleString()}</strong></span>
-                  <span style={{ color: coverageColor(d.coverageMonths) }}>{d.coverageMonths} mo</span>
+                  {d.coverageMonths == null ? (
+                    <span className="text-[var(--text-tertiary)]">— mo</span>
+                  ) : (
+                    <span style={{ color: coverageColor(d.coverageMonths) }}>{d.coverageMonths} mo</span>
+                  )}
                 </div>
                 <span className={`badge ${cfg.badge}`}>{d.status}</span>
                 <RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} />
@@ -1248,11 +1380,21 @@ export function OpsPage() {
   const modules = (deptDetail?.modules as any[]) || []
   const moduleByType = (type: string) => modules.find((m: any) => m.type === type) || null
 
+  // Geodis stock is a second INVENTORY_HEALTH module, identified by the
+  // warehouse tag its provisioning writes into module config rather than by
+  // name, so renaming it in the UI cannot break the split.
+  const inventoryModules = modules.filter((m: any) => m.type === 'INVENTORY_HEALTH')
+  const geodisModule =
+    inventoryModules.find((m: any) => (m.config as any)?.warehouse === 'GEODIS') || null
+  const kareveInventoryModule =
+    inventoryModules.find((m: any) => m.id !== geodisModule?.id) || null
+
   const moduleData = useMemo(() => {
     const find = (type: string) => modules.find((m: any) => m.type === type)?.items || []
     return {
       sku: find('SKU_PIPELINE'),
-      inventory: find('INVENTORY_HEALTH'),
+      inventory: kareveInventoryModule?.items || [],
+      geodisInventory: geodisModule?.items || [],
       production: find('PRODUCTION_TRACKING'),
       brand: find('BRAND_TRANSITION'),
       components: find('COMPONENTS'),
@@ -1263,7 +1405,10 @@ export function OpsPage() {
 
   const moduleIds = {
     sku: moduleByType('SKU_PIPELINE')?.id ?? null,
-    inventory: moduleByType('INVENTORY_HEALTH')?.id ?? null,
+    // Manual inventory records belong to the KarEve module specifically, not
+    // just the first INVENTORY_HEALTH module found.
+    inventory: kareveInventoryModule?.id ?? null,
+    geodisInventory: geodisModule?.id ?? null,
     production: moduleByType('PRODUCTION_TRACKING')?.id ?? null,
     brand: moduleByType('BRAND_TRANSITION')?.id ?? null,
     components: moduleByType('COMPONENTS')?.id ?? null,
@@ -1354,7 +1499,7 @@ export function OpsPage() {
           ) : activeTab === 'sku' ? (
             <SKUPipelineTab items={moduleData.sku} moduleId={moduleIds.sku} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'SKU_PIPELINE' })} />
           ) : activeTab === 'inventory' ? (
-            <InventoryHealthTab items={moduleData.inventory} moduleId={moduleIds.inventory} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
+            <InventoryHealthTab items={moduleData.inventory} geodisItems={moduleData.geodisInventory} moduleId={moduleIds.inventory} geodisModuleId={moduleIds.geodisInventory} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
           ) : activeTab === 'production' ? (
             <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} openOrders={moduleData.openOrders} openOrderModuleId={moduleIds.openOrders} onRefresh={() => refetchDept()} />
           ) : activeTab === 'components' ? (
