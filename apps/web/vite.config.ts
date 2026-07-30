@@ -23,6 +23,9 @@ export default defineConfig({
     headers: {
       'X-Frame-Options': 'ALLOWALL',
       'Access-Control-Allow-Origin': '*',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      Pragma: 'no-cache',
+      Expires: '0',
     },
     proxy: {
       '/api': {
