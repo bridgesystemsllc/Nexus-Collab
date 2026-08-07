@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Eye,
   Factory,
+  FolderKanban,
   LayoutGrid,
   Loader2,
   Mail,
@@ -28,6 +29,7 @@ import { useDepartments, useDepartment } from '@/hooks/useData'
 import { api } from '@/lib/api'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 import { GeodisFeedHeader } from '@/components/ops/inventory/GeodisFeedHeader'
+import { DepartmentProjectsTab } from '@/modules/projects/ProjectsModule'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowork'
 import { OpenOrderImport } from '@/components/ops/production/OpenOrderImport'
@@ -56,9 +58,10 @@ function relativeTime(dateStr: string): string {
 }
 
 // ─── Types ─────────────────────────────────────────────────
-type OpsTab = 'sku' | 'inventory' | 'production' | 'brand' | 'components' | 'bom' | 'cm'
+type OpsTab = 'projects' | 'sku' | 'inventory' | 'production' | 'brand' | 'components' | 'bom' | 'cm'
 
 const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
+  { key: 'projects', label: 'Projects', icon: FolderKanban },
   { key: 'sku', label: 'SKU Pipeline', icon: Package },
   { key: 'inventory', label: 'Inventory Health', icon: Box },
   { key: 'production', label: 'Production Tracking', icon: Factory },
@@ -1322,6 +1325,9 @@ function BrandTransitionTab({ items, moduleId, departmentId, onSelect }: TabProp
 
 // ─── Main Page ─────────────────────────────────────────────
 const MODULE_TYPE_BY_TAB: Record<OpsTab, string> = {
+  // Projects is not a DepartmentModule — it owns its own tables and fetches
+  // its own data, so it has no module type to resolve.
+  projects: '',
   sku: 'SKU_PIPELINE',
   inventory: 'INVENTORY_HEALTH',
   production: 'PRODUCTION_TRACKING',
@@ -1494,7 +1500,13 @@ export function OpsPage() {
       {/* Tab Content */}
       <div className="stagger">
         <div>
-          {isLoading ? (
+          {activeTab === 'projects' ? (
+            <DepartmentProjectsTab
+              departmentId={deptId}
+              departmentName="Operations"
+              departmentCode="OPERATIONS"
+            />
+          ) : isLoading ? (
             activeTab === 'inventory' ? <TableSkeleton /> : <CardsSkeleton />
           ) : activeTab === 'sku' ? (
             <SKUPipelineTab items={moduleData.sku} moduleId={moduleIds.sku} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'SKU_PIPELINE' })} />

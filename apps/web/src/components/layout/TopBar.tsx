@@ -17,6 +17,7 @@ const pageTitles: Record<string, string> = {
   'dept-manager': 'Department Manager',
   pulse: 'Pulse',
   'custom-dept': 'Department',
+  projects: 'Projects & Initiatives',
 }
 
 export function TopBar() {

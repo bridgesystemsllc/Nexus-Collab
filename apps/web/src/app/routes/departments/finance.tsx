@@ -3,6 +3,7 @@ import {
   BarChart3,
   Boxes,
   DollarSign,
+  FolderKanban,
   Download,
   FileSpreadsheet,
   FileText,
@@ -18,10 +19,12 @@ import { ComponentCostingTab } from '@/components/finance/ComponentCostingTab'
 import { MoqCostingTab } from '@/components/finance/MoqCostingTab'
 import { exportCostingXlsx, exportCostingPdf } from '@/components/finance/financeReport'
 import { CMTab } from '@/components/cm/CMTab'
+import { DepartmentProjectsTab } from '@/modules/projects/ProjectsModule'
 
-type FinanceTab = 'costing' | 'analysis' | 'components' | 'moq' | 'cm'
+type FinanceTab = 'projects' | 'costing' | 'analysis' | 'components' | 'moq' | 'cm'
 
 const TABS: { key: FinanceTab; label: string; icon: React.ElementType }[] = [
+  { key: 'projects', label: 'Projects', icon: FolderKanban },
   { key: 'costing', label: 'Costing (COGS)', icon: DollarSign },
   { key: 'analysis', label: 'Cost Analysis', icon: FlaskConical },
   { key: 'components', label: 'Component Costing', icon: Boxes },
@@ -170,7 +173,13 @@ export function FinancePage() {
       {/* Tab Content */}
       <div className="stagger">
         <div>
-          {activeTab === 'costing' ? (
+          {activeTab === 'projects' ? (
+            <DepartmentProjectsTab
+              departmentId={finDept?.id ?? null}
+              departmentName="Finance"
+              departmentCode="FINANCE"
+            />
+          ) : activeTab === 'costing' ? (
             <CostingTab
               financeModuleId={financeModule?.id ?? null}
               financeItems={financeModule?.items ?? []}
