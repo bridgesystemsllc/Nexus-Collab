@@ -53,24 +53,38 @@ model OrganizationInvite {
 
 // ─── Member ─────────────────────────────────────────────────
 model Member {
-  id           String     @id @default(cuid())
-  clerkUserId  String     @unique
-  email        String     @unique
-  name         String
-  avatar       String?
-  role         String     @default("MEMBER") // ADMIN, OPS_MANAGER, DEPT_LEAD, PROJECT_LEAD, MEMBER
-  status       String     @default("AVAILABLE") // AVAILABLE, FOCUSED, IN_MEETING, OOO
-  orgId        String
-  org          Organization @relation(fields: [orgId], references: [id])
-  departmentId String?
-  department   Department?  @relation(fields: [departmentId], references: [id])
-  activities   Activity[]
-  tasksOwned   Task[]       @relation("TaskOwner")
-  notes        Note[]
-  invitesSent  OrganizationInvite[]
+  id               String               @id @default(cuid())
+  clerkUserId      String               @unique
+  email            String               @unique
+  name             String
+  avatar           String?
+  role             String               @default("MEMBER") // ADMIN, OPS_MANAGER, DEPT_LEAD, PROJECT_LEAD, MEMBER
+  status           String               @default("AVAILABLE") // AVAILABLE, FOCUSED, IN_MEETING, OOO
+  orgId            String
+  org              Organization         @relation(fields: [orgId], references: [id])
+  departmentId     String?
+  department       Department?          @relation(fields: [departmentId], references: [id])
+  activities       Activity[]
+  tasksOwned       Task[]               @relation("TaskOwner")
+  notes            Note[]
+  invitesSent      OrganizationInvite[]
   microsoftAccount MicrosoftAccount?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  // ── Projects & Initiatives back-relations ──
+  projectsManaged    Project[]           @relation("ProjectManager")
+  projectsSponsored  Project[]           @relation("ProjectSponsor")
+  projectMemberships ProjectMember[]
+  lanesLed           ProjectDepartment[] @relation("LaneLead")
+  milestonesOwned    ProjectMilestone[]  @relation("MilestoneOwner")
+  tasksRequested     Task[]              @relation("TaskRequester")
+  checkinsAnswered   ProjectCheckin[]    @relation("CheckinRespondent")
+  reportsGenerated   ProjectReport[]     @relation("ReportAuthor")
+  risksOwned         ProjectRisk[]       @relation("RiskOwner")
+  projectComments    ProjectComment[]    @relation("CommentAuthor")
+  projectActivity    ProjectActivity[]   @relation("ActivityActor")
+  collabLinksMade    CollabProjectLink[] @relation("CollabLinker")
 
   @@index([orgId])
   @@index([clerkUserId])
@@ -80,6 +94,12 @@ model Member {
 model Department {
   id          String             @id @default(cuid())
   name        String
+  // Stable machine identifier (OPERATIONS, R_AND_D, ...). `type` only
+  // distinguishes builtin-vs-custom and repeats across custom departments, so
+  // it cannot be used to reference a specific department from config or seeds.
+  // Nullable because departments created before this column exist; the seed
+  // backfills the known ones and new departments derive one from their name.
+  code        String?            @unique
   description String?
   icon        String             @default("circle")
   color       String             @default("#0A84FF")
@@ -93,6 +113,20 @@ model Department {
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
+  // ── Projects & Initiatives ──
+  projectTypeDefaults ProjectType[]
+  ownedProjects       Project[]           @relation("ProjectOwnerDept")
+  projectLanes        ProjectDepartment[]
+  projectMemberships  ProjectMember[]
+  projectPhases       ProjectPhase[]
+  projectMilestones   ProjectMilestone[]
+  projectCheckins     ProjectCheckin[]
+  projectReports      ProjectReport[]
+  projectRisks        ProjectRisk[]
+  projectComments     ProjectComment[]
+  projectActivity     ProjectActivity[]
+  projectTemplates    ProjectTemplate[]
+
   @@index([orgId])
 }
 
@@ -100,7 +134,7 @@ model Department {
 model DepartmentModule {
   id           String       @id @default(cuid())
   name         String
-  type         String       // BRIEFS, CM_PRODUCTIVITY, TECH_TRANSFERS, FORMULATIONS, NPD_PIPELINE, ARTWORK, COMPONENTS, BILL_OF_MATERIALS, FINANCE_COSTING, SKU_PIPELINE, INVENTORY_HEALTH, PRODUCTION_TRACKING, BRAND_TRANSITION, CUSTOM_TABLE, CUSTOM_KANBAN, CUSTOM_LIST
+  type         String // BRIEFS, CM_PRODUCTIVITY, TECH_TRANSFERS, FORMULATIONS, NPD_PIPELINE, ARTWORK, COMPONENTS, BILL_OF_MATERIALS, FINANCE_COSTING, SKU_PIPELINE, INVENTORY_HEALTH, PRODUCTION_TRACKING, BRAND_TRANSITION, CUSTOM_TABLE, CUSTOM_KANBAN, CUSTOM_LIST
   departmentId String
   department   Department   @relation(fields: [departmentId], references: [id])
   config       Json         @default("{}")
@@ -139,115 +173,377 @@ model Brand {
 
 // ─── Product ────────────────────────────────────────────────
 model Product {
-  id           String   @id @default(cuid())
+  id           String       @id @default(cuid())
   name         String
   brand        String
   category     String
-  sku          String?  @unique
+  sku          String?      @unique
   upc          String?
   description  String?
   retailPrice  String?
   cogs         String?
-  status       String   @default("ACTIVE") // ACTIVE, IN_DEVELOPMENT, DISCONTINUED
+  status       String       @default("ACTIVE") // ACTIVE, IN_DEVELOPMENT, DISCONTINUED
   imageUrl     String?
   weight       String?
   dimensions   String?
   ingredients  String?
   manufacturer String?
   variants     Json?
-  kareveId     String?  @unique
+  kareveId     String?      @unique
   orgId        String
   org          Organization @relation(fields: [orgId], references: [id])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@index([orgId])
   @@index([status])
 }
 
-// ─── Project ────────────────────────────────────────────────
+// ─── Project (Projects & Initiatives) ───────────────────────
+// Extended in place rather than duplicated into a parallel `projects` table.
+// Task, CoworkSpace, the dashboard and the escalation worker already point
+// here, so a second project/task pair would give Nexus two sources of truth —
+// the one thing the initiative must not do.
+//
+// Back-compat notes for existing rows:
+//  - `health` stays an Int score (0-100). `healthBand` is the derived
+//    GREEN/AMBER/RED cache. The original column keeps its meaning.
+//  - `priority` accepts both the legacy P0-P3 values and the new
+//    CRITICAL/HIGH/MEDIUM/LOW. normalizePriority() in the service layer reads
+//    either; the seed backfills legacy rows.
 model Project {
-  id          String       @id @default(cuid())
-  title       String
-  description String?
-  status      String       @default("ACTIVE") // DRAFT, ACTIVE, BLOCKED, REVIEW, COMPLETE, ARCHIVED
-  priority    String       @default("P2") // P0, P1, P2, P3
-  health      Int          @default(100)
-  orgId       String
-  org         Organization @relation(fields: [orgId], references: [id])
-  leadId      String?
+  id               String       @id @default(cuid())
+  // Human reference, PRJ-YYYY-NNNN. Nullable for the rows that predate it.
+  projectNumber    String?      @unique
+  title            String
+  description      String?
+  status           String       @default("ACTIVE")
+  // DRAFT | PROPOSED | APPROVED | ACTIVE | ON_HOLD | AT_RISK | BLOCKED
+  // | COMPLETED | CANCELLED | ARCHIVED  (legacy: REVIEW, COMPLETE)
+  priority         String       @default("MEDIUM") // CRITICAL | HIGH | MEDIUM | LOW (legacy P0-P3)
+  health           Int          @default(100) // 0-100 score, cached
+  healthBand       String       @default("GREEN") // GREEN | AMBER | RED, derived from health
+  healthComputedAt DateTime?
+  orgId            String
+  org              Organization @relation(fields: [orgId], references: [id])
+  leadId           String?
+
+  // ── Classification & ownership ──
+  projectTypeId      String?
+  projectType        ProjectType? @relation(fields: [projectTypeId], references: [id])
+  ownerDepartmentId  String?
+  ownerDepartment    Department?  @relation("ProjectOwnerDept", fields: [ownerDepartmentId], references: [id])
+  projectManagerId   String?
+  projectManager     Member?      @relation("ProjectManager", fields: [projectManagerId], references: [id])
+  executiveSponsorId String?
+  executiveSponsor   Member?      @relation("ProjectSponsor", fields: [executiveSponsorId], references: [id])
+
+  // ── Business framing ──
+  businessCase    String?
+  successCriteria String?
+  lessonsLearned  String? // required before ARCHIVED, enforced in the service layer
+  brands          String[] @default([])
+  retailers       String[] @default([])
+  markets         String[] @default([])
+
+  // ── Dates. baselineEndDate is frozen at approval and never auto-changes;
+  //    slip is always measured against it. ──
+  startDate       DateTime?
+  targetEndDate   DateTime?
+  baselineEndDate DateTime?
+  actualEndDate   DateTime?
+  baselinedAt     DateTime?
+
+  percentComplete Decimal  @default(0) @db.Decimal(5, 2) // rolled up from tasks
+  budgetAmount    Decimal? @db.Decimal(14, 2)
+  actualSpend     Decimal? @db.Decimal(14, 2)
+  currency        String   @default("USD")
+  customFields    Json     @default("{}")
+
+  // ── Check-in cadence (drives the project manager engine) ──
+  checkinCadence   String    @default("WEEKLY") // DAILY | WEEKLY | BIWEEKLY | MONTHLY | NONE
+  checkinDayOfWeek Int? // 1=Mon ... 5=Fri
+  nextCheckinAt    DateTime?
+  lastActivityAt   DateTime?
+
+  isConfidential Boolean @default(false) // restricts visibility to explicit members
+
   tasks       Task[]
   coworkSpace CoworkSpace?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  departments ProjectDepartment[]
+  members     ProjectMember[]
+  phases      ProjectPhase[]
+  milestones  ProjectMilestone[]
+  checkins    ProjectCheckin[]
+  reports     ProjectReport[]
+  risks       ProjectRisk[]
+  comments    ProjectComment[]
+  activity    ProjectActivity[]
+  moduleLinks ProjectModuleLink[]
+  collabLinks CollabProjectLink[]
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
 
   @@index([orgId])
+  @@index([ownerDepartmentId])
+  @@index([status])
+  @@index([projectManagerId])
+  @@index([nextCheckinAt])
+}
+
+// ─── Project Type ───────────────────────────────────────────
+// Taxonomy as data, not an enum. Adding a 15th type is an insert.
+model ProjectType {
+  id                  String            @id @default(cuid())
+  code                String            @unique
+  label               String
+  defaultDepartmentId String?
+  defaultDepartment   Department?       @relation(fields: [defaultDepartmentId], references: [id])
+  icon                String?
+  description         String?
+  // Field keys the create wizard must require for this type, e.g.
+  // ["savingsTarget"] on COST_SAVINGS. Validated server-side against
+  // Project.customFields.
+  requiredFields      String[]          @default([])
+  defaultTemplateId   String?
+  sortOrder           Int               @default(0)
+  isActive            Boolean           @default(true)
+  projects            Project[]
+  templates           ProjectTemplate[]
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+}
+
+// ─── Participating departments (the "same module everywhere" mechanism) ──
+// A project is one row; each department sees it through its own lane. This
+// table is what makes a project appear in a second department's Projects tab
+// without copying anything.
+model ProjectDepartment {
+  id           String     @id @default(cuid())
+  projectId    String
+  project      Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  role         String     @default("CONTRIBUTOR") // OWNER | CONTRIBUTOR | REVIEWER | VIEWER
+  laneLeadId   String?
+  laneLead     Member?    @relation("LaneLead", fields: [laneLeadId], references: [id])
+  joinedAt     DateTime   @default(now())
+
+  @@unique([projectId, departmentId])
+  @@index([departmentId])
+}
+
+// ─── Individual members (overrides + confidential projects) ─
+model ProjectMember {
+  id           String      @id @default(cuid())
+  projectId    String
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  memberId     String
+  member       Member      @relation(fields: [memberId], references: [id])
+  role         String      @default("CONTRIBUTOR")
+  // PROJECT_MANAGER | LANE_LEAD | CONTRIBUTOR | REVIEWER | VIEWER | SPONSOR
+  departmentId String? // which lane they act in
+  department   Department? @relation(fields: [departmentId], references: [id])
+  isWatcher    Boolean     @default(false)
+  addedAt      DateTime    @default(now())
+
+  @@unique([projectId, memberId])
+  @@index([memberId])
+}
+
+// ─── Timeline ───────────────────────────────────────────────
+model ProjectPhase {
+  id            String             @id @default(cuid())
+  projectId     String
+  project       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name          String
+  sequence      Int
+  departmentId  String?
+  department    Department?        @relation(fields: [departmentId], references: [id])
+  startDate     DateTime?
+  endDate       DateTime?
+  baselineStart DateTime?
+  baselineEnd   DateTime?
+  actualStart   DateTime?
+  actualEnd     DateTime?
+  status        String             @default("NOT_STARTED") // NOT_STARTED | IN_PROGRESS | COMPLETE | BLOCKED | SKIPPED
+  colorHex      String?
+  tasks         Task[]
+  milestones    ProjectMilestone[]
+
+  @@unique([projectId, sequence])
+  @@index([projectId])
+}
+
+model ProjectMilestone {
+  id            String        @id @default(cuid())
+  projectId     String
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phaseId       String?
+  phase         ProjectPhase? @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  name          String
+  description   String?
+  dueDate       DateTime
+  baselineDate  DateTime?
+  completedDate DateTime?
+  ownerId       String?
+  owner         Member?       @relation("MilestoneOwner", fields: [ownerId], references: [id])
+  departmentId  String?
+  department    Department?   @relation(fields: [departmentId], references: [id])
+  isGate        Boolean       @default(false) // hard stage gate: blocks downstream
+  status        String        @default("PENDING") // PENDING | AT_RISK | MISSED | COMPLETE
+  tasks         Task[]
+
+  @@index([projectId])
+  @@index([dueDate])
 }
 
 // ─── Cowork Space ───────────────────────────────────────────
 model CoworkSpace {
-  id          String     @id @default(cuid())
-  name        String
-  description String?
-  type        String     @default("PROJECT") // PROJECT, EMERGENCY, INITIATIVE, DEPARTMENT
-  status      String     @default("ACTIVE") // ACTIVE, ARCHIVED
-  projectId   String?    @unique
-  project     Project?   @relation(fields: [projectId], references: [id])
-  deptNames   String[]
-  memberIds   String[]
-  metadata    Json?
-  activities  Activity[]
-  tasks       Task[]     @relation("CoworkTasks")
-  documents   Document[] @relation("CoworkDocs")
-  emails      EmailLink[]
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id           String              @id @default(cuid())
+  name         String
+  description  String?
+  type         String              @default("PROJECT") // PROJECT, EMERGENCY, INITIATIVE, DEPARTMENT
+  status       String              @default("ACTIVE") // ACTIVE, ARCHIVED
+  projectId    String?             @unique
+  project      Project?            @relation(fields: [projectId], references: [id])
+  deptNames    String[]
+  memberIds    String[]
+  metadata     Json?
+  activities   Activity[]
+  tasks        Task[]              @relation("CoworkTasks")
+  documents    Document[]          @relation("CoworkDocs")
+  emails       EmailLink[]
+  // Many-to-many project links. The legacy `projectId` one-to-one above stays
+  // for back-compat; new links go through CollabProjectLink.
+  projectLinks CollabProjectLink[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 }
 
 // ─── Task ───────────────────────────────────────────────────
+// ─── Task ───────────────────────────────────────────────────
+// The single task entity for all of Nexus. Project work adds scheduling and
+// lane fields here rather than in a parallel project_tasks table, so a task
+// completed anywhere — collab board, department tab, my-work queue — is the
+// same row and updates everywhere at once.
+//
+// `departmentId` IS the lane. It is nullable for legacy/non-project tasks but
+// required by the service layer for any task attached to a project.
 model Task {
-  id           String       @id @default(cuid())
+  id           String        @id @default(cuid())
+  // Per-project sequence (#17). Null for tasks with no project.
+  taskNumber   Int?
   title        String
   description  String?
-  status       String       @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, IN_REVIEW, BLOCKED, COMPLETE
-  priority     String       @default("MEDIUM") // CRITICAL, HIGH, MEDIUM, LOW
-  effort       String?      // XS, S, M, L, XL
+  status       String        @default("NOT_STARTED")
+  // NOT_STARTED | IN_PROGRESS | IN_REVIEW | BLOCKED | COMPLETE | CANCELLED
+  // (spec's TODO/DONE map onto NOT_STARTED/COMPLETE — the existing vocabulary wins)
+  priority     String        @default("MEDIUM") // CRITICAL, HIGH, MEDIUM, LOW
+  effort       String? // XS, S, M, L, XL
+  startDate    DateTime?
   dueDate      DateTime?
   completedAt  DateTime?
   brandNames   String[]
   projectId    String?
-  project      Project?     @relation(fields: [projectId], references: [id])
+  project      Project?      @relation(fields: [projectId], references: [id])
   departmentId String?
-  department   Department?  @relation(fields: [departmentId], references: [id])
+  department   Department?   @relation(fields: [departmentId], references: [id])
   ownerId      String?
-  owner        Member?      @relation("TaskOwner", fields: [ownerId], references: [id])
+  owner        Member?       @relation("TaskOwner", fields: [ownerId], references: [id])
   coworkSpaces CoworkSpace[] @relation("CoworkTasks")
-  documents    Document[]   @relation("TaskDocs")
+  documents    Document[]    @relation("TaskDocs")
   emails       EmailLink[]
   notes        Note[]
   parentId     String?
-  parent       Task?        @relation("SubTasks", fields: [parentId], references: [id])
-  subtasks     Task[]       @relation("SubTasks")
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  parent       Task?         @relation("SubTasks", fields: [parentId], references: [id])
+  subtasks     Task[]        @relation("SubTasks")
 
+  // ── Project scheduling ──
+  phaseId         String?
+  phase           ProjectPhase?     @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  milestoneId     String?
+  milestone       ProjectMilestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  estimatedHours  Decimal?          @db.Decimal(7, 2)
+  actualHours     Decimal?          @db.Decimal(7, 2)
+  percentComplete Int               @default(0)
+  blockedReason   String?
+  blockedSince    DateTime?
+  sortOrder       Int               @default(0)
+  tags            String[]          @default([])
+
+  // ── Cross-department requests ──
+  // A task raised by department A in department B's lane arrives pending
+  // acceptance. B's lane lead accepts (it becomes normal work) or rejects with
+  // a reason. This is what stops one department dumping work on another.
+  isCrossDept      Boolean   @default(false)
+  requestedById    String?
+  requestedBy      Member?   @relation("TaskRequester", fields: [requestedById], references: [id])
+  acceptanceStatus String? // PENDING | ACCEPTED | REJECTED (null = not a request)
+  acceptanceNote   String?
+  acceptedAt       DateTime?
+
+  dependenciesOut TaskDependency[]    @relation("Predecessor")
+  dependenciesIn  TaskDependency[]    @relation("Successor")
+  checklist       TaskChecklistItem[]
+  projectComments ProjectComment[]
+
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  @@unique([projectId, taskNumber])
   @@index([projectId])
   @@index([departmentId])
   @@index([ownerId])
   @@index([status])
+  @@index([projectId, departmentId])
+  @@index([dueDate])
+}
+
+// ─── Task dependencies ──────────────────────────────────────
+// Drives the critical path. Inserts are rejected when they would create a
+// cycle (including indirect A->B->C->A), checked before write.
+model TaskDependency {
+  id             String   @id @default(cuid())
+  predecessorId  String
+  predecessor    Task     @relation("Predecessor", fields: [predecessorId], references: [id], onDelete: Cascade)
+  successorId    String
+  successor      Task     @relation("Successor", fields: [successorId], references: [id], onDelete: Cascade)
+  dependencyType String   @default("FS") // FS | SS | FF | SF
+  lagDays        Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  @@unique([predecessorId, successorId])
+  @@index([successorId])
+}
+
+model TaskChecklistItem {
+  id        String  @id @default(cuid())
+  taskId    String
+  task      Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label     String
+  isDone    Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  @@index([taskId])
 }
 
 // ─── Activity ───────────────────────────────────────────────
 model Activity {
-  id            String      @id @default(cuid())
-  type          String      // UPDATE, SUBMISSION, NOTE, STATUS_CHANGE, FILE_UPLOAD, EMAIL_LINKED, TASK_CREATED, TASK_COMPLETED, AI_ACTION
+  id            String       @id @default(cuid())
+  type          String // UPDATE, SUBMISSION, NOTE, STATUS_CHANGE, FILE_UPLOAD, EMAIL_LINKED, TASK_CREATED, TASK_COMPLETED, AI_ACTION
   content       String
   coworkSpaceId String?
   coworkSpace   CoworkSpace? @relation(fields: [coworkSpaceId], references: [id])
   authorId      String
-  author        Member      @relation(fields: [authorId], references: [id])
+  author        Member       @relation(fields: [authorId], references: [id])
   metadata      Json?
-  createdAt     DateTime    @default(now())
+  createdAt     DateTime     @default(now())
 
   @@index([coworkSpaceId])
   @@index([authorId])
@@ -255,21 +551,21 @@ model Activity {
 
 // ─── Document ───────────────────────────────────────────────
 model Document {
-  id           String       @id @default(cuid())
+  id           String        @id @default(cuid())
   name         String
   mimeType     String
   size         Int
   storageKey   String
   storageUrl   String?
-  type         String       @default("OTHER") // BRIEF, COA, SPEC_SHEET, QUOTE, PRICING, CONTRACT, REPORT, ARTWORK, INVOICE, OTHER
+  type         String        @default("OTHER") // BRIEF, COA, SPEC_SHEET, QUOTE, PRICING, CONTRACT, REPORT, ARTWORK, INVOICE, OTHER
   orgId        String
-  org          Organization @relation(fields: [orgId], references: [id])
+  org          Organization  @relation(fields: [orgId], references: [id])
   uploadedById String
   coworkSpaces CoworkSpace[] @relation("CoworkDocs")
-  tasks        Task[]       @relation("TaskDocs")
-  version      Int          @default(1)
+  tasks        Task[]        @relation("TaskDocs")
+  version      Int           @default(1)
   parentDocId  String?
-  createdAt    DateTime     @default(now())
+  createdAt    DateTime      @default(now())
 
   @@index([orgId])
   @@index([type])
@@ -277,19 +573,19 @@ model Document {
 
 // ─── Email Link ─────────────────────────────────────────────
 model EmailLink {
-  id             String       @id @default(cuid())
-  messageId      String
-  subject        String
-  fromAddr       String
-  toAddrs        String[]
-  date           DateTime
-  snippet        String?
-  taskId         String?
-  task           Task?        @relation(fields: [taskId], references: [id])
-  coworkSpaceId  String?
-  coworkSpace    CoworkSpace? @relation(fields: [coworkSpaceId], references: [id])
-  metadata       Json?
-  createdAt      DateTime     @default(now())
+  id            String       @id @default(cuid())
+  messageId     String
+  subject       String
+  fromAddr      String
+  toAddrs       String[]
+  date          DateTime
+  snippet       String?
+  taskId        String?
+  task          Task?        @relation(fields: [taskId], references: [id])
+  coworkSpaceId String?
+  coworkSpace   CoworkSpace? @relation(fields: [coworkSpaceId], references: [id])
+  metadata      Json?
+  createdAt     DateTime     @default(now())
 
   @@index([taskId])
   @@index([coworkSpaceId])
@@ -311,18 +607,18 @@ model Note {
 
 // ─── Integration ────────────────────────────────────────────
 model Integration {
-  id         String    @id @default(cuid())
-  type       String    // ERP_KAREVE_SYNC, MICROSOFT_OUTLOOK, MICROSOFT_TEAMS, MICROSOFT_ONEDRIVE, AMAZON_VENDOR_CENTRAL, SHOPIFY, GS1_SYNC, SLACK, ZAPIER
+  id         String       @id @default(cuid())
+  type       String // ERP_KAREVE_SYNC, MICROSOFT_OUTLOOK, MICROSOFT_TEAMS, MICROSOFT_ONEDRIVE, AMAZON_VENDOR_CENTRAL, SHOPIFY, GS1_SYNC, SLACK, ZAPIER
   name       String
-  status     String    @default("DISCONNECTED") // CONNECTED, DISCONNECTED, ERROR, SYNCING
-  config     Json      @default("{}")
+  status     String       @default("DISCONNECTED") // CONNECTED, DISCONNECTED, ERROR, SYNCING
+  config     Json         @default("{}")
   lastSyncAt DateTime?
-  syncCount  Int       @default(0)
+  syncCount  Int          @default(0)
   orgId      String
   org        Organization @relation(fields: [orgId], references: [id])
   syncLogs   SyncLog[]
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
 
   @@index([orgId])
 }
@@ -344,7 +640,7 @@ model SyncLog {
 // ─── Pulse ──────────────────────────────────────────────────
 model Pulse {
   id        String   @id @default(cuid())
-  type      String   // ALERT, SIGNAL, HEARTBEAT, BROADCAST
+  type      String // ALERT, SIGNAL, HEARTBEAT, BROADCAST
   message   String
   deptName  String?
   targetId  String?
@@ -358,16 +654,16 @@ model Pulse {
 
 // ─── Email Agent Log ────────────────────────────────────────
 model EmailAgentLog {
-  id               String   @id @default(cuid())
-  messageId        String   @unique
+  id               String    @id @default(cuid())
+  messageId        String    @unique
   senderEmail      String
   subject          String
-  status           String   @default("processing") // processing, complete, partial, parse_error, awaiting_clarification
+  status           String    @default("processing") // processing, complete, partial, parse_error, awaiting_clarification
   parsedPlan       Json?
   executionResults Json?
   error            String?
   receivedAt       DateTime?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
 
   @@index([senderEmail])
   @@index([status])
@@ -386,51 +682,51 @@ model EscalationRule {
 
 // ─── Brand Transition SKU ───────────────────────────────────
 model TransitionSku {
-  id                    String    @id @default(cuid())
-  materialCode          String    @unique
+  id                    String                @id @default(cuid())
+  materialCode          String                @unique
   description           String
-  brand                 String    @default("CarolsDaughter")
-  track                 String    // loreal_coman, full_buy, disco_decision
+  brand                 String                @default("CarolsDaughter")
+  track                 String // loreal_coman, full_buy, disco_decision
   currentCm             String?
   lorealEntity          String?
   manufacturingProcess  String?
-  transitionDeadline    DateTime? @default(dbgenerated("'2025-04-29'::timestamp"))
+  transitionDeadline    DateTime?             @default(dbgenerated("'2025-04-29'::timestamp"))
   newCm                 String?
-  cmStatus              String    @default("Not Started")
+  cmStatus              String                @default("Not Started")
   cmOutreachDate        DateTime?
   cmAgreementDate       DateTime?
   firstProductionDate   DateTime?
   transitionOwner       String?
-  formulaTransferred    Boolean   @default(false)
+  formulaTransferred    Boolean               @default(false)
   formulaTransferDate   DateTime?
   formulaOwner          String?
-  rawMaterialsConfirmed Boolean   @default(false)
+  rawMaterialsConfirmed Boolean               @default(false)
   rmNotes               String?
-  discoDecision         String    @default("Pending") // Pending, Discontinue, Find RM and Produce
+  discoDecision         String                @default("Pending") // Pending, Discontinue, Find RM and Produce
   discoDecisionDate     DateTime?
   discoDecisionOwner    String?
   rmDisengaged          String?
-  lastLorealBatches     Int       @default(0)
+  lastLorealBatches     Int                   @default(0)
   lastBatchEta          DateTime?
-  currentInventoryUnits Int       @default(0)
+  currentInventoryUnits Int                   @default(0)
   weeksOfSupply         Float?
   avgWeeklyVelocity     Float?
-  overallStatus         String    @default("Needs Action") // Active, Needs Action, At Risk, Decision Required, Discontinued, Transition Complete
-  isFlagged             Boolean   @default(false)
-  priority              String    @default("Medium") // High, Medium, Low
-  isCowork              Boolean   @default(false)
+  overallStatus         String                @default("Needs Action") // Active, Needs Action, At Risk, Decision Required, Discontinued, Transition Complete
+  isFlagged             Boolean               @default(false)
+  priority              String                @default("Medium") // High, Medium, Low
+  isCowork              Boolean               @default(false)
   coworkType            String?
   coworkNote            String?
   coworkAssignedTo      String?
-  coworkResolved        Boolean   @default(false)
+  coworkResolved        Boolean               @default(false)
   notes                 String?
   orgId                 String
-  org                   Organization @relation(fields: [orgId], references: [id])
+  org                   Organization          @relation(fields: [orgId], references: [id])
   transitionNotes       TransitionNote[]
   milestones            TransitionMilestone[]
   cmCandidates          CmCandidate[]
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 
   @@index([orgId])
   @@index([track])
@@ -439,25 +735,25 @@ model TransitionSku {
 
 // ─── Transition Note ────────────────────────────────────────
 model TransitionNote {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   skuId     String
   sku       TransitionSku @relation(fields: [skuId], references: [id], onDelete: Cascade)
-  noteType  String   @default("Update") // Update, CM Outreach, Legal / Agreement, Formula Transfer, RM Update, Decision, CoWork, System
+  noteType  String        @default("Update") // Update, CM Outreach, Legal / Agreement, Formula Transfer, RM Update, Decision, CoWork, System
   noteText  String
   createdBy String?
-  createdAt DateTime @default(now())
+  createdAt DateTime      @default(now())
 
   @@index([skuId])
 }
 
 // ─── Transition Milestone ───────────────────────────────────
 model TransitionMilestone {
-  id            String    @id @default(cuid())
+  id            String        @id @default(cuid())
   skuId         String
   sku           TransitionSku @relation(fields: [skuId], references: [id], onDelete: Cascade)
   milestoneName String
   dueDate       DateTime?
-  completed     Boolean   @default(false)
+  completed     Boolean       @default(false)
   completedDate DateTime?
   completedBy   String?
   notes         String?
@@ -467,22 +763,22 @@ model TransitionMilestone {
 
 // ─── CM Candidate ───────────────────────────────────────────
 model CmCandidate {
-  id              String    @id @default(cuid())
-  skuId           String
-  sku             TransitionSku @relation(fields: [skuId], references: [id], onDelete: Cascade)
-  cmName          String
-  cmContact       String?
-  cmEmail         String?
-  capability      String?
-  outreachDate    DateTime?
-  responseReceived Boolean  @default(false)
-  responseDate    DateTime?
-  quoteReceived   Boolean   @default(false)
-  quoteAmount     Float?
-  status          String    @default("Under Evaluation") // Under Evaluation, Qualified, Rejected, Selected
-  rejectionReason String?
-  notes           String?
-  createdAt       DateTime  @default(now())
+  id               String        @id @default(cuid())
+  skuId            String
+  sku              TransitionSku @relation(fields: [skuId], references: [id], onDelete: Cascade)
+  cmName           String
+  cmContact        String?
+  cmEmail          String?
+  capability       String?
+  outreachDate     DateTime?
+  responseReceived Boolean       @default(false)
+  responseDate     DateTime?
+  quoteReceived    Boolean       @default(false)
+  quoteAmount      Float?
+  status           String        @default("Under Evaluation") // Under Evaluation, Qualified, Rejected, Selected
+  rejectionReason  String?
+  notes            String?
+  createdAt        DateTime      @default(now())
 
   @@index([skuId])
 }
@@ -490,11 +786,11 @@ model CmCandidate {
 // ─── Attachment (polymorphic) ────────────────────────────────
 model Attachment {
   id             String    @id @default(cuid())
-  attachableType String    // task, formulation, tech_transfer, tech_transfer_stage, product, brief, component
-  attachableId   String    // ID of the parent entity
-  module         String?   // npd, active_brief, cm_productivity, etc. (for task-scoped attachments)
-  type           String    // email, file, comment
-  payload        Json      // type-specific data
+  attachableType String // task, formulation, tech_transfer, tech_transfer_stage, product, brief, component
+  attachableId   String // ID of the parent entity
+  module         String? // npd, active_brief, cm_productivity, etc. (for task-scoped attachments)
+  type           String // email, file, comment
+  payload        Json // type-specific data
   createdBy      String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -506,18 +802,18 @@ model Attachment {
 
 // ─── Tech Transfer Stage ────────────────────────────────────
 model TechTransferStage {
-  id              String    @id @default(cuid())
-  techTransferId  String    // references ModuleItem ID for the tech transfer
-  stageOrder      Int
-  stageName       String
-  status          String    @default("pending") // pending, in_progress, complete, blocked, skipped
-  assigneeUserId  String?
-  startedAt       DateTime?
-  completedAt     DateTime?
-  notes           String?
-  tasks           TechTransferStageTask[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id             String                  @id @default(cuid())
+  techTransferId String // references ModuleItem ID for the tech transfer
+  stageOrder     Int
+  stageName      String
+  status         String                  @default("pending") // pending, in_progress, complete, blocked, skipped
+  assigneeUserId String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  notes          String?
+  tasks          TechTransferStageTask[]
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
 
   @@index([techTransferId])
   @@index([stageOrder])
@@ -525,38 +821,38 @@ model TechTransferStage {
 
 // ─── Tech Transfer Stage Task ───────────────────────────────
 model TechTransferStageTask {
-  id          String    @id @default(cuid())
-  stageId     String
-  stage       TechTransferStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  taskName    String
-  description String?
-  status      String    @default("not_started") // not_started, in_progress, complete, blocked
+  id             String            @id @default(cuid())
+  stageId        String
+  stage          TechTransferStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  taskName       String
+  description    String?
+  status         String            @default("not_started") // not_started, in_progress, complete, blocked
   assigneeUserId String?
-  dueDate     DateTime?
-  sortOrder   Int       @default(0)
-  notes       String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  dueDate        DateTime?
+  sortOrder      Int               @default(0)
+  notes          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
   @@index([stageId])
 }
 
 // ─── Formulation Ingredient ─────────────────────────────────
 model FormulationIngredient {
-  id              String  @id @default(cuid())
-  formulationId   String  // references ModuleItem ID for the formulation
-  phase           String  // A, B, C, D, E, Post-Add
-  sortOrder       Int     @default(0)
-  inciName        String
-  tradeName       String?
-  supplierId      String?
-  function        String? // emollient, surfactant, preservative, fragrance, active, chelator, etc.
-  percentage      Float   // % w/w, 4 decimals
-  costPerKg       Float?
-  isAllergen      Boolean @default(false)
-  isPreservative  Boolean @default(false)
-  isFragrance     Boolean @default(false)
-  notes           String?
+  id             String  @id @default(cuid())
+  formulationId  String // references ModuleItem ID for the formulation
+  phase          String // A, B, C, D, E, Post-Add
+  sortOrder      Int     @default(0)
+  inciName       String
+  tradeName      String?
+  supplierId     String?
+  function       String? // emollient, surfactant, preservative, fragrance, active, chelator, etc.
+  percentage     Float // % w/w, 4 decimals
+  costPerKg      Float?
+  isAllergen     Boolean @default(false)
+  isPreservative Boolean @default(false)
+  isFragrance    Boolean @default(false)
+  notes          String?
 
   @@index([formulationId])
   @@index([phase])
@@ -565,7 +861,7 @@ model FormulationIngredient {
 // ─── Formulation Procedure Step ─────────────────────────────
 model FormulationProcedureStep {
   id              String  @id @default(cuid())
-  formulationId   String  // references ModuleItem ID
+  formulationId   String // references ModuleItem ID
   stepNumber      Int
   phaseReference  String? // which phase this step relates to
   instruction     String
@@ -586,10 +882,207 @@ model MicrosoftAccount {
   member       Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
   accountEmail String
   accountName  String?
-  tokenData    Json     // encrypted { accessToken, refreshToken, expiresAt }
+  tokenData    Json // encrypted { accessToken, refreshToken, expiresAt }
   scope        String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([memberId])
+}
+
+// ─── Check-ins (the project manager engine) ─────────────────
+// One row per participating department per cycle. Four questions only —
+// anything longer does not get filled out.
+model ProjectCheckin {
+  id           String      @id @default(cuid())
+  projectId    String
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  departmentId String? // null = all-hands check-in
+  department   Department? @relation(fields: [departmentId], references: [id])
+  requestedAt  DateTime    @default(now())
+  dueAt        DateTime
+  respondedAt  DateTime?
+  respondentId String?
+  respondent   Member?     @relation("CheckinRespondent", fields: [respondentId], references: [id])
+  status       String      @default("PENDING") // PENDING | RESPONDED | OVERDUE | SKIPPED
+
+  progressSummary String?
+  blockers        String?
+  needsFromOthers String?
+  confidence      String? // ON_TRACK | AT_RISK | OFF_TRACK
+
+  reminderCount     Int       @default(0)
+  lastReminderAt    DateTime?
+  escalatedAt       DateTime? // escalated to PM
+  sponsorNotifiedAt DateTime?
+
+  // Idempotency for the hourly cron: running it twice in the same window must
+  // not create a duplicate check-in for the same department and due time.
+  @@unique([projectId, departmentId, dueAt])
+  @@index([projectId])
+  @@index([status, dueAt])
+}
+
+// ─── Reports ────────────────────────────────────────────────
+// `payload` is a frozen snapshot taken at generation. A report produced last
+// week must return identical content today, so nothing here is recomputed on
+// read.
+model ProjectReport {
+  id                String      @id @default(cuid())
+  projectId         String? // null = portfolio report
+  project           Project?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reportType        String
+  // PROJECT_UPDATE | STATUS_UPDATE | EXECUTIVE_ROLLUP | DEPARTMENT_DIGEST | CLOSEOUT
+  scopeDepartmentId String?
+  scopeDepartment   Department? @relation(fields: [scopeDepartmentId], references: [id])
+  periodStart       DateTime?
+  periodEnd         DateTime?
+  title             String
+  narrative         String? // AI-drafted from payload, always human-editable
+  payload           Json
+  generatedBy       String      @default("SYSTEM") // SYSTEM | USER | AGENT
+  generatedByUserId String?
+  generatedByUser   Member?     @relation("ReportAuthor", fields: [generatedByUserId], references: [id])
+  isPublished       Boolean     @default(false)
+  publishedAt       DateTime?
+  distribution      Json        @default("[]")
+  orgId             String
+  createdAt         DateTime    @default(now())
+
+  @@index([projectId])
+  @@index([reportType, createdAt])
+  @@index([orgId])
+}
+
+// ─── Risks / Issues / Decisions / Dependencies ──────────────
+model ProjectRisk {
+  id           String      @id @default(cuid())
+  projectId    String
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  recordType   String      @default("RISK") // RISK | ISSUE | DECISION | DEPENDENCY
+  title        String
+  detail       String?
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  ownerId      String?
+  owner        Member?     @relation("RiskOwner", fields: [ownerId], references: [id])
+  impact       String? // LOW | MEDIUM | HIGH | CRITICAL
+  likelihood   String? // LOW | MEDIUM | HIGH
+  mitigation   String?
+  status       String      @default("OPEN") // OPEN | MITIGATING | RESOLVED | ACCEPTED
+  dueDate      DateTime?
+  resolvedAt   DateTime?
+  createdById  String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+}
+
+// ─── Comments ───────────────────────────────────────────────
+model ProjectComment {
+  id           String      @id @default(cuid())
+  projectId    String
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId       String?
+  task         Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId     String
+  author       Member      @relation("CommentAuthor", fields: [authorId], references: [id])
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  body         String
+  mentions     String[]    @default([])
+  createdAt    DateTime    @default(now())
+  editedAt     DateTime?
+  deletedAt    DateTime?
+
+  @@index([projectId])
+  @@index([taskId])
+}
+
+// ─── Activity ───────────────────────────────────────────────
+// Separate from the existing Activity model, which requires a non-null author
+// and is cowork-scoped. Engine actions have no actor, so actorId is nullable
+// here; SYSTEM rows are written with actorId = null.
+model ProjectActivity {
+  id           String      @id @default(cuid())
+  projectId    String
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actorId      String?
+  actor        Member?     @relation("ActivityActor", fields: [actorId], references: [id])
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  entityType   String // PROJECT | TASK | MILESTONE | PHASE | CHECKIN | RISK | COLLAB | REPORT
+  entityId     String?
+  action       String // CREATED | UPDATED | STATUS_CHANGED | ASSIGNED | ...
+  fieldChanges Json? // { field: { from, to } }
+  summary      String // human-readable feed line
+  createdAt    DateTime    @default(now())
+
+  @@index([projectId, createdAt(sort: Desc)])
+  @@index([departmentId])
+}
+
+// ─── Collab bridge ──────────────────────────────────────────
+// Many-to-many, unlike the legacy CoworkSpace.projectId one-to-one which stays
+// for back-compat. Linking grants participant access; unlinking revokes it and
+// never deletes project data.
+model CollabProjectLink {
+  id             String      @id @default(cuid())
+  coworkSpaceId  String
+  coworkSpace    CoworkSpace @relation(fields: [coworkSpaceId], references: [id], onDelete: Cascade)
+  projectId      String
+  project        Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  linkedById     String?
+  linkedBy       Member?     @relation("CollabLinker", fields: [linkedById], references: [id])
+  linkedAt       DateTime    @default(now())
+  visibility     String      @default("FULL") // FULL | TASKS_ONLY | SUMMARY_ONLY
+  autoAddMembers Boolean     @default(true)
+  unlinkedAt     DateTime?
+
+  @@unique([coworkSpaceId, projectId])
+  @@index([projectId])
+}
+
+// ─── Links to existing Nexus modules ────────────────────────
+model ProjectModuleLink {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  module    String
+  // BRIEF | NPD | FORMULATION | ARTWORK | COMPONENT | TECH_TRANSFER
+  // | PRODUCTION_ORDER | CM | DASHBOARD_SKU
+  recordId  String
+  label     String? // cached display label
+  linkType  String   @default("RELATED") // SOURCE | OUTPUT | RELATED | BLOCKS
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, module, recordId])
+  @@index([module, recordId])
+}
+
+// ─── Templates ──────────────────────────────────────────────
+// `definition` shape:
+// { phases: [{name, sequence, offsetDays, durationDays, departmentCode}],
+//   milestones: [{name, phaseSequence, offsetDays, isGate, departmentCode}],
+//   tasks: [{title, phaseSequence, departmentCode, offsetDays, durationDays,
+//            estimatedHours, dependsOn: [taskIndex]}] }
+// Offsets are days from project start, so a template applies to any start date.
+model ProjectTemplate {
+  id            String       @id @default(cuid())
+  name          String
+  projectTypeId String?
+  projectType   ProjectType? @relation(fields: [projectTypeId], references: [id])
+  departmentId  String?
+  department    Department?  @relation(fields: [departmentId], references: [id])
+  description   String?
+  definition    Json
+  isActive      Boolean      @default(true)
+  createdById   String?
+  orgId         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([projectTypeId])
 }
