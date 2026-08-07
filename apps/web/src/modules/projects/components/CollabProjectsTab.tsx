@@ -4,6 +4,7 @@ import {
   AlertTriangle, LayoutGrid, Link2, Plus, Rows3, Search, Unlink, X,
 } from 'lucide-react'
 import * as client from '../api/projectsClient'
+import { useModalBehaviour } from '../lib/useModalBehaviour'
 import type { CollabProjectLink, CollabVisibility } from '../api/projectsClient'
 import { ProjectsModule } from '../ProjectsModule'
 import { CollabProjectBoard } from './CollabProjectBoard'
@@ -274,6 +275,9 @@ function AddProjectDialog({
   onCreateNew: () => void
 }) {
   const [search, setSearch] = useState('')
+  // Escape closes, Tab is trapped, focus returns to the opener.
+  const dialogRef = useModalBehaviour(onClose)
+
   const [visibility, setVisibility] = useState<CollabVisibility>('FULL')
   const [error, setError] = useState<string | null>(null)
 
@@ -315,6 +319,8 @@ function AddProjectDialog({
       aria-label="Add a project to this collab"
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="w-full max-w-lg rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >

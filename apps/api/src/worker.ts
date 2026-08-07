@@ -178,8 +178,10 @@ const graphSubscriptionWorker = new Worker('graph-subscription-renew', async () 
 const projectHealthWorker = new Worker('project-health', async () => {
   const result = await recomputeAllProjects(prisma)
   console.log(
-    `[worker] Project health: ${result.processed} scored, ${result.changed} changed band` +
-      (result.failed ? `, ${result.failed} failed` : ''),
+    `[worker] Project health: ${result.processed} scored, ${result.changed} changed band, ` +
+      `${result.snapshots.written} snapshots recorded` +
+      (result.failed ? `, ${result.failed} failed` : '') +
+      (result.snapshots.failed ? `, ${result.snapshots.failed} snapshots failed` : ''),
   )
 }, { connection })
 

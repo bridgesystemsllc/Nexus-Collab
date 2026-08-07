@@ -281,6 +281,7 @@ model Project {
   milestones  ProjectMilestone[]
   checkins    ProjectCheckin[]
   reports     ProjectReport[]
+  healthSnapshots ProjectHealthSnapshot[]
   risks       ProjectRisk[]
   comments    ProjectComment[]
   activity    ProjectActivity[]
@@ -974,6 +975,34 @@ model ProjectReport {
   @@index([projectId])
   @@index([reportType, createdAt])
   @@index([orgId])
+}
+
+// ─── Health history ─────────────────────────────────────────
+// One row per project per day, written by the nightly health sweep.
+//
+// A trend cannot be reconstructed from the activity feed: band changes are
+// logged there only when health WORSENS, so a reconstruction would show every
+// project declining and never recovering. This table is the honest source, and
+// because it starts empty the trend endpoint reports how far back it actually
+// reaches rather than drawing a flat line over days it knows nothing about.
+model ProjectHealthSnapshot {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // Midnight America/New_York for the day being recorded, so a day is a
+  // business day rather than a UTC one.
+  day       DateTime
+  score     Int
+  band      String // GREEN | AMBER | RED
+  status    String
+  percentComplete Decimal @db.Decimal(5, 2)
+  orgId     String
+  createdAt DateTime @default(now())
+
+  // One snapshot per project per day: the sweep is idempotent under re-runs.
+  @@unique([projectId, day])
+  @@index([orgId, day])
+  @@index([day])
 }
 
 // ─── Risks / Issues / Decisions / Dependencies ──────────────
