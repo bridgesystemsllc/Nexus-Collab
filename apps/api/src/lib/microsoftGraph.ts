@@ -1,6 +1,8 @@
 import crypto from 'crypto'
 import type { Request } from 'express'
-import { prisma } from '../index'
+// From lib/prisma, not ../index: importing the server here is what made the
+// background worker boot an HTTP server as a side effect.
+import { prisma } from './prisma'
 import { encryptJson, decryptJson } from './encryption'
 
 // ─── Microsoft Graph (per-user, delegated) ───────────────────

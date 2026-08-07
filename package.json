@@ -17,7 +17,9 @@
     "db:seed": "cd packages/prisma && npx tsx prisma/seed.ts",
     "db:studio": "cd packages/prisma && npx prisma studio",
     "lint": "pnpm -r lint",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "jobs": "pnpm --filter @nexus/api jobs",
+    "worker": "pnpm --filter @nexus/api worker"
   },
   "engines": {
     "node": ">=20.0.0"

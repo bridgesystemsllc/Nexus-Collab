@@ -39,6 +39,7 @@ import { projectCheckinRoutes } from './routes/projectCheckins'
 import { projectReportRoutes } from './routes/projectReports'
 import { collabProjectRoutes, projectCollabRoutes } from './routes/collabProjects'
 import { projectAnalyticsRoutes } from './routes/projectAnalytics'
+import { jobRoutes } from './routes/jobs'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
@@ -48,7 +49,11 @@ import {
   isSubscriptionConfigured,
 } from './services/emailAgent/subscription'
 
-export const prisma = new PrismaClient()
+// Re-exported for the route modules that import it from here. The client
+// itself lives in lib/prisma so a worker or script can get a database
+// connection without booting this server — see the note in that file.
+export { prisma } from './lib/prisma'
+import { prisma } from './lib/prisma'
 
 const isReplit = !!process.env.REPL_SLUG || !!process.env.REPLIT_DEV_DOMAIN || !!process.env.REPLIT_DEPLOYMENT
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173'
@@ -142,6 +147,10 @@ api.use('/projects', projectReportRoutes)
 api.use('/projects', projectCheckinRoutes)
 api.use('/projects', projectTimelineRoutes)
 api.use('/projects', projectRoutes)
+// Scheduled background jobs, driven by an external cron. Bearer-token auth of
+// its own — it must work without a user session, and it is not part of the
+// authenticated app surface.
+api.use('/jobs', jobRoutes)
 // Internal team production-update emails (any authenticated member).
 api.use('/emails', emailRoutes)
 
