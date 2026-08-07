@@ -85,6 +85,7 @@ model Member {
   projectComments    ProjectComment[]    @relation("CommentAuthor")
   projectActivity    ProjectActivity[]   @relation("ActivityActor")
   collabLinksMade    CollabProjectLink[] @relation("CollabLinker")
+  collabLinksRemoved CollabProjectLink[] @relation("CollabUnlinker")
 
   @@index([orgId])
   @@index([clerkUserId])
@@ -335,9 +336,16 @@ model ProjectDepartment {
   laneLeadId   String?
   laneLead     Member?    @relation("LaneLead", fields: [laneLeadId], references: [id])
   joinedAt     DateTime   @default(now())
+  // Which collab link put this lane on the project, if any. Unlinking must
+  // revoke the access it granted without touching lanes a person added
+  // deliberately — without provenance the two are indistinguishable and unlink
+  // has to choose between leaving stale access or deleting real work.
+  addedByLinkId String?
+  addedByLink   CollabProjectLink? @relation("LinkedDepartments", fields: [addedByLinkId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, departmentId])
   @@index([departmentId])
+  @@index([addedByLinkId])
 }
 
 // ─── Individual members (overrides + confidential projects) ─
@@ -353,9 +361,14 @@ model ProjectMember {
   department   Department? @relation(fields: [departmentId], references: [id])
   isWatcher    Boolean     @default(false)
   addedAt      DateTime    @default(now())
+  // Same provenance rule as ProjectDepartment: a membership granted by a collab
+  // link is revoked when that link goes away, one added by hand is not.
+  addedByLinkId String?
+  addedByLink   CollabProjectLink? @relation("LinkedMembers", fields: [addedByLinkId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, memberId])
   @@index([memberId])
+  @@index([addedByLinkId])
 }
 
 // ─── Timeline ───────────────────────────────────────────────
@@ -1048,7 +1061,17 @@ model CollabProjectLink {
   linkedAt       DateTime    @default(now())
   visibility     String      @default("FULL") // FULL | TASKS_ONLY | SUMMARY_ONLY
   autoAddMembers Boolean     @default(true)
+  // Soft unlink. §2.4: detaching revokes access but never deletes project data,
+  // so the row stays and records that the two were once connected. Relinking
+  // reactivates this row — the unique constraint means a second row is not an
+  // option anyway.
   unlinkedAt     DateTime?
+  unlinkedById   String?
+  unlinkedBy     Member?     @relation("CollabUnlinker", fields: [unlinkedById], references: [id])
+
+  // Access this link granted, so unlink can revoke exactly that and no more.
+  linkedDepartments ProjectDepartment[] @relation("LinkedDepartments")
+  linkedMembers     ProjectMember[]     @relation("LinkedMembers")
 
   @@unique([coworkSpaceId, projectId])
   @@index([projectId])

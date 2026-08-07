@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
+import { mergedCollabFeed } from '../services/projects/collabFeed'
 import { prisma, io } from '../index'
 import { ObjectStorageService } from '../lib/objectStorage'
 import { UPLOAD_MAX_BYTES, validateUpload } from '../lib/uploadValidation'
@@ -73,11 +74,6 @@ coworkRoutes.get('/:id', async (req: Request, res: Response) => {
       where: { id: req.params.id as string },
       include: {
         project: true,
-        activities: {
-          include: { author: { select: { id: true, name: true, avatar: true } } },
-          orderBy: { createdAt: 'desc' },
-          take: 50,
-        },
         tasks: {
           include: { owner: { select: { id: true, name: true, avatar: true } } },
           orderBy: [{ priority: 'asc' }, { dueDate: 'asc' }],
@@ -88,7 +84,11 @@ coworkRoutes.get('/:id', async (req: Request, res: Response) => {
     })
     if (!space) return res.status(404).json({ error: 'Cowork space not found' })
     const members = await resolveMembers(space.memberIds)
-    res.json({ ...space, members })
+    // The detail payload carries the SAME merged feed the paginated endpoint
+    // serves. This is the one the UI renders, so a merge that only reached
+    // /activity would have been invisible.
+    const feed = await mergedCollabFeed(prisma, space.id, { limit: 50 })
+    res.json({ ...space, members, activities: feed.entries, activityTotal: feed.total })
   } catch (error) {
     console.error('[cowork] GET /:id error:', error)
     res.status(500).json({ error: 'Failed to fetch cowork space' })
@@ -192,23 +192,22 @@ coworkRoutes.patch('/:id', async (req: Request, res: Response) => {
 })
 
 // ─── Activity feed (paginated) ──────────────────────────────
+// Collab chat merged with the activity of every project shared into this
+// collab (§6.5). The merge lives in services/projects/collabFeed so this
+// endpoint and the space-detail endpoint below cannot disagree about what the
+// feed contains.
 coworkRoutes.get('/:id/activity', async (req: Request, res: Response) => {
   try {
-    const { page = '1', limit = '20' } = req.query
-    const skip = (parseInt(page as string) - 1) * parseInt(limit as string)
+    const spaceId = req.params.id as string
+    const limit = Math.min(Math.max(parseInt((req.query.limit as string) ?? '20') || 20, 1), 100)
+    const page = Math.max(parseInt((req.query.page as string) ?? '1') || 1, 1)
 
-    const [activities, total] = await Promise.all([
-      prisma.activity.findMany({
-        where: { coworkSpaceId: req.params.id as string },
-        include: { author: { select: { id: true, name: true, avatar: true } } },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: parseInt(limit as string),
-      }),
-      prisma.activity.count({ where: { coworkSpaceId: req.params.id as string } }),
-    ])
+    const { entries, total, projectCount } = await mergedCollabFeed(prisma, spaceId, {
+      skip: (page - 1) * limit,
+      limit,
+    })
 
-    res.json({ activities, total })
+    res.json({ activities: entries, total, projectActivityIncluded: projectCount })
   } catch (error) {
     console.error('[cowork] GET /:id/activity error:', error)
     res.status(500).json({ error: 'Failed to fetch activities' })

@@ -211,3 +211,14 @@ export function useTaskAction() {
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.all }),
   })
 }
+
+// ─── Collab bridge ───────────────────────────────────────────
+
+/** Which collabs a project is shared into. Drives the "Shared into" banner. */
+export function useProjectCollabs(projectId: string | null) {
+  return useQuery({
+    queryKey: ['projects', 'collabs', projectId ?? ''],
+    queryFn: async () => (await client.fetchProjectCollabs(projectId as string)).data,
+    enabled: !!projectId,
+  })
+}

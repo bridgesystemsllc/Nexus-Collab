@@ -3,7 +3,7 @@ import {
   ArrowLeft, CalendarDays, Users, Target, FileText, Activity as ActivityIcon, MessageSquare,
   GitBranch, Lock, Share2,
 } from 'lucide-react'
-import { useProject, useProjectHealth, useTasks, useProjectTimeline } from '../hooks/useProjects'
+import { useProject, useProjectHealth, useTasks, useProjectTimeline, useProjectCollabs } from '../hooks/useProjects'
 import { useProjectScope } from '../context/ProjectScopeContext'
 import { HealthRing } from '../components/HealthRing'
 import { DepartmentLaneChips } from '../components/DepartmentLaneChips'
@@ -42,6 +42,7 @@ export function ProjectDetailView({
   // In a department scope, default the board to that department's lane — the
   // user came here from their own tab and wants their own work first.
   const { data: tasks = [] } = useTasks(projectId)
+  const { data: collabs = [] } = useProjectCollabs(projectId)
   // Only fetched once the Timeline tab is opened; it is the heaviest payload
   // on this screen and most visits never look at it.
   const { data: timeline, isLoading: timelineLoading } = useProjectTimeline(
@@ -71,7 +72,7 @@ export function ProjectDetailView({
     <div className="space-y-4">
       <BackButton onBack={onBack} />
 
-      {isCollab && (
+      {isCollab ? (
         <div
           className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs"
           style={{ background: 'var(--accent-secondary-light)', color: 'var(--accent-secondary)' }}
@@ -79,6 +80,18 @@ export function ProjectDetailView({
           <Share2 size={13} />
           Shared via {scopeLabel}
         </div>
+      ) : (
+        // Viewed from a department or the portfolio, the useful fact is the
+        // other direction: where else this project is exposed. A PM should not
+        // have to open every workspace to find out who can see their project.
+        collabs.length > 0 && (
+          <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--bg-overlay)' }}>
+            <Share2 size={13} className="shrink-0 text-[var(--text-tertiary)]" />
+            <span className="text-[var(--text-secondary)]">
+              Shared into {collabs.map((c) => c.coworkSpace.name).join(', ')}
+            </span>
+          </div>
+        )
       )}
 
       {/* Persistent header */}

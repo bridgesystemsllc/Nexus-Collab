@@ -1,8 +1,10 @@
 import { useRef, useState, type ChangeEvent } from 'react'
+import { CollabProjectsTab } from '@/modules/projects/components/CollabProjectsTab'
 import {
   ArrowLeft,
   MessageSquare,
   CheckSquare,
+  FolderKanban,
   FileText,
   Clock,
   User,
@@ -29,7 +31,7 @@ import { OneDrivePicker } from '@/components/shared/OneDrivePicker'
 import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/appStore'
 
-type Tab = 'activity' | 'tasks' | 'files' | 'emails'
+type Tab = 'activity' | 'projects' | 'tasks' | 'files' | 'emails'
 
 const PRIORITY_COLORS: Record<string, string> = {
   CRITICAL: '#EB5757',
@@ -128,6 +130,7 @@ export function CoworkDetailPage() {
 
   const tabs: { key: Tab; label: string; icon: typeof MessageSquare }[] = [
     { key: 'activity', label: 'Activity', icon: MessageSquare },
+    { key: 'projects', label: 'Projects', icon: FolderKanban },
     { key: 'tasks', label: 'Tasks', icon: CheckSquare },
     { key: 'files', label: 'Files', icon: FileText },
     { key: 'emails', label: 'Emails', icon: Mail },
@@ -276,6 +279,10 @@ export function CoworkDetailPage() {
           spaceId={selectedCoworkId!}
         />
       )}
+      {activeTab === 'projects' && (
+        <CollabProjectsTab collabId={space.id} collabName={space.name} />
+      )}
+
       {activeTab === 'files' && <FilesTab documents={space.documents ?? []} spaceId={space.id} onRefresh={refetch} />}
 
       {activeTab === 'emails' && <EmailsTab spaceId={space.id} emails={space.emails ?? []} onRefresh={refetch} />}
