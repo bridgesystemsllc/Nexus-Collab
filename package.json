@@ -7,7 +7,7 @@
     "dev:web": "pnpm --filter @nexus/web dev",
     "dev:worker": "pnpm --filter @nexus/api dev:worker",
     "build": "pnpm --filter @nexus/web build",
-    "build:api": "pnpm --filter @nexus/api build",
+    "build:api": "node scripts/build-api.mjs",
     "start": "node scripts/dev.mjs",
     "start:prod": "node apps/api/dist/index.js",
     "setup": "node scripts/setup.mjs",
@@ -19,7 +19,9 @@
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "jobs": "pnpm --filter @nexus/api jobs",
-    "worker": "pnpm --filter @nexus/api worker"
+    "worker": "pnpm --filter @nexus/api worker",
+    "build:all": "pnpm db:generate && pnpm build && pnpm build:api",
+    "typecheck": "cd apps/api && npx tsc --noEmit -p tsconfig.json"
   },
   "engines": {
     "node": ">=20.0.0"

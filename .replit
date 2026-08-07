@@ -19,7 +19,17 @@ packageSearch = true
 guessImports = true
 
 [deployment]
-run = ["sh", "-c", "npm run build && npm run start:prod"]
+# `build:all` = prisma generate → web build → API build.
+#
+# This previously ran `npm run build`, which only builds the WEB app, and then
+# started `apps/api/dist/index.js` — which nothing in the chain produced.
+# `dist/` is gitignored, so a fresh container had no server to start and a
+# reused one ran whatever stale build happened to be lying around.
+#
+# The API build tolerates the repo's pre-existing type errors (see
+# scripts/build-api.mjs) but hard-fails if the output is missing or unparseable,
+# so a genuinely broken build still stops the deploy.
+run = ["sh", "-c", "npm run build:all && npm run start:prod"]
 deploymentTarget = "cloudrun"
 ignorePorts = false
 
