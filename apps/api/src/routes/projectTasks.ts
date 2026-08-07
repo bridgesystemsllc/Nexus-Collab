@@ -9,6 +9,7 @@ import {
 import { allocateTaskNumber } from '../services/projects/numbering'
 import { assertNoCycle } from '../services/projects/dependencies'
 import { logActivity, diffFields, touchProject } from '../services/projects/activity'
+import { scheduleRecompute } from '../services/projects/recompute'
 
 export const projectTaskRoutes: ReturnType<typeof Router> = Router()
 
@@ -267,6 +268,7 @@ projectTaskRoutes.post('/:id/tasks', async (req: Request, res: Response) => {
           : `Created #${taskNumber} "${body.title}"`,
       })
       await touchProject(tx, projectId)
+      scheduleRecompute(prisma, projectId)
       return task
     })
 
@@ -355,6 +357,7 @@ projectTaskRoutes.patch('/tasks/:taskId', async (req: Request, res: Response) =>
         })
       }
       await touchProject(tx, project.id)
+      scheduleRecompute(prisma, project.id)
       return next
     })
 
@@ -403,6 +406,7 @@ projectTaskRoutes.post('/tasks/:taskId/status', async (req: Request, res: Respon
         fieldChanges: { status: { from: task.status, to: body.status } },
       })
       await touchProject(tx, project.id)
+      scheduleRecompute(prisma, project.id)
       return next
     })
 
@@ -450,6 +454,7 @@ projectTaskRoutes.post('/tasks/:taskId/accept', async (req: Request, res: Respon
         }).catch(() => {})
       }
       await touchProject(tx, project.id)
+      scheduleRecompute(prisma, project.id)
       return next
     })
 
@@ -504,6 +509,7 @@ projectTaskRoutes.post('/tasks/:taskId/reject', async (req: Request, res: Respon
         }).catch(() => {})
       }
       await touchProject(tx, project.id)
+      scheduleRecompute(prisma, project.id)
       return next
     })
 
@@ -544,6 +550,7 @@ projectTaskRoutes.post('/tasks/:taskId/block', async (req: Request, res: Respons
         summary: `#${task.taskNumber} "${task.title}" blocked: ${body.reason}`,
       })
       await touchProject(tx, project.id)
+      scheduleRecompute(prisma, project.id)
       return next
     })
 
@@ -574,6 +581,7 @@ projectTaskRoutes.post('/tasks/:taskId/unblock', async (req: Request, res: Respo
         summary: `#${task.taskNumber} "${task.title}" unblocked`,
       })
       await touchProject(tx, project.id)
+      scheduleRecompute(prisma, project.id)
       return next
     })
 
@@ -658,6 +666,7 @@ projectTaskRoutes.delete('/tasks/:taskId', async (req: Request, res: Response) =
         summary: `Deleted #${task.taskNumber} "${task.title}"`,
       })
       await touchProject(tx, project.id)
+      scheduleRecompute(prisma, project.id)
     })
 
     return res.status(204).send()
