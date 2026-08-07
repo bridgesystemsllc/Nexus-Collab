@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client'
 import { syncErp } from './lib/erpSync'
 import { renewSubscriptions, isSubscriptionConfigured } from './services/emailAgent/subscription'
 import { recomputeAllProjects } from './services/projects/recompute'
+import { runCheckinEngine } from './services/projects/checkinEngine'
 
 const prisma = new PrismaClient()
 
@@ -16,6 +17,7 @@ export const erpSyncQueue = new Queue('erp-sync', { connection })
 export const escalationQueue = new Queue('escalation-check', { connection })
 export const graphSubscriptionQueue = new Queue('graph-subscription-renew', { connection })
 export const projectHealthQueue = new Queue('project-health', { connection })
+export const checkinEngineQueue = new Queue('checkin-engine', { connection })
 
 // ─── Daily Briefing Worker (9 AM) ───────────────────────────
 const briefingWorker = new Worker('daily-briefing', async () => {
@@ -179,6 +181,22 @@ const projectHealthWorker = new Worker('project-health', async () => {
   )
 }, { connection })
 
+
+// ─── Check-in Engine (hourly) ───────────────────────────────
+// Requests check-ins on cadence, chases them, escalates the ones nobody
+// answers, and nudges work that has stalled. Idempotent by construction: a
+// unique constraint blocks duplicate requests and a recorded reminder stage
+// blocks repeat chases, so a double-run costs nothing.
+const checkinEngineWorker = new Worker('checkin-engine', async () => {
+  const r = await runCheckinEngine(prisma)
+  console.log(
+    `[worker] Check-ins: ${r.projectsScanned} scanned, ${r.checkinsRequested} requested, ` +
+      `${r.remindersSent} reminders, ${r.escalations} escalations, ${r.nudges} nudges` +
+      (r.errors.length ? `, ${r.errors.length} errors` : ''),
+  )
+  for (const e of r.errors.slice(0, 5)) console.error(`[worker]   ${e}`)
+}, { connection })
+
 // ─── Schedule recurring jobs ────────────────────────────────
 async function scheduleJobs() {
   // Daily briefing at 9 AM
@@ -207,8 +225,13 @@ async function scheduleJobs() {
     pattern: '0 2 * * *',
   }, { name: 'project-health' })
 
+  // Check-in engine hourly, on the hour.
+  await checkinEngineQueue.upsertJobScheduler('checkin-engine-cron', {
+    pattern: '0 * * * *',
+  }, { name: 'checkin-engine' })
+
   console.log('\n⚡ NEXUS Worker running')
-  console.log('📋 Jobs scheduled: daily-briefing (9AM), erp-sync (15min), escalation-check (1hr), graph-subscription-renew (12hr), project-health (2AM)\n')
+  console.log('📋 Jobs scheduled: daily-briefing (9AM), erp-sync (15min), escalation-check (1hr), graph-subscription-renew (12hr), project-health (2AM), checkin-engine (hourly)\n')
 }
 
 scheduleJobs().catch(console.error)

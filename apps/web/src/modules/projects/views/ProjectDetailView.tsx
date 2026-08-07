@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  ArrowLeft, CalendarDays, Users, Target, FileText, Activity as ActivityIcon,
+  ArrowLeft, CalendarDays, Users, Target, FileText, Activity as ActivityIcon, MessageSquare,
   GitBranch, Lock, Share2,
 } from 'lucide-react'
 import { useProject, useProjectHealth, useTasks, useProjectTimeline } from '../hooks/useProjects'
@@ -9,6 +9,7 @@ import { HealthRing } from '../components/HealthRing'
 import { DepartmentLaneChips } from '../components/DepartmentLaneChips'
 import { TaskBoard } from '../components/TaskBoard'
 import { TimelineGantt } from '../components/TimelineGantt'
+import { CheckInPanel } from '../components/CheckInPanel'
 import { ProgressBar, SlipBadge, formatDate, slipDays } from '../components/ProjectCard'
 import { STATUS_LABELS, toPercent, type ProjectTask } from '../types'
 
@@ -17,12 +18,13 @@ import { STATUS_LABELS, toPercent, type ProjectTask } from '../types'
 // banner and pre-filters to the viewer's lane; nothing else differs, because a
 // second copy of this screen is exactly what the module must not have.
 
-type Tab = 'overview' | 'tasks' | 'timeline' | 'activity'
+type Tab = 'overview' | 'tasks' | 'timeline' | 'checkins' | 'activity'
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: 'overview', label: 'Overview', icon: Target },
   { key: 'tasks', label: 'Tasks', icon: GitBranch },
   { key: 'timeline', label: 'Timeline', icon: CalendarDays },
+  { key: 'checkins', label: 'Check-ins', icon: MessageSquare },
   { key: 'activity', label: 'Activity', icon: ActivityIcon },
 ]
 
@@ -174,6 +176,12 @@ export function ProjectDetailView({
             tasks={departmentId && laneTasks.length > 0 ? tasks : tasks}
             onOpenTask={setSelectedTask}
             currentMemberId={currentMemberId}
+          />
+        )}
+        {tab === 'checkins' && (
+          <CheckInPanel
+            projectId={projectId}
+            canRequest={project.projectManager?.id === currentMemberId || !currentMemberId}
           />
         )}
         {tab === 'timeline' && (
