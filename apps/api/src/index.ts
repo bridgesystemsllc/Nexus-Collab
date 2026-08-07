@@ -32,6 +32,8 @@ import { formulationsGateRoutes, requireFormulationsUnlock } from './routes/form
 import { sharepointRoutes } from './routes/sharepoint'
 import { uploadRoutes } from './routes/uploads'
 import { inventoryImportRoutes } from './routes/inventoryImport'
+import { projectRoutes } from './routes/projects'
+import { projectTaskRoutes } from './routes/projectTasks'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
@@ -120,6 +122,11 @@ api.use('/sharepoint', requireFormulationsUnlock, sharepointRoutes)
 api.use('/uploads', uploadRoutes)
 // Supplier inventory feeds (Geodis 3PL stock imports).
 api.use('/inventory-import', inventoryImportRoutes)
+// Projects & Initiatives. The task router mounts on the same base so its
+// /tasks/* paths sit alongside /projects/:id/*; it is registered first because
+// its specific paths (/tasks/my, /tasks/bulk) must win over /:id.
+api.use('/projects', projectTaskRoutes)
+api.use('/projects', projectRoutes)
 // Internal team production-update emails (any authenticated member).
 api.use('/emails', emailRoutes)
 
