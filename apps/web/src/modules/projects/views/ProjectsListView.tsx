@@ -225,14 +225,17 @@ function ProjectTable({
                 <td className="font-mono text-xs text-[var(--text-tertiary)] whitespace-nowrap">
                   {p.projectNumber ?? '—'}
                 </td>
-                <td className="font-medium text-[var(--text-primary)] max-w-[280px]">
+                {/* The title identifies the row, so it gets the width. Type
+                    was whitespace-nowrap with no cap, which let it expand and
+                    squeeze titles down to "Goddess…". */}
+                <td className="font-medium text-[var(--text-primary)] min-w-[240px] w-[38%]">
                   <span className="line-clamp-1">{p.title}</span>
                   <span className="text-[11px] text-[var(--text-tertiary)]">
                     {STATUS_LABELS[p.status] ?? p.status}
                   </span>
                 </td>
-                <td className="text-[var(--text-secondary)] text-xs whitespace-nowrap">
-                  {p.projectType?.label ?? '—'}
+                <td className="text-[var(--text-secondary)] text-xs max-w-[180px]">
+                  <span className="line-clamp-1">{p.projectType?.label ?? '—'}</span>
                 </td>
                 <td><HealthDot band={p.healthBand} score={p.health} /></td>
                 <td className="min-w-[110px]">

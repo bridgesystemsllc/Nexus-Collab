@@ -13,8 +13,10 @@ const FOCUSABLE = [
   'select:not([disabled])', 'textarea:not([disabled])', '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
-export function useModalBehaviour(onClose: () => void) {
-  const ref = useRef<HTMLDivElement>(null)
+// Generic over the element type: dialogs hang this on a <div>, the task drawer
+// on an <aside>, and a hook that only fits one of them invites a second copy.
+export function useModalBehaviour<T extends HTMLElement = HTMLDivElement>(onClose: () => void) {
+  const ref = useRef<T>(null)
   // Held in a ref so a parent re-rendering with a new closure does not tear
   // down and re-add the listener, which would drop focus mid-interaction.
   const close = useRef(onClose)

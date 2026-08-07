@@ -916,4 +916,60 @@ projectRoutes.delete('/:id/members/:memberId', async (req: Request, res: Respons
   }
 })
 
+// ─── Activity feed (§5) ──────────────────────────────────────
+// Every phase of this module writes to ProjectActivity — creations, status
+// changes, band drops, check-in escalations, collab links, report publishes.
+// Until now nothing read it back, so a complete audit trail sat in the database
+// with no way to see it.
+//
+// Cursor-paginated on createdAt rather than offset-paginated: the feed grows at
+// the head, and an offset page 2 fetched a second later silently repeats rows
+// that the new entries pushed down.
+
+projectRoutes.get('/:id/activity', async (req: Request, res: Response) => {
+  try {
+    const actor = await resolveActor(prisma, req)
+    const project = await requireProject(req.params.id as string)
+    assertCan(actor, 'VIEW_PROJECT', project)
+
+    const q = parseOrThrow(
+      z.object({
+        limit: z.coerce.number().int().positive().max(100).default(50),
+        before: z.coerce.date().optional(),
+        entityType: z.string().optional(),
+        departmentId: z.string().optional(),
+      }),
+      req.query,
+    )
+
+    const rows = await prisma.projectActivity.findMany({
+      where: {
+        projectId: project.id,
+        ...(q.before ? { createdAt: { lt: q.before } } : {}),
+        ...(q.entityType ? { entityType: q.entityType } : {}),
+        ...(q.departmentId ? { departmentId: q.departmentId } : {}),
+      },
+      include: {
+        actor: { select: { id: true, name: true, avatar: true } },
+        department: { select: { id: true, name: true, color: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      // One extra row, used only to answer "is there more" without a count
+      // query over a table that grows without bound.
+      take: q.limit + 1,
+    })
+
+    const hasMore = rows.length > q.limit
+    const page = hasMore ? rows.slice(0, q.limit) : rows
+
+    return ok(res, page, {
+      hasMore,
+      // Engine actions have no actor; the client renders them as the system.
+      nextBefore: hasMore ? page[page.length - 1]?.createdAt ?? null : null,
+    })
+  } catch (err) {
+    return fail(res, err)
+  }
+})
+
 export default projectRoutes

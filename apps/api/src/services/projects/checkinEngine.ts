@@ -226,7 +226,18 @@ async function chasePendingCheckins(prisma: PrismaClient, now: Date, result: Eng
           reminderCount: STAGE_RANK[stage],
           lastReminderAt: now,
           ...(stage === 'OVERDUE_PM' ? { escalatedAt: now } : {}),
-          ...(stage === 'OVERDUE_SPONSOR' ? { sponsorNotifiedAt: now } : {}),
+          ...(stage === 'OVERDUE_SPONSOR'
+            ? {
+                sponsorNotifiedAt: now,
+                // The sponsor stage notifies the PM too, so it is a PM
+                // escalation as well. Stamped only when it is not already set,
+                // because the engine's first sight of a check-in can be past
+                // the 24h mark — after a restart, or on the first run after a
+                // deploy — and the PM escalation would otherwise be recorded
+                // as never having happened.
+                ...(checkin.escalatedAt ? {} : { escalatedAt: now }),
+              }
+            : {}),
         },
       })
 
