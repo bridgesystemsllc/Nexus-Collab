@@ -5,6 +5,7 @@ import { syncErp } from './lib/erpSync'
 import { renewSubscriptions, isSubscriptionConfigured } from './services/emailAgent/subscription'
 import { recomputeAllProjects } from './services/projects/recompute'
 import { runCheckinEngine } from './services/projects/checkinEngine'
+import { runReportSchedule } from './services/projects/reports/schedule'
 
 const prisma = new PrismaClient()
 
@@ -18,6 +19,7 @@ export const escalationQueue = new Queue('escalation-check', { connection })
 export const graphSubscriptionQueue = new Queue('graph-subscription-renew', { connection })
 export const projectHealthQueue = new Queue('project-health', { connection })
 export const checkinEngineQueue = new Queue('checkin-engine', { connection })
+export const reportScheduleQueue = new Queue('report-schedule', { connection })
 
 // ─── Daily Briefing Worker (9 AM) ───────────────────────────
 const briefingWorker = new Worker('daily-briefing', async () => {
@@ -197,6 +199,24 @@ const checkinEngineWorker = new Worker('checkin-engine', async () => {
   for (const e of r.errors.slice(0, 5)) console.error(`[worker]   ${e}`)
 }, { connection })
 
+// ─── Report schedule (hourly) ───────────────────────────────
+// Generates and emails the scheduled reports: department digests Monday 07:00
+// ET, the portfolio status update Monday 08:00 ET, the executive rollup on the
+// 1st at 08:00 ET, and a closeout for any project that completed without one.
+// Runs hourly and decides for itself which hour it is in New York, so the
+// schedule holds across DST. Idempotent — an existing report for the same
+// type, scope and period is skipped rather than duplicated.
+const reportScheduleWorker = new Worker('report-schedule', async () => {
+  const r = await runReportSchedule(prisma)
+  if (r.generated || r.distributed || r.errors.length) {
+    console.log(
+      `[worker] Reports: ${r.generated} generated, ${r.distributed} emailed, ` +
+        `${r.skipped} already existed` + (r.errors.length ? `, ${r.errors.length} errors` : ''),
+    )
+  }
+  for (const e of r.errors.slice(0, 5)) console.error(`[worker]   ${e}`)
+}, { connection })
+
 // ─── Schedule recurring jobs ────────────────────────────────
 async function scheduleJobs() {
   // Daily briefing at 9 AM
@@ -230,8 +250,14 @@ async function scheduleJobs() {
     pattern: '0 * * * *',
   }, { name: 'checkin-engine' })
 
+  // Report schedule hourly, at 5 past — after the check-in engine has run, so
+  // a Monday digest reflects check-ins requested the same morning.
+  await reportScheduleQueue.upsertJobScheduler('report-schedule-cron', {
+    pattern: '5 * * * *',
+  }, { name: 'report-schedule' })
+
   console.log('\n⚡ NEXUS Worker running')
-  console.log('📋 Jobs scheduled: daily-briefing (9AM), erp-sync (15min), escalation-check (1hr), graph-subscription-renew (12hr), project-health (2AM), checkin-engine (hourly)\n')
+  console.log('📋 Jobs scheduled: daily-briefing (9AM), erp-sync (15min), escalation-check (1hr), graph-subscription-renew (12hr), project-health (2AM), checkin-engine (hourly), report-schedule (hourly)\n')
 }
 
 scheduleJobs().catch(console.error)
@@ -239,9 +265,15 @@ scheduleJobs().catch(console.error)
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('[worker] Shutting down...')
+  // All of them. A worker left open on SIGTERM keeps its job locked until the
+  // lock expires, so the next boot sees the job as still running and skips it.
   await briefingWorker.close()
   await erpWorker.close()
   await escalationWorker.close()
+  await graphSubscriptionWorker.close()
+  await projectHealthWorker.close()
+  await checkinEngineWorker.close()
+  await reportScheduleWorker.close()
   await prisma.$disconnect()
   connection.disconnect()
   process.exit(0)

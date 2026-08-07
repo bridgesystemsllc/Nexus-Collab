@@ -149,3 +149,76 @@ export const addChecklistItem = (taskId: string, label: string) =>
   send<any>('post', `/tasks/${taskId}/checklist`, { label })
 export const updateChecklistItem = (itemId: string, body: Record<string, unknown>) =>
   send<any>('patch', `/tasks/checklist/${itemId}`, body)
+
+// ─── Reports ─────────────────────────────────────────────────
+// The payload is generated once and stored. Everything here reads that stored
+// snapshot — nothing recomputes a report on the client, or a report reopened
+// next month would quietly disagree with the one that was sent out.
+
+export interface ReportSummary {
+  id: string
+  reportType: string
+  title: string
+  periodStart: string | null
+  periodEnd: string | null
+  isPublished: boolean
+  publishedAt: string | null
+  createdAt: string
+  generatedBy?: string
+  narrative?: string | null
+  generatedByUser?: { id: string; name: string } | null
+  project?: { id: string; projectNumber: string | null; title: string } | null
+  scopeDepartment?: { id: string; name: string } | null
+}
+
+export interface ReportDetail extends ReportSummary {
+  payload: Record<string, any>
+}
+
+export const fetchProjectReports = (projectId: string) =>
+  get<ReportSummary[]>(`/${projectId}/reports`)
+
+export const fetchPortfolioReports = (params?: {
+  reportType?: string
+  departmentId?: string
+  published?: 'true' | 'false'
+  limit?: number
+}) => get<ReportSummary[]>('/reports', params as Record<string, unknown>)
+
+export const fetchReport = (reportId: string) => get<ReportDetail>(`/reports/${reportId}`)
+
+export const generateProjectReport = (
+  projectId: string,
+  body: { reportType?: 'PROJECT_UPDATE' | 'CLOSEOUT'; withNarrative?: boolean; periodStart?: string; periodEnd?: string },
+) => send<{ reportId: string; title: string; payload: any; narrative: string | null }>(
+  'post', `/${projectId}/reports/generate`, body,
+)
+
+export const generatePortfolioReport = (body: {
+  reportType?: 'STATUS_UPDATE' | 'EXECUTIVE_ROLLUP' | 'DEPARTMENT_DIGEST'
+  departmentId?: string
+  withNarrative?: boolean
+  periodStart?: string
+  periodEnd?: string
+}) => send<{ reportId: string; title: string; payload: any; narrative: string | null }>(
+  'post', '/reports/portfolio', body,
+)
+
+export const updateReportNarrative = (reportId: string, narrative: string | null) =>
+  send<ReportDetail>('patch', `/reports/${reportId}`, { narrative })
+
+export const publishReport = (reportId: string, narrative?: string) =>
+  send<ReportDetail>('post', `/reports/${reportId}/publish`, narrative !== undefined ? { narrative } : {})
+
+export const summariseCheckins = (projectId: string) =>
+  send<{ summary: string | null; blockers: { blocker: string; owner: string }[]; skippedReason?: string }>(
+    'post', `/${projectId}/reports/summarise-checkins`, {},
+  )
+
+/**
+ * CSV/JSON export URL — hit directly by the browser so the download uses the
+ * session cookie. Built from the axios instance's baseURL rather than a
+ * hardcoded prefix, which would drift the moment the API is remounted.
+ */
+export const reportExportUrl = (reportId: string, format: 'csv' | 'json' = 'csv') =>
+  `${api.defaults.baseURL ?? ''}${BASE}/reports/${reportId}/export?format=${format}`

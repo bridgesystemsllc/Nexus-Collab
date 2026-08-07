@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { LayoutGrid, Table2, Plus, Search, FolderKanban } from 'lucide-react'
+import { LayoutGrid, Table2, Plus, Search, FolderKanban, FileBarChart } from 'lucide-react'
 import { useProjects, useProjectTypes } from '../hooks/useProjects'
 import { useProjectScope } from '../context/ProjectScopeContext'
+import { PortfolioReports } from '../components/PortfolioReports'
 import { ProjectCard, ProgressBar, SlipBadge, formatDate, slipDays } from '../components/ProjectCard'
 import { DepartmentLaneChips } from '../components/DepartmentLaneChips'
 import { HealthDot } from '../components/HealthRing'
@@ -19,6 +20,7 @@ const HEALTH_FILTERS: HealthBand[] = ['GREEN', 'AMBER', 'RED']
 
 export function ProjectsListView({ onOpen, onCreate }: { onOpen: (id: string) => void; onCreate: () => void }) {
   const { departmentId, includeParticipating, isPortfolio, label } = useProjectScope()
+  const [reportsOpen, setReportsOpen] = useState(false)
   const [view, setView] = useState<'cards' | 'table'>('table')
   const [status, setStatus] = useState<string | null>(null)
   const [health, setHealth] = useState<string | null>(null)
@@ -91,6 +93,14 @@ export function ProjectsListView({ onOpen, onCreate }: { onOpen: (id: string) =>
               title="Cards"
             ><LayoutGrid size={14} /></button>
           </div>
+
+          <button
+            onClick={() => setReportsOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
+          >
+            <FileBarChart size={14} />
+            Reports
+          </button>
 
           <button
             onClick={onCreate}
@@ -170,6 +180,8 @@ export function ProjectsListView({ onOpen, onCreate }: { onOpen: (id: string) =>
           >Next</button>
         </div>
       )}
+
+      {reportsOpen && <PortfolioReports onClose={() => setReportsOpen(false)} />}
     </div>
   )
 }
