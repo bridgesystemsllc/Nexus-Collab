@@ -200,6 +200,16 @@ async function start() {
   if (isReplit || process.env.NODE_ENV === 'production') {
     const webDist = path.resolve(__dirname, '../../web/dist')
     app.use(express.static(webDist))
+
+    // An unmatched /api path is a 404, not the SPA shell. Without this the
+    // catch-all below answers every mistyped or removed endpoint with
+    // index.html and a 200 — so a broken frontend call looks like it worked
+    // until `.json()` chokes on HTML, and monitoring records a healthy 200.
+    // Only shows up in production, because the catch-all only exists there.
+    app.use('/api', (_req, res) => {
+      res.status(404).json({ error: { code: 'NotFound', message: 'No such endpoint' } })
+    })
+
     app.get('*', (_req, res) => {
       res.sendFile(path.join(webDist, 'index.html'))
     })
