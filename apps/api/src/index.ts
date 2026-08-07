@@ -36,6 +36,7 @@ import { projectRoutes } from './routes/projects'
 import { projectTaskRoutes } from './routes/projectTasks'
 import { projectTimelineRoutes } from './routes/projectTimeline'
 import { projectCheckinRoutes } from './routes/projectCheckins'
+import { projectReportRoutes } from './routes/projectReports'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
@@ -128,6 +129,7 @@ api.use('/inventory-import', inventoryImportRoutes)
 // /tasks/* paths sit alongside /projects/:id/*; it is registered first because
 // its specific paths (/tasks/my, /tasks/bulk) must win over /:id.
 api.use('/projects', projectTaskRoutes)
+api.use('/projects', projectReportRoutes)
 api.use('/projects', projectCheckinRoutes)
 api.use('/projects', projectTimelineRoutes)
 api.use('/projects', projectRoutes)

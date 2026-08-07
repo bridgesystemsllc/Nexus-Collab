@@ -943,7 +943,12 @@ model ProjectReport {
   periodEnd         DateTime?
   title             String
   narrative         String? // AI-drafted from payload, always human-editable
-  payload           Json
+  // @db.Json (not jsonb) on purpose. jsonb normalises what it stores — it
+  // reorders keys, collapses duplicates, and rewrites numbers — so a payload
+  // read back would not be the bytes that were written. This column is a
+  // frozen record of what a report said, nothing queries inside it, and the
+  // exactness is the whole point.
+  payload           Json        @db.Json
   generatedBy       String      @default("SYSTEM") // SYSTEM | USER | AGENT
   generatedByUserId String?
   generatedByUser   Member?     @relation("ReportAuthor", fields: [generatedByUserId], references: [id])
