@@ -376,3 +376,18 @@ select {
   background-position: right 12px center;
   padding-right: 36px !important;
 }
+
+/* ─── Projects & Initiatives ──────────────────────────────── */
+/* The health ring pulses only when RED: a project in trouble should catch the
+   eye across the room, while a healthy one stays quiet. */
+@keyframes healthPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+.health-ring-pulse { animation: healthPulse 2s ease-in-out infinite; }
+.health-dot-pulse  { animation: healthPulse 2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .health-ring-pulse,
+  .health-dot-pulse { animation: none; }
+}

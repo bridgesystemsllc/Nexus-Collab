@@ -5,6 +5,7 @@ import {
   Settings2,
   Users,
   FileText,
+  FolderKanban,
   Plug,
   Bell,
   Boxes,
@@ -25,6 +26,7 @@ import type { LucideIcon } from 'lucide-react'
 type StaticPage =
   | 'dashboard'
   | 'everything'
+  | 'projects'
   | 'rd'
   | 'ops'
   | 'finance'
@@ -62,6 +64,8 @@ const overviewSection: NavSection = {
   items: [
     { id: 'dashboard', label: 'Command Center', icon: LayoutDashboard },
     { id: 'everything', label: 'Everything', icon: Database },
+    // Portfolio view of every initiative, across all departments.
+    { id: 'projects', label: 'Projects', icon: FolderKanban },
   ],
 }
 

@@ -19,6 +19,7 @@ import { EmailAgentPage } from '@/app/routes/email-agent'
 import { DeptManagerPage } from '@/app/routes/dept-manager'
 import { PulsePage } from '@/app/routes/pulse'
 import { CustomDeptPage } from '@/app/routes/custom-dept'
+import { ProjectsPage } from '@/app/routes/projects'
 import { FullPageFormHost } from '@/app/formRegistry'
 import { useRealtimePulse } from '@/hooks/useRealtimePulse'
 
@@ -59,6 +60,8 @@ function PageContent() {
       return <PulsePage />
     case 'custom-dept':
       return <CustomDeptPage />
+    case 'projects':
+      return <ProjectsPage />
     default:
       return (
         <div className="flex-1 flex items-center justify-center text-[var(--text-tertiary)]">

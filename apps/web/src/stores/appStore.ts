@@ -16,6 +16,7 @@ type Page =
   | 'dept-manager'
   | 'pulse'
   | 'custom-dept'
+  | 'projects'
   | 'agent-settings'
   | 'product-catalog'
 
@@ -45,6 +46,8 @@ interface AppState {
   sidebarCollapsed: boolean
   selectedCoworkId: string | null
   selectedDeptId: string | null
+  // Portfolio-scoped project selection; department tabs keep their own.
+  selectedProjectId: string | null
   theme: Theme
   activeForm: ActiveForm | null
 
@@ -53,6 +56,7 @@ interface AppState {
   toggleSidebar: () => void
   setSelectedCowork: (id: string | null) => void
   setSelectedDept: (id: string | null) => void
+  setSelectedProject: (id: string | null) => void
   openForm: (form: Omit<ActiveForm, 'returnPage'>) => void
   closeForm: () => void
 }
@@ -63,14 +67,20 @@ export const useAppStore = create<AppState>((set) => ({
   sidebarCollapsed: false,
   selectedCoworkId: null,
   selectedDeptId: null,
+  selectedProjectId: null,
   theme: 'light',
   activeForm: null,
 
-  setPage: (page) => set({ currentPage: page }),
+  // Navigating to Projects from the sidebar means "go to the list". Without
+  // clearing the selection the user lands back inside whichever project they
+  // last opened, with no obvious way to tell why.
+  setPage: (page) =>
+    set(page === 'projects' ? { currentPage: page, selectedProjectId: null } : { currentPage: page }),
   toggleAIPanel: () => set((s) => ({ aiPanelOpen: !s.aiPanelOpen })),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSelectedCowork: (id) => set({ selectedCoworkId: id, currentPage: id ? 'cowork-detail' : 'cowork' }),
   setSelectedDept: (id) => set({ selectedDeptId: id, currentPage: 'custom-dept' }),
+  setSelectedProject: (id) => set({ selectedProjectId: id }),
   openForm: (form) => set((s) => ({ activeForm: { ...form, returnPage: s.currentPage } })),
   closeForm: () => set((s) => ({ activeForm: null, currentPage: s.activeForm?.returnPage ?? s.currentPage })),
 }))

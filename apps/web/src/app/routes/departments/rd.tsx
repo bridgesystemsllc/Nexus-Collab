@@ -9,6 +9,7 @@ import {
   Eye,
   Edit3,
   FileText,
+  FolderKanban,
   FlaskConical,
   Loader2,
   Package,
@@ -22,6 +23,7 @@ import {
   Users,
   X,
 } from 'lucide-react'
+import { DepartmentProjectsTab } from '@/modules/projects/ProjectsModule'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { type BriefFormData, EMPTY_FORM } from '@/components/briefs/NewBriefModal'
 import { DEFAULT_BRIEF_STATUS } from '@/lib/briefStatus'
@@ -46,9 +48,10 @@ import { StatusBadge, ActionsMenu, DeleteConfirmDialog } from '@/components/shar
 import { CMTab } from '@/components/cm/CMTab'
 
 // ─── Types ─────────────────────────────────────────────────
-type RDTab = 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd'
+type RDTab = 'projects' | 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd'
 
 const TABS: { key: RDTab; label: string; icon: React.ElementType }[] = [
+  { key: 'projects', label: 'Projects', icon: FolderKanban },
   { key: 'briefs', label: 'Active Briefs', icon: FileText },
   { key: 'cm', label: 'CM Productivity', icon: Users },
   { key: 'transfers', label: 'Tech Transfers', icon: Repeat2 },
@@ -1347,6 +1350,8 @@ export function RDPage() {
   }, [deptDetail])
 
   const tabContent: Record<RDTab, any[]> = {
+    // Projects fetches its own data rather than reading a department module.
+    projects: [],
     briefs: moduleData.briefs,
     cm: moduleData.cm,
     transfers: moduleData.transfers,
@@ -1396,7 +1401,13 @@ export function RDPage() {
       {/* Tab Content */}
       <div className="stagger">
         <div>
-          {isLoading ? (
+          {activeTab === 'projects' ? (
+            <DepartmentProjectsTab
+              departmentId={rdDept?.id ?? null}
+              departmentName="R&D"
+              departmentCode="R_AND_D"
+            />
+          ) : isLoading ? (
             activeTab === 'cm' ? <CardsSkeleton /> : <TableSkeleton />
           ) : activeTab === 'briefs' ? (
             <BriefsTab items={moduleData.briefs} moduleId={moduleData.briefsModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} transferItems={moduleData.transfers} formulationItems={moduleData.formulations} openBriefId={pendingBriefId} onOpenBriefHandled={() => setPendingBriefId(null)} onOpenCm={handleOpenCm} />
