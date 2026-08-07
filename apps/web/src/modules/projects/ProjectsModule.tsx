@@ -38,6 +38,9 @@ export function ProjectsModule({
 
   return (
     <ProjectScopeProvider scope={scope}>
+      {/* Scopes the §6.6 polish — display type, tabular numerals, press
+          feedback — to this module rather than restyling all of Nexus. */}
+      <div className="projects-module">
       {selectedId ? (
         <ProjectDetailView
           projectId={selectedId}
@@ -54,6 +57,7 @@ export function ProjectsModule({
           onCreated={(id) => { setWizardOpen(false); select(id) }}
         />
       )}
+      </div>
     </ProjectScopeProvider>
   )
 }

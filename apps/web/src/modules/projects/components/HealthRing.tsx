@@ -70,7 +70,7 @@ export function HealthRing({
 
       {showLabel && (
         <span
-          className="absolute font-semibold tabular-nums"
+          className="display-type absolute font-semibold tabular-nums"
           style={{ fontSize: size * 0.3, color }}
           // The visible number animates, so give assistive tech the real one.
           aria-label={`Health score ${score} of 100, ${band.toLowerCase()}`}
@@ -82,7 +82,7 @@ export function HealthRing({
       {open && penalties.length > 0 && (
         <div
           role="tooltip"
-          className="absolute z-50 top-full mt-2 left-1/2 -translate-x-1/2 w-64 rounded-xl border border-[var(--border-default)] bg-[var(--bg-elevated)] p-3 shadow-lg"
+          className="frosted absolute z-50 top-full mt-2 left-1/2 -translate-x-1/2 w-64 rounded-xl border border-[var(--border-default)] p-3"
         >
           <p className="text-xs font-medium text-[var(--text-primary)] mb-2">
             Why this score
@@ -111,7 +111,7 @@ export function HealthRing({
       {open && penalties.length === 0 && (
         <div
           role="tooltip"
-          className="absolute z-50 top-full mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-[var(--border-default)] bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-secondary)] shadow-lg"
+          className="frosted absolute z-50 top-full mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-[var(--border-default)] px-3 py-2 text-xs text-[var(--text-secondary)]"
         >
           No issues detected — nothing is dragging this score down.
         </div>

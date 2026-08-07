@@ -5,6 +5,7 @@ import {
   AlertTriangle, Download, FileText, Send, Sparkles, Check, X, Pencil,
 } from 'lucide-react'
 import * as client from '../api/projectsClient'
+import { useModalBehaviour } from '../lib/useModalBehaviour'
 import type { ReportSummary } from '../api/projectsClient'
 import { exportReportPdf } from '../lib/reportPdf'
 import { formatDate } from './ProjectCard'
@@ -175,6 +176,9 @@ export function ReportViewer({
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
 
+  // Escape closes, Tab is trapped, focus returns to the opener.
+  const dialogRef = useModalBehaviour(onClose)
+
   const { data, isLoading } = useQuery({
     queryKey: ['projects', 'report', reportId],
     queryFn: () => client.fetchReport(reportId),
@@ -205,7 +209,7 @@ export function ReportViewer({
   // inside the panel rather than over the page.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
+      className="projects-module fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
       style={{ background: 'rgba(0,0,0,0.45)' }}
       onClick={onClose}
       role="dialog"
@@ -213,6 +217,8 @@ export function ReportViewer({
       aria-label="Report"
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="w-full max-w-3xl rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >

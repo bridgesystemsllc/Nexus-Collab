@@ -10,6 +10,7 @@ import { DepartmentLaneChips } from '../components/DepartmentLaneChips'
 import { TaskBoard } from '../components/TaskBoard'
 import { TimelineGantt } from '../components/TimelineGantt'
 import { CheckInPanel } from '../components/CheckInPanel'
+import { LinkedRecords } from '../components/LinkedRecords'
 import { ReportsPanel } from '../components/ReportsPanel'
 import { ProgressBar, SlipBadge, formatDate, slipDays } from '../components/ProjectCard'
 import { STATUS_LABELS, toPercent, type ProjectTask } from '../types'
@@ -184,7 +185,13 @@ export function ProjectDetailView({
       </div>
 
       <div className="stagger">
-        {tab === 'overview' && <OverviewTab project={project} health={health} />}
+        {tab === 'overview' && (
+          <OverviewTab
+            project={project}
+            health={health}
+            canEdit={project.projectManager?.id === currentMemberId || !currentMemberId}
+          />
+        )}
         {tab === 'tasks' && (
           <TaskBoard
             projectId={projectId}
@@ -248,7 +255,9 @@ function BackButton({ onBack }: { onBack: () => void }) {
   )
 }
 
-function OverviewTab({ project, health }: { project: any; health: any }) {
+function OverviewTab({
+  project, health, canEdit,
+}: { project: any; health: any; canEdit: boolean }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div className="lg:col-span-2 space-y-4">
@@ -266,6 +275,9 @@ function OverviewTab({ project, health }: { project: any; health: any }) {
       </div>
 
       <div className="space-y-4">
+        {/* What this project is bound to elsewhere in Nexus (§8.3). */}
+        <LinkedRecords projectId={project.id} canEdit={canEdit} />
+
         {/* The health breakdown is the point of the score — surfaced, not hidden. */}
         <Panel title="Health breakdown" icon={ActivityIcon}>
           {!health ? (

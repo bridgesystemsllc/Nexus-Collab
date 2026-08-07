@@ -5,6 +5,7 @@ import {
   type HealthBand, type HealthResult,
 } from './health'
 import { logActivity } from './activity'
+import { partsInZone, zonedWallClockToUtc, PROJECT_TZ } from './cadence'
 
 // ─── Recompute a project's derived state ─────────────────────
 // Percent complete and health are cached on the project row and refreshed on
@@ -164,6 +165,21 @@ export async function recomputeProject(
     }
   }
 
+  // Every band change is recorded, in both directions. The activity feed is a
+  // history, not an alert channel — logging only the drops made it read as if
+  // projects never recovered, and made a health trend impossible to
+  // reconstruct from it.
+  if (previousBand !== health.band && !bandWorsened(previousBand, health.band)) {
+    await logActivity(prisma, {
+      projectId,
+      actorId: null, // engine action
+      entityType: 'PROJECT',
+      entityId: projectId,
+      action: 'HEALTH_CHANGED',
+      summary: `Health ${previousBand} → ${health.band}: recovered`,
+    })
+  }
+
   // Only a worsening band is worth interrupting anyone over. Recovery is
   // visible in the UI without a notification, and alerting on every wobble is
   // how alerts get ignored.
@@ -244,7 +260,12 @@ async function notifyBandDrop(
 export async function recomputeAllProjects(
   prisma: PrismaClient,
   now = new Date(),
-): Promise<{ processed: number; changed: number; failed: number }> {
+): Promise<{
+  processed: number
+  changed: number
+  failed: number
+  snapshots: { written: number; failed: number }
+}> {
   const projects = await prisma.project.findMany({
     where: { deletedAt: null, status: { notIn: ['ARCHIVED', 'CANCELLED', 'COMPLETED'] } },
     select: { id: true, healthBand: true },
@@ -261,5 +282,68 @@ export async function recomputeAllProjects(
       console.error(`[projects] nightly recompute failed for ${p.id}:`, err)
     }
   }
-  return { processed: projects.length, changed, failed }
+
+  // Record the day AFTER scoring, so the snapshot is of the fresh numbers.
+  const snapshots = await snapshotHealth(prisma, now)
+
+  return { processed: projects.length, changed, failed, snapshots }
+}
+
+/**
+ * Write one health row per project for today.
+ *
+ * The trend endpoint reads these rather than reconstructing from the activity
+ * feed, which cannot work: an activity-based reconstruction can only see the
+ * changes that were logged, and depends on every project having a complete
+ * chain back to its creation. A daily row is unambiguous and cheap.
+ *
+ * Idempotent — the unique key is (project, day), so re-running the sweep
+ * overwrites today rather than duplicating it.
+ */
+export async function snapshotHealth(
+  prisma: PrismaClient,
+  now = new Date(),
+): Promise<{ written: number; failed: number }> {
+  // The day is midnight in America/New_York: a business day, not a UTC one.
+  // Rows written at 02:00 ET must land on the same day as ones written at 23:00.
+  const p = partsInZone(now, PROJECT_TZ)
+  const day = zonedWallClockToUtc(p.year, p.month, p.day, 0, 0, PROJECT_TZ)
+
+  const projects = await prisma.project.findMany({
+    where: { deletedAt: null, status: { notIn: ['ARCHIVED', 'CANCELLED'] } },
+    select: {
+      id: true, health: true, healthBand: true, status: true,
+      percentComplete: true, orgId: true,
+    },
+  })
+
+  let written = 0
+  let failed = 0
+  for (const project of projects) {
+    try {
+      await prisma.projectHealthSnapshot.upsert({
+        where: { projectId_day: { projectId: project.id, day } },
+        create: {
+          projectId: project.id,
+          day,
+          score: project.health,
+          band: project.healthBand,
+          status: project.status,
+          percentComplete: project.percentComplete,
+          orgId: project.orgId,
+        },
+        update: {
+          score: project.health,
+          band: project.healthBand,
+          status: project.status,
+          percentComplete: project.percentComplete,
+        },
+      })
+      written++
+    } catch (err) {
+      failed++
+      console.error(`[projects] health snapshot failed for ${project.id}:`, err)
+    }
+  }
+  return { written, failed }
 }

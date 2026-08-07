@@ -38,6 +38,7 @@ import { projectTimelineRoutes } from './routes/projectTimeline'
 import { projectCheckinRoutes } from './routes/projectCheckins'
 import { projectReportRoutes } from './routes/projectReports'
 import { collabProjectRoutes, projectCollabRoutes } from './routes/collabProjects'
+import { projectAnalyticsRoutes } from './routes/projectAnalytics'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
@@ -134,6 +135,7 @@ api.use('/inventory-import', inventoryImportRoutes)
 // Projects & Initiatives. The task router mounts on the same base so its
 // /tasks/* paths sit alongside /projects/:id/*; it is registered first because
 // its specific paths (/tasks/my, /tasks/bulk) must win over /:id.
+api.use('/projects', projectAnalyticsRoutes)
 api.use('/projects', projectCollabRoutes)
 api.use('/projects', projectTaskRoutes)
 api.use('/projects', projectReportRoutes)

@@ -334,3 +334,117 @@ export const unlinkProjectFromCollab = (collabId: string, projectId: string) =>
 /** Which collabs a project is shared into — drives the "Shared via" banner. */
 export const fetchProjectCollabs = (projectId: string) =>
   get<ProjectCollabLink[]>(`/${projectId}/collabs`)
+
+// ─── Analytics ───────────────────────────────────────────────
+
+export interface AnalyticsSummary {
+  generatedAt: string
+  total: number
+  active: number
+  byStatus: { key: string; count: number }[]
+  byHealth: { key: string; count: number }[]
+  byPriority: { key: string; count: number }[]
+  averagePercentComplete: number
+  averageHealth: number
+  atRisk: number
+  dueSoon: number
+  overdue: number
+  slip: { projectsSlipping: number; averageSlipDays: number; maxSlipDays: number }
+  budget: {
+    totalBudget: number; totalSpend: number
+    percentSpent: number | null; projectsWithoutBudget: number
+  }
+  openBlockedTasks: number
+  overdueTasks: number
+  overdueMilestones: number
+  openCriticalRisks: number
+}
+
+export interface HealthTrend {
+  points: { day: string; GREEN: number; AMBER: number; RED: number; total: number; averageScore: number | null }[]
+  coverage: { daysRequested: number; daysWithData: number; firstDay: string | null }
+}
+
+export interface Workload {
+  generatedAt: string
+  assignees: {
+    ownerId: string | null; ownerName: string
+    open: number; overdue: number; blocked: number
+    estimatedHours: number | null; departments: string[]
+  }[]
+  totals: {
+    openTasks: number; unassigned: number; overdue: number
+    blocked: number; peopleWithWork: number
+  }
+}
+
+export interface CycleTime {
+  generatedAt: string
+  types: {
+    type: string; projects: number; completed: number
+    averageActualDays: number | null; averagePlannedDays: number | null
+    averageSlipDays: number | null; onTimePercent: number | null
+    withoutBaseline: number
+  }[]
+}
+
+export interface CheckinCompliance {
+  generatedAt: string
+  departments: {
+    department: string; asked: number; answered: number
+    rate: number; onTimeRate: number; averageHoursToRespond: number | null
+  }[]
+  overall: { asked: number; answered: number; rate: number; stillOpen: number }
+}
+
+type Scope = { departmentId?: string }
+
+export const fetchAnalyticsSummary = (p: Scope = {}) =>
+  get<AnalyticsSummary>('/analytics/summary', p as Record<string, unknown>)
+export const fetchHealthTrend = (p: Scope & { days?: number } = {}) =>
+  get<HealthTrend>('/analytics/health-trend', p as Record<string, unknown>)
+export const fetchWorkload = (p: Scope = {}) =>
+  get<Workload>('/analytics/workload', p as Record<string, unknown>)
+export const fetchCycleTime = (p: Scope & { typeId?: string } = {}) =>
+  get<CycleTime>('/analytics/cycle-time', p as Record<string, unknown>)
+export const fetchCheckinCompliance = (p: Scope & { days?: number } = {}) =>
+  get<CheckinCompliance>('/analytics/checkin-compliance', p as Record<string, unknown>)
+
+// ─── Module links (§8.3) ─────────────────────────────────────
+
+export type LinkedModule =
+  | 'BRIEF' | 'NPD' | 'FORMULATION' | 'ARTWORK' | 'COMPONENT'
+  | 'TECH_TRANSFER' | 'PRODUCTION_ORDER' | 'CM' | 'DASHBOARD_SKU'
+
+export interface ModuleLink {
+  id: string
+  projectId: string
+  module: LinkedModule
+  recordId: string
+  label: string | null
+  linkType: 'SOURCE' | 'OUTPUT' | 'RELATED' | 'BLOCKS'
+  createdAt: string
+}
+
+export interface RelatedInitiative extends ModuleLink {
+  project: {
+    id: string; projectNumber: string | null; title: string; status: string
+    health: number; healthBand: string; percentComplete: number; targetEndDate: string | null
+    ownerDepartment: { id: string; name: string; color: string | null } | null
+    projectManager: { id: string; name: string } | null
+  }
+}
+
+export const fetchProjectLinks = (projectId: string) =>
+  get<ModuleLink[]>(`/${projectId}/links`)
+
+export const createProjectLink = (
+  projectId: string,
+  body: { module: LinkedModule; recordId: string; label?: string; linkType?: ModuleLink['linkType'] },
+) => send<ModuleLink>('post', `/${projectId}/links`, body)
+
+export const deleteProjectLink = (linkId: string) => send<null>('delete', `/links/${linkId}`)
+
+/** "Related Initiatives" for a record in another module — the reverse direction. */
+export const fetchRelatedInitiatives = (module: LinkedModule, recordId: string) =>
+  get<RelatedInitiative[]>('/links/by-record', { module, recordId })

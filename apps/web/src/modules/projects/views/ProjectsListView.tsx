@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
-import { LayoutGrid, Table2, Plus, Search, FolderKanban, FileBarChart } from 'lucide-react'
+import { LayoutGrid, Table2, Plus, Search, FolderKanban, FileBarChart, BarChart3 } from 'lucide-react'
 import { useProjects, useProjectTypes } from '../hooks/useProjects'
 import { useProjectScope } from '../context/ProjectScopeContext'
 import { PortfolioReports } from '../components/PortfolioReports'
+import { AnalyticsView } from './AnalyticsView'
 import { ProjectCard, ProgressBar, SlipBadge, formatDate, slipDays } from '../components/ProjectCard'
 import { DepartmentLaneChips } from '../components/DepartmentLaneChips'
 import { HealthDot } from '../components/HealthRing'
@@ -21,7 +22,7 @@ const HEALTH_FILTERS: HealthBand[] = ['GREEN', 'AMBER', 'RED']
 export function ProjectsListView({ onOpen, onCreate }: { onOpen: (id: string) => void; onCreate: () => void }) {
   const { departmentId, includeParticipating, isPortfolio, label } = useProjectScope()
   const [reportsOpen, setReportsOpen] = useState(false)
-  const [view, setView] = useState<'cards' | 'table'>('table')
+  const [view, setView] = useState<'cards' | 'table' | 'analytics'>('table')
   const [status, setStatus] = useState<string | null>(null)
   const [health, setHealth] = useState<string | null>(null)
   const [typeId, setTypeId] = useState<string | null>(null)
@@ -92,6 +93,11 @@ export function ProjectsListView({ onOpen, onCreate }: { onOpen: (id: string) =>
               className={`p-1.5 rounded-md transition-colors ${view === 'cards' ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-secondary)]'}`}
               title="Cards"
             ><LayoutGrid size={14} /></button>
+            <button
+              onClick={() => setView('analytics')}
+              className={`p-1.5 rounded-md transition-colors ${view === 'analytics' ? 'bg-[var(--bg-elevated)] text-[var(--text-primary)] shadow-sm' : 'text-[var(--text-secondary)]'}`}
+              title="Analytics"
+            ><BarChart3 size={14} /></button>
           </div>
 
           <button
@@ -113,8 +119,9 @@ export function ProjectsListView({ onOpen, onCreate }: { onOpen: (id: string) =>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-1.5 flex-wrap">
+      {/* Filters — analytics has its own scope and ignores these, so hiding
+          them beats showing controls that appear to do nothing. */}
+      <div className={`flex items-center gap-1.5 flex-wrap ${view === 'analytics' ? 'hidden' : ''}`}>
         <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--text-tertiary)] mr-1">Status</span>
         <button onClick={() => { setStatus(null); setPage(1) }} className={chip(!status)}>All</button>
         {STATUS_FILTERS.map((s) => (
@@ -146,7 +153,11 @@ export function ProjectsListView({ onOpen, onCreate }: { onOpen: (id: string) =>
       </div>
 
       {/* Content */}
-      {isLoading ? (
+      {view === 'analytics' ? (
+        // Analytics reads the portfolio through its own endpoints, so it does
+        // not depend on the page of projects loaded above.
+        <AnalyticsView />
+      ) : isLoading ? (
         <ListSkeleton view={view} />
       ) : isError ? (
         <ErrorState message={(error as any)?.message} onRetry={() => refetch()} />
@@ -163,7 +174,7 @@ export function ProjectsListView({ onOpen, onCreate }: { onOpen: (id: string) =>
       )}
 
       {/* Pagination */}
-      {(meta.pages ?? 1) > 1 && (
+      {view !== 'analytics' && (meta.pages ?? 1) > 1 && (
         <div className="flex items-center justify-between pt-1">
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}

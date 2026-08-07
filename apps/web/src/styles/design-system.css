@@ -391,3 +391,52 @@ select {
   .health-ring-pulse,
   .health-dot-pulse { animation: none; }
 }
+
+/* ─── Projects module — §6.6 polish ─────────────────────────
+   Scoped to .projects-module so the rest of Nexus is untouched: this phase is
+   a design pass on one module, not a restyle of the whole app. */
+
+.projects-module h1,
+.projects-module h2,
+.projects-module .display-type {
+  font-family: 'Space Grotesk', 'Inter', -apple-system, sans-serif;
+  letter-spacing: -0.03em;
+}
+
+/* Every number in the module lines up column to column. */
+.projects-module .tabular-nums,
+.projects-module td,
+.projects-module th {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Frosted-glass tooltip for the health ring breakdown (§6.6). Falls back to a
+   solid elevated surface where backdrop-filter is unsupported, rather than
+   rendering unreadable text over whatever is behind it. */
+.frosted {
+  background: var(--bg-elevated);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.16), 0 0 0 0.5px var(--border-subtle);
+}
+@supports (backdrop-filter: blur(20px)) or (-webkit-backdrop-filter: blur(20px)) {
+  .frosted {
+    background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+  }
+}
+
+/* Press feedback on every interactive element in the module (§6.6). Excludes
+   anything already carrying its own active: class so deliberate choices win. */
+.projects-module button:not(:disabled):not([class*='active:']):active,
+.projects-module a[role='button']:active {
+  transform: scale(0.98);
+}
+.projects-module button,
+.projects-module a[role='button'] {
+  transition: transform 120ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .projects-module button:active,
+  .projects-module a[role='button']:active { transform: none; }
+}

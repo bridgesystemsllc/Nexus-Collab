@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, FileBarChart, X } from 'lucide-react'
 import * as client from '../api/projectsClient'
+import { useModalBehaviour } from '../lib/useModalBehaviour'
 import type { ReportSummary } from '../api/projectsClient'
 import { useProjectScope } from '../context/ProjectScopeContext'
 import { ReportViewer } from './ReportsPanel'
@@ -21,6 +22,9 @@ export function PortfolioReports({ onClose }: { onClose: () => void }) {
   const { departmentId, isPortfolio, label } = useProjectScope()
   const [openId, setOpenId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Escape closes, Tab is trapped, focus returns to the opener.
+  const dialogRef = useModalBehaviour(onClose)
 
   const listKey = ['projects', 'portfolio-reports', departmentId ?? 'all']
   const { data, isLoading } = useQuery({
@@ -60,7 +64,7 @@ export function PortfolioReports({ onClose }: { onClose: () => void }) {
   // therefore transformed) ancestor would capture `position: fixed`.
   return createPortal(
     <div
-      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
+      className="projects-module fixed inset-0 z-40 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
       style={{ background: 'rgba(0,0,0,0.45)' }}
       onClick={onClose}
       role="dialog"
@@ -68,6 +72,8 @@ export function PortfolioReports({ onClose }: { onClose: () => void }) {
       aria-label="Portfolio reports"
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         className="w-full max-w-xl rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
