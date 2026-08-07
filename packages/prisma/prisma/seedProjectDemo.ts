@@ -652,6 +652,28 @@ async function main() {
     console.log(`  ${spec.number}  ${spec.title}`)
   }
 
+  // Advance the project-number counter past the block this seed claimed.
+  // Without this the allocator hands out PRJ-2026-0101 next and collides with a
+  // seeded project — which is exactly what happened the first time this ran.
+  // The allocator now steps over taken numbers on its own, but leaving the
+  // counter behind would make every real create do six wasted round trips.
+  const highest = Math.max(
+    ...PROJECTS.map((p) => Number(p.number.split('-')[2])).filter(Number.isFinite),
+  )
+  const year = Number(PROJECTS[0]!.number.split('-')[1])
+  const counter = await prisma.projectNumberCounter.findUnique({
+    where: { orgId_year: { orgId: org.id, year } },
+  })
+  if (!counter) {
+    await prisma.projectNumberCounter.create({ data: { orgId: org.id, year, lastValue: highest } })
+  } else if (counter.lastValue < highest) {
+    await prisma.projectNumberCounter.update({
+      where: { orgId_year: { orgId: org.id, year } },
+      data: { lastValue: highest },
+    })
+  }
+  console.log(`Project number counter advanced to ${highest}.`)
+
   console.log(`\nSeeded ${PROJECTS.length} demo projects.`)
   console.log('Health and percent-complete are derived — they fill in on the next recompute.')
 }

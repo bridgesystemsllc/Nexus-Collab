@@ -18,15 +18,53 @@ export function formatProjectNumber(year: number, value: number): string {
 }
 
 /**
+ * How many taken numbers to step over before giving up. A seed or an import
+ * introduces a contiguous block; an unbounded loop would spin forever against
+ * a counter that had somehow been reset to zero on a large workspace.
+ */
+const MAX_SKIPS = 1000
+
+/**
  * Allocate the next project number for an organization and year.
+ *
  * Safe under concurrency: the increment is a single atomic statement, and the
  * create path tolerates a competing create via a unique-violation retry.
+ *
+ * Also skips numbers that are already taken. The counter is the source of
+ * truth, but it is not the ONLY way a number gets used — a demo seed, a data
+ * import, a restore, or a hand-written insert can all claim one without
+ * telling the counter. When that happens the create fails on the unique
+ * constraint and the user sees "Something went wrong" with no way to recover,
+ * because every retry produces the same number. Stepping over taken numbers
+ * makes the allocator self-correcting rather than permanently wedged.
  */
 export async function allocateProjectNumber(
   tx: Tx,
   orgId: string,
   year = new Date().getFullYear(),
 ): Promise<string> {
+  let candidate = await nextFromCounter(tx, orgId, year)
+
+  for (let skipped = 0; skipped < MAX_SKIPS; skipped++) {
+    const taken = await tx.project.findFirst({
+      where: { projectNumber: candidate },
+      select: { id: true },
+    })
+    if (!taken) return candidate
+
+    // Someone claimed this number without going through the counter. Advance
+    // and try the next one; the counter catches up as a side effect.
+    candidate = await nextFromCounter(tx, orgId, year)
+  }
+
+  throw new Error(
+    `Could not allocate a project number for ${orgId}/${year}: ` +
+      `${MAX_SKIPS} consecutive numbers are already in use. The counter is likely out of sync.`,
+  )
+}
+
+/** One atomic increment, returning the formatted number it yielded. */
+async function nextFromCounter(tx: Tx, orgId: string, year: number): Promise<string> {
   // Fast path: the counter already exists for this org/year.
   const updated = await tx.projectNumberCounter.updateMany({
     where: { orgId, year },
