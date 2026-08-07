@@ -48,6 +48,12 @@ export interface ProjectDepartmentRow {
   laneLeadId?: string | null
   department: DepartmentRef
   laneLead?: MemberRef | null
+  /**
+   * The collab link that granted this lane, if any. Present so the UI can show
+   * which access a link is responsible for — and therefore what detaching it
+   * would take away.
+   */
+  addedByLinkId?: string | null
 }
 
 export interface ProjectSummary {

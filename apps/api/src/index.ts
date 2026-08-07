@@ -37,6 +37,7 @@ import { projectTaskRoutes } from './routes/projectTasks'
 import { projectTimelineRoutes } from './routes/projectTimeline'
 import { projectCheckinRoutes } from './routes/projectCheckins'
 import { projectReportRoutes } from './routes/projectReports'
+import { collabProjectRoutes, projectCollabRoutes } from './routes/collabProjects'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
@@ -98,6 +99,11 @@ api.use(attachMember)
 api.use('/auth', authRoutes)
 api.use('/departments', departmentRoutes)
 api.use('/tasks', taskRoutes)
+// Collab ↔ project bridge. Mounted on both bases: /collabs is what the spec
+// names, /cowork is what the existing workspace UI already calls. Registered
+// before coworkRoutes so /:id/projects/* is not swallowed by /:id.
+api.use('/collabs', collabProjectRoutes)
+api.use('/cowork', collabProjectRoutes)
 api.use('/cowork', coworkRoutes)
 api.use('/documents', documentRoutes)
 api.use('/everything', everythingRoutes)
@@ -128,6 +134,7 @@ api.use('/inventory-import', inventoryImportRoutes)
 // Projects & Initiatives. The task router mounts on the same base so its
 // /tasks/* paths sit alongside /projects/:id/*; it is registered first because
 // its specific paths (/tasks/my, /tasks/bulk) must win over /:id.
+api.use('/projects', projectCollabRoutes)
 api.use('/projects', projectTaskRoutes)
 api.use('/projects', projectReportRoutes)
 api.use('/projects', projectCheckinRoutes)

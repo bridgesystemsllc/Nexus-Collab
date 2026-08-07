@@ -222,3 +222,115 @@ export const summariseCheckins = (projectId: string) =>
  */
 export const reportExportUrl = (reportId: string, format: 'csv' | 'json' = 'csv') =>
   `${api.defaults.baseURL ?? ''}${BASE}/reports/${reportId}/export?format=${format}`
+
+// ─── Collab bridge ───────────────────────────────────────────
+// Linking never copies a project — it grants the collab's departments access to
+// the same row. These calls go to /collabs, which the API also serves under
+// /cowork; one base here keeps the two from drifting.
+
+const COLLAB_BASE = '/collabs'
+
+async function collabGet<T>(path: string, params?: Record<string, unknown>): Promise<ApiEnvelope<T>> {
+  try {
+    const res = await api.get(`${COLLAB_BASE}${path}`, { params })
+    return res.data as ApiEnvelope<T>
+  } catch (err) {
+    return normalizeError(err)
+  }
+}
+
+async function collabSend<T>(
+  method: 'post' | 'delete',
+  path: string,
+  body?: unknown,
+): Promise<ApiEnvelope<T>> {
+  try {
+    const res =
+      method === 'delete'
+        ? await api.delete(`${COLLAB_BASE}${path}`)
+        : await api.post(`${COLLAB_BASE}${path}`, body)
+    return (res.data ?? { data: null, meta: {} }) as ApiEnvelope<T>
+  } catch (err) {
+    return normalizeError(err)
+  }
+}
+
+export type CollabVisibility = 'FULL' | 'TASKS_ONLY' | 'SUMMARY_ONLY'
+
+export interface CollabProjectLink {
+  id: string
+  visibility: CollabVisibility
+  autoAddMembers: boolean
+  linkedAt: string
+  unlinkedAt: string | null
+  linkedBy?: { id: string; name: string } | null
+  project: ProjectSummary
+}
+
+export interface ProjectCollabLink {
+  id: string
+  visibility: CollabVisibility
+  linkedAt: string
+  coworkSpace: { id: string; name: string; type: string; status: string; deptNames: string[] }
+  linkedBy?: { id: string; name: string } | null
+}
+
+export interface CollabBoardCard {
+  id: string
+  taskNumber: number | null
+  title: string
+  status: string
+  priority: string | null
+  dueDate: string | null
+  blockedReason: string | null
+  isCrossDept: boolean
+  acceptanceStatus: string | null
+  owner: { id: string; name: string } | null
+  department: { id: string; name: string; color: string | null } | null
+  project: { id: string; projectNumber: string | null; title: string; healthBand: string }
+}
+
+export interface CollabBoardData {
+  lanes: { departmentId: string | null; departmentName: string; color: string | null; cards: CollabBoardCard[] }[]
+  projects: { id: string; projectNumber: string | null; title: string; healthBand: string; visibility: CollabVisibility }[]
+  totals: { tasks: number; blocked: number; overdue: number }
+  excludedProjects: { id: string; title: string; reason: string }[]
+}
+
+export interface LinkPreview {
+  matched: { id: string; name: string }[]
+  unmatched: string[]
+  memberCount: number
+}
+
+export const fetchCollabProjects = (collabId: string) =>
+  collabGet<CollabProjectLink[]>(`/${collabId}/projects`)
+
+export const fetchCollabBoard = (collabId: string) =>
+  collabGet<CollabBoardData>(`/${collabId}/projects/board`)
+
+export const fetchLinkPreview = (collabId: string) =>
+  collabGet<LinkPreview>(`/${collabId}/projects/preview`)
+
+export const linkProjectToCollab = (
+  collabId: string,
+  body: { projectId: string; visibility?: CollabVisibility; autoAddMembers?: boolean },
+) => collabSend<{
+  linkId: string
+  reactivated: boolean
+  departmentsAdded: string[]
+  departmentsAlreadyPresent: string[]
+  membersAdded: number
+  unmatchedDepartmentNames: string[]
+}>('post', `/${collabId}/projects`, body)
+
+export const unlinkProjectFromCollab = (collabId: string, projectId: string) =>
+  collabSend<{
+    departmentsRemoved: string[]
+    departmentsKept: { name: string; reason: string }[]
+    membersRemoved: number
+  }>('delete', `/${collabId}/projects/${projectId}`)
+
+/** Which collabs a project is shared into — drives the "Shared via" banner. */
+export const fetchProjectCollabs = (projectId: string) =>
+  get<ProjectCollabLink[]>(`/${projectId}/collabs`)
