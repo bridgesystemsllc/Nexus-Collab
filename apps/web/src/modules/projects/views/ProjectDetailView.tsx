@@ -3,11 +3,12 @@ import {
   ArrowLeft, CalendarDays, Users, Target, FileText, Activity as ActivityIcon,
   GitBranch, Lock, Share2,
 } from 'lucide-react'
-import { useProject, useProjectHealth, useTasks } from '../hooks/useProjects'
+import { useProject, useProjectHealth, useTasks, useProjectTimeline } from '../hooks/useProjects'
 import { useProjectScope } from '../context/ProjectScopeContext'
 import { HealthRing } from '../components/HealthRing'
 import { DepartmentLaneChips } from '../components/DepartmentLaneChips'
 import { TaskBoard } from '../components/TaskBoard'
+import { TimelineGantt } from '../components/TimelineGantt'
 import { ProgressBar, SlipBadge, formatDate, slipDays } from '../components/ProjectCard'
 import { STATUS_LABELS, toPercent, type ProjectTask } from '../types'
 
@@ -37,6 +38,11 @@ export function ProjectDetailView({
   // In a department scope, default the board to that department's lane — the
   // user came here from their own tab and wants their own work first.
   const { data: tasks = [] } = useTasks(projectId)
+  // Only fetched once the Timeline tab is opened; it is the heaviest payload
+  // on this screen and most visits never look at it.
+  const { data: timeline, isLoading: timelineLoading } = useProjectTimeline(
+    tab === 'timeline' ? projectId : null,
+  )
 
   if (isLoading) return <DetailSkeleton onBack={onBack} />
   if (isError || !project) {
@@ -170,7 +176,15 @@ export function ProjectDetailView({
             currentMemberId={currentMemberId}
           />
         )}
-        {tab === 'timeline' && <TimelinePlaceholder />}
+        {tab === 'timeline' && (
+          <TimelineGantt
+            data={timeline?.data}
+            isLoading={timelineLoading}
+            // Rescheduling is a project-manager action; the server enforces
+            // it either way, this just avoids offering a drag that will 403.
+            canReschedule={project.projectManager?.id === currentMemberId || !currentMemberId}
+          />
+        )}
         {tab === 'activity' && <ActivityPlaceholder />}
       </div>
 
@@ -377,20 +391,7 @@ function TaskDrawer({ task, onClose }: { task: ProjectTask; onClose: () => void 
   )
 }
 
-// Phases 5 and 9 fill these in. A labelled placeholder beats a blank panel —
-// the user can see the tab exists and what is coming.
-function TimelinePlaceholder() {
-  return (
-    <div className="rounded-xl border border-dashed border-[var(--border-default)] py-12 text-center">
-      <CalendarDays size={24} className="mx-auto text-[var(--text-tertiary)] mb-2" />
-      <p className="text-sm text-[var(--text-secondary)]">Gantt timeline arrives in the next phase</p>
-      <p className="text-xs text-[var(--text-tertiary)] mt-1">
-        The timeline data — phases, milestones, baseline slip and critical path — is already live on the API.
-      </p>
-    </div>
-  )
-}
-
+// Phase 9 fills this in. A labelled placeholder beats a blank panel.
 function ActivityPlaceholder() {
   return (
     <div className="rounded-xl border border-dashed border-[var(--border-default)] py-12 text-center">

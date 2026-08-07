@@ -223,6 +223,9 @@ importers:
       vite:
         specifier: ^5.4.0
         version: 5.4.21(@types/node@20.19.41)
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@20.19.41)
 
   packages/prisma:
     dependencies:
