@@ -11,6 +11,8 @@ import { TaskBoard } from '../components/TaskBoard'
 import { TimelineGantt } from '../components/TimelineGantt'
 import { CheckInPanel } from '../components/CheckInPanel'
 import { LinkedRecords } from '../components/LinkedRecords'
+import { ActivityFeed } from '../components/ActivityFeed'
+import { useModalBehaviour } from '../lib/useModalBehaviour'
 import { ReportsPanel } from '../components/ReportsPanel'
 import { ProgressBar, SlipBadge, formatDate, slipDays } from '../components/ProjectCard'
 import { STATUS_LABELS, toPercent, type ProjectTask } from '../types'
@@ -224,7 +226,7 @@ export function ProjectDetailView({
             canGenerate={project.projectManager?.id === currentMemberId || !currentMemberId}
           />
         )}
-        {tab === 'activity' && <ActivityPlaceholder />}
+        {tab === 'activity' && <ActivityFeed projectId={projectId} />}
       </div>
 
       {selectedTask && (
@@ -360,14 +362,21 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 function TaskDrawer({ task, onClose }: { task: ProjectTask; onClose: () => void }) {
+  // The previous onKeyDown here only fired when focus was already inside the
+  // drawer — and nothing moved it there on open, so Escape did nothing after
+  // clicking a card. The shared hook listens at the document, moves focus in,
+  // traps Tab, and hands focus back to the card on close.
+  const ref = useModalBehaviour<HTMLElement>(onClose)
+
   return (
     <div
       className="fixed inset-0 z-50 flex justify-end bg-black/20"
       onClick={onClose}
-      onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}
       role="presentation"
     >
       <aside
+        ref={ref}
+        tabIndex={-1}
         className="w-full max-w-md h-full overflow-y-auto bg-[var(--bg-elevated)] border-l border-[var(--border-default)] p-5"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
@@ -436,14 +445,6 @@ function TaskDrawer({ task, onClose }: { task: ProjectTask; onClose: () => void 
 }
 
 // Phase 9 fills this in. A labelled placeholder beats a blank panel.
-function ActivityPlaceholder() {
-  return (
-    <div className="rounded-xl border border-dashed border-[var(--border-default)] py-12 text-center">
-      <ActivityIcon size={24} className="mx-auto text-[var(--text-tertiary)] mb-2" />
-      <p className="text-sm text-[var(--text-secondary)]">Activity feed arrives with the reports phase</p>
-    </div>
-  )
-}
 
 function DetailSkeleton({ onBack }: { onBack: () => void }) {
   return (

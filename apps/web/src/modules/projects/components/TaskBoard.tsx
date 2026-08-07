@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { AlertTriangle, GitBranch, Inbox, Lock, ArrowRightLeft } from 'lucide-react'
 import { useSetTaskStatus } from '../hooks/useProjects'
+import { Toast, type ToastData } from '@/components/shared/Toast'
 import { useProjectScope, useDefaultBoardGrouping } from '../context/ProjectScopeContext'
 import {
   BOARD_COLUMNS, TASK_STATUS_LABELS, PRIORITY_COLORS,
@@ -32,6 +33,10 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId }: Pro
   const [dragging, setDragging] = useState<string | null>(null)
   const [overColumn, setOverColumn] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // A drag can happen anywhere on a long board, so a rolled-back move is
+  // announced at the viewport rather than in a banner that may be scrolled
+  // out of sight. Silently snapping back is the failure mode to avoid.
+  const [toast, setToast] = useState<ToastData | null>(null)
 
   const setStatus = useSetTaskStatus(projectId)
 
@@ -92,7 +97,15 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId }: Pro
     setError(null)
     setStatus.mutate(
       { taskId, status },
-      { onError: (err: any) => setError(err?.message ?? 'Could not move that task') },
+      {
+        onError: (err: any) => {
+          const message = err?.message ?? 'Could not move that task'
+          // Both: the toast catches the eye wherever the user is looking, the
+          // banner persists so the reason is still there once it fades.
+          setToast({ message, type: 'error' })
+          setError(message)
+        },
+      },
     )
   }
 
@@ -128,6 +141,8 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId }: Pro
           </button>
         )}
       </div>
+
+      <Toast toast={toast} onDismiss={() => setToast(null)} duration={4000} />
 
       {error && (
         <div

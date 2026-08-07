@@ -108,20 +108,43 @@ export async function distributeReport(
   const now = opts.now ?? new Date()
   const stamp = now.toISOString()
 
-  const report = await prisma.projectReport.findUnique({
-    where: { id: reportId },
-    select: {
-      id: true, title: true, reportType: true, narrative: true, payload: true,
-      projectId: true, scopeDepartmentId: true, orgId: true,
-    },
-  })
+  // Typed off the select rather than the model: the narrowed shape is what
+  // this function actually uses.
+  let report: {
+    id: string; title: string; reportType: string; narrative: string | null
+    payload: unknown; projectId: string | null; scopeDepartmentId: string | null; orgId: string
+  } | null
+  try {
+    report = await prisma.projectReport.findUnique({
+      where: { id: reportId },
+      select: {
+        id: true, title: true, reportType: true, narrative: true, payload: true,
+        projectId: true, scopeDepartmentId: true, orgId: true,
+      },
+    })
+  } catch (err: any) {
+    const reason = `Could not load the report: ${err?.message ?? 'unknown error'}`
+    console.error(`[reports] ${reason} (${reportId})`)
+    return { sent: false, recipientCount: 0, reason }
+  }
   if (!report) return { sent: false, recipientCount: 0, reason: 'Report not found' }
 
+  // The function's contract is that it never throws, so recording the outcome
+  // must not be able to break it either. A distribution row we failed to write
+  // is worth a log line, not an exception that aborts the next department's
+  // digest in the middle of a scheduled sweep.
   const record = async (entries: DistributionEntry[]) => {
-    await prisma.projectReport.update({
-      where: { id: report.id },
-      data: { distribution: entries as unknown as object },
-    })
+    try {
+      await prisma.projectReport.update({
+        where: { id: report.id },
+        data: { distribution: entries as unknown as object },
+      })
+    } catch (err: any) {
+      console.error(
+        `[reports] could not record distribution for ${report.id}:`,
+        err?.message ?? err,
+      )
+    }
   }
 
   if (!isMailConfigured()) {
@@ -130,9 +153,17 @@ export async function distributeReport(
     return { sent: false, recipientCount: 0, reason }
   }
 
-  const recipients = report.projectId
-    ? await resolveProjectRecipients(prisma, report.projectId)
-    : await resolveScopeRecipients(prisma, report.orgId, report.scopeDepartmentId)
+  let recipients: { email: string; name?: string }[]
+  try {
+    recipients = report.projectId
+      ? await resolveProjectRecipients(prisma, report.projectId)
+      : await resolveScopeRecipients(prisma, report.orgId, report.scopeDepartmentId)
+  } catch (err: any) {
+    const reason = `Could not resolve recipients: ${err?.message ?? 'unknown error'}`
+    console.error(`[reports] ${reason} (report ${report.id})`)
+    await record([{ channel: 'EMAIL', target: '', status: 'FAILED', at: stamp, reason }])
+    return { sent: false, recipientCount: 0, reason }
+  }
 
   if (recipients.length === 0) {
     const reason = 'No recipients with an email address on this scope'

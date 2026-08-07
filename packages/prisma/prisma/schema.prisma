@@ -293,11 +293,24 @@ model Project {
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
+  // The default list query is `orgId + not deleted, newest first`. Without a
+  // composite covering it, the busiest view in the module sorts the whole
+  // table on every page load.
+  @@index([orgId, deletedAt, updatedAt(sort: Desc)])
   @@index([orgId])
   @@index([ownerDepartmentId])
   @@index([status])
   @@index([projectManagerId])
   @@index([nextCheckinAt])
+  // One per remaining list filter and sort key (§5): type, health, priority,
+  // target date. Each was a sequential scan before.
+  @@index([projectTypeId])
+  @@index([healthBand])
+  @@index([priority])
+  @@index([targetEndDate])
+  // brands/retailers are text[] filtered with `has`; only GIN serves that.
+  @@index([brands], type: Gin)
+  @@index([retailers], type: Gin)
 }
 
 // ─── Project Type ───────────────────────────────────────────
@@ -516,6 +529,9 @@ model Task {
 
   @@unique([projectId, taskNumber])
   @@index([projectId])
+  // Every task read filters deletedAt; the board and the rollup both pull a
+  // whole project's tasks at once, so the pair is the shape that actually runs.
+  @@index([projectId, deletedAt])
   @@index([departmentId])
   @@index([ownerId])
   @@index([status])
@@ -939,6 +955,8 @@ model ProjectCheckin {
   @@unique([projectId, departmentId, dueAt])
   @@index([projectId])
   @@index([status, dueAt])
+  // Compliance analytics and the report builders both window on requestedAt.
+  @@index([projectId, requestedAt])
 }
 
 // ─── Reports ────────────────────────────────────────────────
