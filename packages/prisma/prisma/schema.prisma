@@ -268,6 +268,10 @@ model Project {
 
   isConfidential Boolean @default(false) // restricts visibility to explicit members
 
+  // Monotonic per-project task sequence (#17). Incremented atomically on task
+  // create; never reused, so a deleted #4 leaves a gap rather than colliding.
+  taskCounter Int @default(0)
+
   tasks       Task[]
   coworkSpace CoworkSpace?
   departments ProjectDepartment[]
@@ -1085,4 +1089,19 @@ model ProjectTemplate {
   updatedAt     DateTime     @updatedAt
 
   @@index([projectTypeId])
+}
+
+// ─── Project number allocation ───────────────────────────────
+// PRJ-YYYY-NNNN is allocated from a per-org, per-year counter rather than
+// MAX(projectNumber)+1, which races: two concurrent creates read the same max
+// and both try to write the same number. The counter is incremented
+// atomically inside the create transaction.
+model ProjectNumberCounter {
+  id        String   @id @default(cuid())
+  orgId     String
+  year      Int
+  lastValue Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@unique([orgId, year])
 }
