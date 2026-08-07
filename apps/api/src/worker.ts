@@ -3,6 +3,7 @@ import IORedis from 'ioredis'
 import { PrismaClient } from '@prisma/client'
 import { syncErp } from './lib/erpSync'
 import { renewSubscriptions, isSubscriptionConfigured } from './services/emailAgent/subscription'
+import { recomputeAllProjects } from './services/projects/recompute'
 
 const prisma = new PrismaClient()
 
@@ -14,6 +15,7 @@ export const dailyBriefingQueue = new Queue('daily-briefing', { connection })
 export const erpSyncQueue = new Queue('erp-sync', { connection })
 export const escalationQueue = new Queue('escalation-check', { connection })
 export const graphSubscriptionQueue = new Queue('graph-subscription-renew', { connection })
+export const projectHealthQueue = new Queue('project-health', { connection })
 
 // ─── Daily Briefing Worker (9 AM) ───────────────────────────
 const briefingWorker = new Worker('daily-briefing', async () => {
@@ -164,6 +166,19 @@ const graphSubscriptionWorker = new Worker('graph-subscription-renew', async () 
   }
 }, { connection })
 
+
+// ─── Project Health Sweep (nightly, 2 AM) ───────────────────
+// Health depends on the passage of time: a task becomes overdue and a project
+// becomes stale with no write to trigger a recompute. Write-driven scoring
+// alone would leave a neglected project showing green indefinitely.
+const projectHealthWorker = new Worker('project-health', async () => {
+  const result = await recomputeAllProjects(prisma)
+  console.log(
+    `[worker] Project health: ${result.processed} scored, ${result.changed} changed band` +
+      (result.failed ? `, ${result.failed} failed` : ''),
+  )
+}, { connection })
+
 // ─── Schedule recurring jobs ────────────────────────────────
 async function scheduleJobs() {
   // Daily briefing at 9 AM
@@ -187,8 +202,13 @@ async function scheduleJobs() {
     every: 43_200_000,
   }, { name: 'graph-subscription-renew' })
 
+  // Project health nightly at 2 AM.
+  await projectHealthQueue.upsertJobScheduler('project-health-cron', {
+    pattern: '0 2 * * *',
+  }, { name: 'project-health' })
+
   console.log('\n⚡ NEXUS Worker running')
-  console.log('📋 Jobs scheduled: daily-briefing (9AM), erp-sync (15min), escalation-check (1hr), graph-subscription-renew (12hr)\n')
+  console.log('📋 Jobs scheduled: daily-briefing (9AM), erp-sync (15min), escalation-check (1hr), graph-subscription-renew (12hr), project-health (2AM)\n')
 }
 
 scheduleJobs().catch(console.error)
