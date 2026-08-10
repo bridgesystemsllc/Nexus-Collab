@@ -352,6 +352,10 @@ export async function syncErpComponents(
       const data = {
         ...prev,
         ...erpFields,
+        // Inventory levels: keep the last synced value when the feed omits them.
+        quantityOnHand: rec.quantityOnHand ?? prev.quantityOnHand ?? null,
+        quantityAvailable: rec.quantityAvailable ?? prev.quantityAvailable ?? null,
+        quantityAllocated: rec.quantityAllocated ?? prev.quantityAllocated ?? null,
         targetCostPerUnit: rec.unitCost ?? prev.targetCostPerUnit ?? null,
         moqTiers: prev.moqTiers ?? [],
         vendors: prev.vendors ?? [{ vendorName: rec.vendor, vendorStatus: 'Primary' }],
@@ -361,6 +365,9 @@ export async function syncErpComponents(
     } else {
       const data = {
         ...erpFields,
+        quantityOnHand: rec.quantityOnHand ?? null,
+        quantityAvailable: rec.quantityAvailable ?? null,
+        quantityAllocated: rec.quantityAllocated ?? null,
         targetCostPerUnit: rec.unitCost ?? null,
         moqTiers: [],
         vendors: [{ vendorName: rec.vendor, vendorStatus: 'Primary' }],

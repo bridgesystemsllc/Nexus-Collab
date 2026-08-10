@@ -155,6 +155,11 @@ export interface Component {
   certifications: string[];
   typeSpecs: Record<string, any>;
 
+  // Inventory (ERP-synced; null/absent when never synced)
+  quantityOnHand?: number | null;
+  quantityAvailable?: number | null;
+  quantityAllocated?: number | null;
+
   // Cost
   targetCostPerUnit: number;
   maxAcceptableCost: number;
