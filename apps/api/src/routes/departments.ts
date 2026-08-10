@@ -103,10 +103,13 @@ departmentRoutes.post('/sku-pipeline/sync-from-npd', async (req: Request, res: R
 })
 
 // ─── List all departments ───────────────────────────────────
-departmentRoutes.get('/', async (_req: Request, res: Response) => {
+departmentRoutes.get('/', async (req: Request, res: Response) => {
   try {
+    // Scope to the caller's org when authenticated so one tenant never sees
+    // another tenant's department names.
+    const orgId = (req as any).member?.orgId
     const departments = await prisma.department.findMany({
-      where: { archived: false },
+      where: { archived: false, ...(orgId ? { orgId } : {}) },
       include: {
         modules: { orderBy: { sortOrder: 'asc' } },
         members: { select: { id: true, name: true, avatar: true, role: true, status: true } },

@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Search, Bell, LogOut } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { useUserStore } from '@/stores/userStore'
 import { usePulse } from '@/hooks/useData'
+import { ProfileModal } from './ProfileModal'
 
 const pageTitles: Record<string, string> = {
   dashboard: 'Command Center',
@@ -24,6 +26,7 @@ export function TopBar() {
   const currentPage = useAppStore((s) => s.currentPage)
   const setPage = useAppStore((s) => s.setPage)
   const currentUser = useUserStore((s) => s.currentUser)
+  const [profileOpen, setProfileOpen] = useState(false)
   const { data: pulseData } = usePulse()
 
   const unreadCount = Array.isArray(pulseData)
@@ -88,10 +91,11 @@ export function TopBar() {
         {/* Current user + sign out */}
         {currentUser && (
           <div className="flex items-center gap-2 pl-2 ml-1" style={{ borderLeft: '1px solid var(--border-subtle)' }}>
-            <div
-              className="flex items-center justify-center w-8 h-8 rounded-full text-[11px] font-bold text-white"
+            <button
+              onClick={() => setProfileOpen(true)}
+              className="flex items-center justify-center w-8 h-8 rounded-full text-[11px] font-bold text-white cursor-pointer"
               style={{ background: 'var(--accent)' }}
-              title={currentUser.name}
+              title={`${currentUser.name} — edit profile`}
             >
               {currentUser.avatar && !currentUser.avatar.startsWith('http')
                 ? currentUser.avatar
@@ -102,7 +106,7 @@ export function TopBar() {
                     .slice(0, 2)
                     .join('')
                     .toUpperCase()}
-            </div>
+            </button>
             <a
               href="/api/logout"
               className="p-2 rounded-lg transition-colors"
@@ -114,6 +118,8 @@ export function TopBar() {
           </div>
         )}
       </div>
+
+      {profileOpen && <ProfileModal onClose={() => setProfileOpen(false)} />}
     </header>
   )
 }
