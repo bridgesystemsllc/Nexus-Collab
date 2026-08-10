@@ -10,6 +10,7 @@ import { allocateTaskNumber } from '../services/projects/numbering'
 import { assertNoCycle } from '../services/projects/dependencies'
 import { logActivity, diffFields, touchProject } from '../services/projects/activity'
 import { scheduleRecompute } from '../services/projects/recompute'
+import { syncCoworkAddSafe, syncCoworkRemoveSafe } from '../services/projects/coworkSync'
 
 export const projectTaskRoutes: ReturnType<typeof Router> = Router()
 
@@ -272,6 +273,9 @@ projectTaskRoutes.post('/:id/tasks', async (req: Request, res: Response) => {
       return task
     })
 
+    // An assignee gets the project surfaced in Cowork (out of band).
+    if (body.ownerId) syncCoworkAddSafe(prisma, projectId, body.ownerId)
+
     return res.status(201).json({
       data: created,
       meta: isRequest
@@ -361,6 +365,13 @@ projectTaskRoutes.patch('/tasks/:taskId', async (req: Request, res: Response) =>
       return next
     })
 
+    // Keep the Cowork mirror in step with reassignment (out of band): the new
+    // owner starts seeing the project, a removed owner may stop.
+    if (body.ownerId !== undefined && body.ownerId !== before.ownerId) {
+      if (body.ownerId) syncCoworkAddSafe(prisma, project.id, body.ownerId)
+      if (before.ownerId) syncCoworkRemoveSafe(prisma, project.id, before.ownerId)
+    }
+
     return ok(res, updated)
   } catch (err) {
     return fail(res, err)
@@ -409,6 +420,12 @@ projectTaskRoutes.post('/tasks/:taskId/status', async (req: Request, res: Respon
       scheduleRecompute(prisma, project.id)
       return next
     })
+
+    // Closing out a task may have been the owner's last assignment on the
+    // project; reconcile the Cowork mirror (out of band).
+    if (task.ownerId && (body.status === 'COMPLETE' || body.status === 'CANCELLED')) {
+      syncCoworkRemoveSafe(prisma, project.id, task.ownerId)
+    }
 
     return ok(res, updated)
   } catch (err) {
@@ -668,6 +685,9 @@ projectTaskRoutes.delete('/tasks/:taskId', async (req: Request, res: Response) =
       await touchProject(tx, project.id)
       scheduleRecompute(prisma, project.id)
     })
+
+    // A deleted task no longer counts as an assignment (out of band).
+    if (task.ownerId) syncCoworkRemoveSafe(prisma, project.id, task.ownerId)
 
     return res.status(204).send()
   } catch (err) {

@@ -77,6 +77,7 @@ export interface ProjectSummary {
   ownerDepartment?: DepartmentRef | null
   projectManager?: MemberRef | null
   departments: ProjectDepartmentRow[]
+  members?: { memberId: string; role: string; member: MemberRef }[]
   _count?: { tasks?: number; milestones?: number; risks?: number }
 }
 

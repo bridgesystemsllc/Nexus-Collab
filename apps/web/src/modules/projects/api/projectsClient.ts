@@ -122,6 +122,10 @@ export const removeProjectDepartment = (id: string, departmentId: string) =>
 export const fetchProjectMembers = (id: string) => get<any[]>(`/${id}/members`)
 export const addProjectMember = (id: string, body: Record<string, unknown>) =>
   send<any>('post', `/${id}/members`, body)
+export const updateProjectMember = (id: string, memberId: string, body: Record<string, unknown>) =>
+  send<any>('patch', `/${id}/members/${memberId}`, body)
+export const removeProjectMember = (id: string, memberId: string) =>
+  send<null>('delete', `/${id}/members/${memberId}`)
 
 // ─── Tasks ───────────────────────────────────────────────────
 export const fetchTasks = (

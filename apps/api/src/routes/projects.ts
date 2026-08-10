@@ -9,6 +9,7 @@ import {
 import { allocateProjectNumber } from '../services/projects/numbering'
 import { applyTemplate } from '../services/projects/template'
 import { logActivity, diffFields, touchProject } from '../services/projects/activity'
+import { syncCoworkAddSafe, syncCoworkAddManySafe, syncCoworkRemoveSafe } from '../services/projects/coworkSync'
 
 export const projectRoutes: ReturnType<typeof Router> = Router()
 
@@ -200,6 +201,12 @@ projectRoutes.get('/', async (req: Request, res: Response) => {
               department: { select: { id: true, code: true, name: true, color: true } },
             },
           },
+          members: {
+            select: {
+              memberId: true, role: true,
+              member: { select: { id: true, name: true, avatar: true } },
+            },
+          },
           _count: { select: { tasks: { where: { deletedAt: null } } } },
         },
       }),
@@ -293,6 +300,17 @@ const createProjectSchema = z
           departmentId: z.string(),
           role: z.enum(['CONTRIBUTOR', 'REVIEWER', 'VIEWER']).default('CONTRIBUTOR'),
           laneLeadId: z.string().optional(),
+        }),
+      )
+      .default([]),
+    // Individual people assigned at creation. Each represents a department
+    // (their own by default) on this project.
+    members: z
+      .array(
+        z.object({
+          memberId: z.string(),
+          role: z.enum(['LANE_LEAD', 'CONTRIBUTOR', 'REVIEWER', 'VIEWER']).default('CONTRIBUTOR'),
+          departmentId: z.string().optional(),
         }),
       )
       .default([]),
@@ -399,6 +417,31 @@ projectRoutes.post('/', async (req: Request, res: Response) => {
         },
       })
 
+      // Individual people picked in the wizard. Each represents a department —
+      // theirs by default when none was chosen explicitly.
+      const pmId = body.projectManagerId ?? actor.id
+      for (const m of body.members) {
+        if (m.memberId === pmId) continue // already added as PROJECT_MANAGER
+        const person = await tx.member.findUnique({ where: { id: m.memberId } })
+        if (!person || person.orgId !== actor.orgId) {
+          throw new ValidationError('Unknown member', { members: [`${m.memberId}: not found`] })
+        }
+        if (m.departmentId) {
+          const dept = await tx.department.findUnique({ where: { id: m.departmentId } })
+          if (!dept || dept.orgId !== actor.orgId) {
+            throw new ValidationError('Unknown department', { members: [`${m.memberId}: bad department`] })
+          }
+        }
+        await tx.projectMember.create({
+          data: {
+            projectId: project.id,
+            memberId: m.memberId,
+            role: m.role,
+            departmentId: m.departmentId ?? person.departmentId,
+          },
+        })
+      }
+
       let templateResult = null
       if (body.templateId) {
         const tpl = await tx.projectTemplate.findUnique({ where: { id: body.templateId } })
@@ -426,6 +469,14 @@ projectRoutes.post('/', async (req: Request, res: Response) => {
       return { project, templateResult }
     })
 
+    // Mirror the whole initial roster — the effective PM plus explicit picks —
+    // into the project's cowork space in one awaited batch (single space
+    // creation, no per-member race). Non-fatal: the create already succeeded.
+    await syncCoworkAddManySafe(prisma, created.project.id, [
+      body.projectManagerId ?? actor.id,
+      ...body.members.map((m) => m.memberId),
+    ])
+
     return res.status(201).json({
       data: created.project,
       meta: created.templateResult ? { template: created.templateResult } : {},
@@ -438,7 +489,7 @@ projectRoutes.post('/', async (req: Request, res: Response) => {
 // ─── Projects: update ────────────────────────────────────────
 
 const patchProjectSchema = createProjectSchema
-  .omit({ templateId: true, participatingDepartments: true, projectTypeId: true, ownerDepartmentId: true })
+  .omit({ templateId: true, participatingDepartments: true, members: true, projectTypeId: true, ownerDepartmentId: true })
   .partial()
   .extend({
     projectTypeId: z.string().optional(),
@@ -847,6 +898,12 @@ projectRoutes.post('/:id/members', async (req: Request, res: Response) => {
     if (!member || member.orgId !== actor.orgId) {
       throw new ValidationError('Unknown member', { memberId: ['Not found'] })
     }
+    if (body.departmentId) {
+      const dept = await prisma.department.findUnique({ where: { id: body.departmentId } })
+      if (!dept || dept.orgId !== actor.orgId) {
+        throw new ValidationError('Unknown department', { departmentId: ['Not found'] })
+      }
+    }
 
     const created = await prisma.projectMember.upsert({
       where: { projectId_memberId: { projectId: policyProject.id, memberId: body.memberId } },
@@ -860,6 +917,9 @@ projectRoutes.post('/:id/members', async (req: Request, res: Response) => {
       update: { role: body.role, departmentId: body.departmentId ?? undefined, isWatcher: body.isWatcher },
       include: { member: { select: { id: true, name: true, avatar: true } } },
     })
+
+    // Surface their project work in Cowork Spaces (out of band, never blocks).
+    syncCoworkAddSafe(prisma, policyProject.id, body.memberId)
 
     return res.status(201).json({ data: created, meta: {} })
   } catch (err) {
@@ -910,6 +970,11 @@ projectRoutes.delete('/:id/members/:memberId', async (req: Request, res: Respons
     await prisma.projectMember.delete({
       where: { projectId_memberId: { projectId: policyProject.id, memberId } },
     })
+
+    // If that was their last assignment on the project, stop surfacing it in
+    // Cowork for them (out of band, never blocks).
+    syncCoworkRemoveSafe(prisma, policyProject.id, memberId)
+
     return res.status(204).send()
   } catch (err) {
     return fail(res, err)

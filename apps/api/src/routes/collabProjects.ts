@@ -10,6 +10,7 @@ import {
   linkProject, unlinkProject, buildCollabBoard, resolveCollabDepartments,
   COLLAB_VISIBILITIES, type CollabVisibility,
 } from '../services/projects/collabBridge'
+import { coworkSpaceGuard } from './cowork'
 
 // ─── Collab ↔ project bridge ─────────────────────────────────
 // Mounted at both /collabs and /cowork: the spec names the former, the existing
@@ -17,6 +18,10 @@ import {
 // copies drifting apart.
 
 export const collabProjectRoutes: ReturnType<typeof Router> = Router()
+
+// Same space-visibility policy as the Cowork router: these routes are mounted
+// on the same space ids, so knowing an id must not bypass access control.
+collabProjectRoutes.use('/:collabId', coworkSpaceGuard)
 
 function ok(res: Response, data: unknown, meta: Record<string, unknown> = {}) {
   return res.json({ data, meta })
