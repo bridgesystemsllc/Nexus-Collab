@@ -4,6 +4,7 @@ import { buildScale, type ZoomLevel } from '../lib/ganttScale'
 import { computeRipple, describeRipple, type RippleResult } from '../lib/ripple'
 import { useUpdateTask } from '../hooks/useProjects'
 import { formatDate } from './ProjectCard'
+import { PhaseEditor } from './PhaseEditor'
 import type { ProjectTask } from '../types'
 
 // ─── Gantt ───────────────────────────────────────────────────
@@ -49,8 +50,14 @@ const LABEL_W = 260
 const RAIL_H = 22
 
 export function TimelineGantt({
-  data, canReschedule, isLoading,
-}: { data?: TimelineData; canReschedule: boolean; isLoading?: boolean }) {
+  data, canReschedule, isLoading, projectId, canEdit,
+}: {
+  data?: TimelineData
+  canReschedule: boolean
+  isLoading?: boolean
+  projectId: string
+  canEdit: boolean
+}) {
   const [zoom, setZoom] = useState<ZoomLevel>('month')
   const [drag, setDrag] = useState<{ taskId: string; startX: number; deltaDays: number } | null>(null)
   const [preview, setPreview] = useState<{ taskId: string; delta: number; ripple: RippleResult } | null>(null)
@@ -165,6 +172,8 @@ export function TimelineGantt({
 
   return (
     <div className="space-y-3">
+      <PhaseEditor projectId={projectId} phases={phases} canEdit={canEdit} />
+
       {/* Controls */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3 text-[11px] text-[var(--text-tertiary)]">

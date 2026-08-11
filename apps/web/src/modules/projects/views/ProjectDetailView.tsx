@@ -263,6 +263,8 @@ export function ProjectDetailView({
             // Rescheduling is a project-manager action; the server enforces
             // it either way, this just avoids offering a drag that will 403.
             canReschedule={caps.editTaskOwnLane}
+            projectId={projectId}
+            canEdit={caps.editTimeline}
           />
         )}
         {tab === 'reports' && (
