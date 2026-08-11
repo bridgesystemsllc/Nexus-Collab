@@ -84,6 +84,66 @@ export function useProjectTimeline(id: string | null) {
   })
 }
 
+// ─── Timeline mutations ──────────────────────────────────────
+// Each invalidates the timeline and the project detail: phase and milestone
+// changes move the health score and the project's percent complete.
+
+function useTimelineMutation<TArgs>(
+  projectId: string,
+  fn: (args: TArgs) => Promise<unknown>,
+) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: qk.timeline(projectId) })
+      qc.invalidateQueries({ queryKey: qk.detail(projectId) })
+      qc.invalidateQueries({ queryKey: qk.health(projectId) })
+    },
+  })
+}
+
+export function useCreatePhase(projectId: string) {
+  return useTimelineMutation(projectId, (body: client.PhaseBody) =>
+    client.createPhase(projectId, body))
+}
+
+export function useUpdatePhase(projectId: string) {
+  return useTimelineMutation(
+    projectId,
+    ({ phaseId, ...body }: { phaseId: string } & Partial<client.PhaseBody>) =>
+      client.updatePhase(projectId, phaseId, body),
+  )
+}
+
+export function useDeletePhase(projectId: string) {
+  return useTimelineMutation(projectId, (phaseId: string) =>
+    client.deletePhase(projectId, phaseId))
+}
+
+export function useReorderPhases(projectId: string) {
+  return useTimelineMutation(projectId, (orderedIds: string[]) =>
+    client.reorderPhases(projectId, orderedIds))
+}
+
+export function useCreateMilestone(projectId: string) {
+  return useTimelineMutation(projectId, (body: client.MilestoneBody) =>
+    client.createMilestone(projectId, body))
+}
+
+export function useUpdateMilestone(projectId: string) {
+  return useTimelineMutation(
+    projectId,
+    ({ milestoneId, ...body }: { milestoneId: string } & Partial<client.MilestoneBody>) =>
+      client.updateMilestone(projectId, milestoneId, body),
+  )
+}
+
+export function useDeleteMilestone(projectId: string) {
+  return useTimelineMutation(projectId, (milestoneId: string) =>
+    client.deleteMilestone(projectId, milestoneId))
+}
+
 export function useCreateProject() {
   const qc = useQueryClient()
   return useMutation({
