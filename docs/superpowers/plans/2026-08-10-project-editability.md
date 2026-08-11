@@ -591,11 +591,14 @@ export function projectCapabilities(
   const governance = can(actor, 'SET_BASELINE', project).allowed
 
   // Lane-scoped task actions need a task to judge. Probe with a task in the
-  // actor's own lane, which is exactly the "own lane" question.
+  // actor's own lane AND assigned to them: EDIT_TASK_OWN_LANE falls through to
+  // `task.ownerId === actor.id` for a plain contributor (policy.ts:258), so a
+  // null-owner probe would report false for every contributor — the exact
+  // users the capability exists to serve.
   const ownLaneProbe: PolicyTask = {
     id: 'probe',
     departmentId: actor.departmentId ?? null,
-    ownerId: null,
+    ownerId: actor.id,
     acceptanceStatus: null,
   }
 
