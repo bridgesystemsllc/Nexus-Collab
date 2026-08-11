@@ -167,6 +167,25 @@ export function useUpdateProject(id: string) {
   })
 }
 
+// ─── Project people (roster) ─────────────────────────────────
+
+export function useAddProjectMember(projectId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { memberId: string; role?: string; departmentId?: string }) =>
+      client.addProjectMember(projectId, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.all }),
+  })
+}
+
+export function useRemoveProjectMember(projectId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (memberId: string) => client.removeProjectMember(projectId, memberId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.all }),
+  })
+}
+
 export function useSetProjectStatus(id: string) {
   const qc = useQueryClient()
   return useMutation({

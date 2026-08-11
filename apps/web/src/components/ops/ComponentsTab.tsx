@@ -180,6 +180,7 @@ export function ComponentsTab({
                 <th>Type</th>
                 <th>Vendor</th>
                 <th>Status</th>
+                <th>On Hand</th>
                 <th>Unit Cost</th>
                 <th>Target</th>
                 <th>Compatibility</th>
@@ -204,6 +205,12 @@ export function ComponentsTab({
                     <td><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: `${typeColor}18`, color: typeColor }}>{comp.type || '—'}</span></td>
                     <td className="text-[13px] text-[var(--text-secondary)]">{primaryVendor?.vendorName || '—'}</td>
                     <td><span className="badge text-[11px]" style={{ background: `${statusColor}18`, color: statusColor }}>{comp.status || 'Concept'}</span></td>
+                    <td
+                      className="text-[13px] tabular-nums text-[var(--text-secondary)]"
+                      title={comp.quantityOnHand != null ? `Available: ${Number(comp.quantityAvailable ?? comp.quantityOnHand).toLocaleString()} · Allocated: ${Number(comp.quantityAllocated ?? 0).toLocaleString()}` : undefined}
+                    >
+                      {comp.quantityOnHand != null ? Number(comp.quantityOnHand).toLocaleString() : '—'}
+                    </td>
                     <td className={`text-[13px] tabular-nums font-medium ${costVsTarget === 'under' ? 'text-[var(--success)]' : costVsTarget === 'over' ? 'text-[var(--danger)]' : 'text-[var(--text-secondary)]'}`}>
                       {bestCost ? `$${bestCost.toFixed(2)}` : '—'}
                     </td>

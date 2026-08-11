@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Check, ChevronLeft, ChevronRight, X, AlertTriangle } from 'lucide-react'
 import { useProjectDepartments, useProjectTypes, useProjectTemplates, useCreateProject } from '../hooks/useProjects'
 import { useProjectScope } from '../context/ProjectScopeContext'
+import { useMembers } from '@/hooks/useData'
 
 // ─── Create wizard ───────────────────────────────────────────
 // Four steps, never one giant form. Draft state is persisted to localStorage
@@ -27,6 +28,7 @@ interface Draft {
   startDate: string
   targetEndDate: string
   participating: string[]
+  people: string[]
   checkinCadence: 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'NONE'
 }
 
@@ -35,7 +37,7 @@ const EMPTY: Draft = {
   brands: '', retailers: '', markets: '', businessCase: '', successCriteria: '',
   budgetAmount: '', savingsTarget: '', templateId: '',
   startDate: new Date().toISOString().slice(0, 10), targetEndDate: '',
-  participating: [], checkinCadence: 'WEEKLY',
+  participating: [], people: [], checkinCadence: 'WEEKLY',
 }
 
 const STEPS = ['Basics', 'Scope', 'Plan', 'Team & Cadence'] as const
@@ -46,6 +48,7 @@ export function ProjectCreateWizard({ onClose, onCreated }: { onClose: () => voi
   const { departmentId: scopeDeptId } = useProjectScope()
   const { data: departments = [] } = useProjectDepartments()
   const { data: types = [] } = useProjectTypes()
+  const { data: orgMembers = [] } = useMembers()
   const create = useCreateProject()
 
   const [step, setStep] = useState(0)
@@ -124,6 +127,7 @@ export function ProjectCreateWizard({ onClose, onCreated }: { onClose: () => voi
         participatingDepartments: draft.participating
           .filter((id) => id !== draft.ownerDepartmentId)
           .map((id) => ({ departmentId: id, role: 'CONTRIBUTOR' as const })),
+        members: draft.people.map((id) => ({ memberId: id })),
       })
       localStorage.removeItem(DRAFT_KEY)
       onCreated((res.data as any).id)
@@ -358,6 +362,41 @@ export function ProjectCreateWizard({ onClose, onCreated }: { onClose: () => voi
                 </div>
                 <p className="text-[11px] text-[var(--text-tertiary)] mt-2">
                   Each department gets its own lane and sees this project in its own Projects tab.
+                </p>
+              </div>
+              <div>
+                <span className={labelCls}>People</span>
+                <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+                  {(orgMembers as any[]).map((m: any) => {
+                    const on = draft.people.includes(m.id)
+                    const deptName = departments.find((d) => d.id === m.departmentId)?.name
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => set('people', on ? draft.people.filter((x) => x !== m.id) : [...draft.people, m.id])}
+                        className={`flex items-center gap-2 rounded-lg border p-2.5 text-left transition-all ${
+                          on ? 'border-[var(--accent-secondary)] bg-[var(--accent-secondary-light)]' : 'border-[var(--border-subtle)] bg-[var(--bg-surface)]'
+                        }`}
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0"
+                          style={{
+                            borderColor: on ? 'var(--accent-secondary)' : 'var(--border-strong)',
+                            background: on ? 'var(--accent-secondary)' : 'transparent',
+                          }}
+                        >
+                          {on && <Check size={9} color="#fff" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-xs text-[var(--text-primary)] truncate">{m.name}</span>
+                          {deptName && <span className="block text-[10px] text-[var(--text-tertiary)] truncate">{deptName}</span>}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <p className="text-[11px] text-[var(--text-tertiary)] mt-2">
+                  Each person joins the project representing their department, and it appears in their Cowork Spaces.
                 </p>
               </div>
               <div>

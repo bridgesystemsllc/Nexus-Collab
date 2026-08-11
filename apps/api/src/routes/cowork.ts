@@ -38,18 +38,58 @@ async function resolveActingMember(identifier?: string | null) {
   return prisma.member.findFirst({ select: { id: true } })
 }
 
+// ─── Space visibility ───────────────────────────────────────
+// A space is visible to: admins/ops managers; its explicit members; anyone
+// whose department is named on the space (unless a linked project is
+// confidential — then explicit membership only); and everyone when the space
+// declares no members and no departments (an open space).
+function canSeeSpace(
+  space: { memberIds: string[]; deptNames: string[] },
+  confidential: boolean,
+  viewer: { id: string; role?: string; department?: { name: string } | null } | null,
+): boolean {
+  if (!viewer) return false
+  if (viewer.role === 'ADMIN' || viewer.role === 'OPS_MANAGER') return true
+  if (space.memberIds.includes(viewer.id)) return true
+  if (confidential) return false
+  const dept = viewer.department?.name?.toLowerCase()
+  if (dept && space.deptNames.some((d) => d.toLowerCase() === dept)) return true
+  return space.memberIds.length === 0 && space.deptNames.length === 0
+}
+
+/** Space ids (among the given) that link to at least one confidential project. */
+async function confidentialSpaceIds(
+  spaces: { id: string; project?: { isConfidential: boolean } | null }[],
+): Promise<Set<string>> {
+  const ids = new Set(spaces.filter((s) => s.project?.isConfidential).map((s) => s.id))
+  const links = await prisma.collabProjectLink.findMany({
+    where: {
+      coworkSpaceId: { in: spaces.map((s) => s.id) },
+      unlinkedAt: null,
+      project: { isConfidential: true },
+    },
+    select: { coworkSpaceId: true },
+  })
+  for (const l of links) ids.add(l.coworkSpaceId)
+  return ids
+}
+
 // ─── List cowork spaces ─────────────────────────────────────
-coworkRoutes.get('/', async (_req: Request, res: Response) => {
+coworkRoutes.get('/', async (req: Request, res: Response) => {
   try {
-    const spaces = await prisma.coworkSpace.findMany({
+    const viewer = (req as any).member ?? null
+    if (!viewer) return res.status(401).json({ error: 'Sign in to view cowork spaces' })
+    const allSpaces = await prisma.coworkSpace.findMany({
       where: { status: 'ACTIVE' },
       include: {
-        project: { select: { id: true, title: true, priority: true, health: true } },
+        project: { select: { id: true, title: true, priority: true, health: true, isConfidential: true } },
         tasks: { select: { id: true, status: true } },
         _count: { select: { activities: true, tasks: true, documents: true } },
       },
       orderBy: { createdAt: 'desc' },
     })
+    const confidential = await confidentialSpaceIds(allSpaces)
+    const spaces = allSpaces.filter((s) => canSeeSpace(s, confidential.has(s.id), viewer))
 
     // Resolve members for every space (small lists; one query each is fine here)
     const allMemberIds = Array.from(new Set(spaces.flatMap((s) => s.memberIds)))
@@ -67,6 +107,87 @@ coworkRoutes.get('/', async (_req: Request, res: Response) => {
   }
 })
 
+// ─── Space access guard ─────────────────────────────────────
+// Every space-scoped read and mutation goes through this: the viewer must be
+// signed in and allowed to see the space before anything is queried or
+// written. Exported so the collab-project router (mounted on the same space
+// ids) enforces the identical policy.
+export async function coworkSpaceGuard(req: Request, res: Response, next: () => void) {
+  try {
+    const spaceId = (req.params.id ?? (req.params as any).collabId) as string | undefined
+    if (!spaceId) return next()
+    const viewer = (req as any).member ?? null
+    if (!viewer) return res.status(401).json({ error: 'Sign in to access cowork spaces' })
+    const space = await prisma.coworkSpace.findUnique({
+      where: { id: spaceId },
+      select: { id: true, memberIds: true, deptNames: true, project: { select: { isConfidential: true } } },
+    })
+    // Missing space falls through: each route keeps its own 404 semantics.
+    if (!space) return next()
+    const confidential = await confidentialSpaceIds([space])
+    if (!canSeeSpace(space, confidential.has(space.id), viewer)) {
+      return res.status(403).json({ error: 'You do not have access to this space' })
+    }
+    return next()
+  } catch (error) {
+    console.error('[cowork] access guard error:', error)
+    return res.status(500).json({ error: 'Failed to check space access' })
+  }
+}
+coworkRoutes.use('/:id', coworkSpaceGuard)
+
+// ─── Linked project tasks ───────────────────────────────────
+// A space represents a project via the legacy 1:1 projectId or active collab
+// links. Tasks that live on those projects belong in the space's task list —
+// an assignee looking at Cowork should see their project work without anyone
+// manually re-sharing each task.
+async function linkedProjectTasks(
+  spaceId: string,
+  excludeTaskIds: Set<string>,
+  viewer: { id: string; orgId: string } | null,
+) {
+  // No authenticated viewer → no project data. The space's own shared tasks
+  // still render; only the linked-project merge is gated.
+  if (!viewer) return []
+
+  const links = await prisma.collabProjectLink.findMany({
+    where: { coworkSpaceId: spaceId, unlinkedAt: null },
+    select: { projectId: true },
+  })
+  const legacy = await prisma.coworkSpace.findUnique({
+    where: { id: spaceId },
+    select: { projectId: true },
+  })
+  const projectIds = Array.from(
+    new Set([...links.map((l) => l.projectId), ...(legacy?.projectId ? [legacy.projectId] : [])]),
+  )
+  if (projectIds.length === 0) return []
+  const tasks = await prisma.task.findMany({
+    where: {
+      projectId: { in: projectIds },
+      deletedAt: null,
+      // Scope in SQL: only the viewer's org, and confidential projects only
+      // when the viewer is explicitly on the roster.
+      project: {
+        orgId: viewer.orgId,
+        deletedAt: null,
+        OR: [
+          { isConfidential: false },
+          { members: { some: { memberId: viewer.id } } },
+        ],
+      },
+    },
+    include: {
+      owner: { select: { id: true, name: true, avatar: true } },
+      department: { select: { id: true, name: true, color: true } },
+      project: { select: { id: true, title: true, projectNumber: true } },
+    },
+    orderBy: [{ priority: 'asc' }, { dueDate: 'asc' }, { id: 'asc' }],
+    take: 200, // a space view is a working set, not a data export
+  })
+  return tasks.filter((t) => !excludeTaskIds.has(t.id))
+}
+
 // ─── Get space detail ───────────────────────────────────────
 coworkRoutes.get('/:id', async (req: Request, res: Response) => {
   try {
@@ -83,6 +204,12 @@ coworkRoutes.get('/:id', async (req: Request, res: Response) => {
       },
     })
     if (!space) return res.status(404).json({ error: 'Cowork space not found' })
+    const projectTasks = await linkedProjectTasks(
+      space.id,
+      new Set(space.tasks.map((t) => t.id)),
+      (req as any).member ?? null,
+    )
+    space.tasks.push(...(projectTasks as typeof space.tasks))
     const members = await resolveMembers(space.memberIds)
     // The detail payload carries the SAME merged feed the paginated endpoint
     // serves. This is the one the UI renders, so a merge that only reached
@@ -123,6 +250,9 @@ const createSpaceSchema = z.object({
 
 coworkRoutes.post('/', async (req: Request, res: Response) => {
   try {
+    if (!(req as any).member) {
+      return res.status(401).json({ error: 'Sign in to create cowork spaces' })
+    }
     const data = createSpaceSchema.parse(req.body)
     const { linkedItem, metadata, initialTask, ...rest } = data
 
@@ -179,6 +309,7 @@ coworkRoutes.patch('/:id', async (req: Request, res: Response) => {
       data: {
         ...data,
         description: data.description ?? undefined,
+        metadata: data.metadata ?? undefined,
       },
     })
     const members = await resolveMembers(space.memberIds)
@@ -304,6 +435,7 @@ coworkRoutes.get('/:id/tasks', async (req: Request, res: Response) => {
     const space = await prisma.coworkSpace.findUnique({
       where: { id: req.params.id as string },
       include: {
+        project: { select: { isConfidential: true } },
         tasks: {
           include: {
             owner: { select: { id: true, name: true, avatar: true } },
@@ -313,7 +445,13 @@ coworkRoutes.get('/:id/tasks', async (req: Request, res: Response) => {
         },
       },
     })
-    res.json(space?.tasks || [])
+    if (!space) return res.json([])
+    const projectTasks = await linkedProjectTasks(
+      req.params.id as string,
+      new Set(space.tasks.map((t) => t.id)),
+      (req as any).member ?? null,
+    )
+    res.json([...space.tasks, ...projectTasks])
   } catch (error) {
     console.error('[cowork] GET /:id/tasks error:', error)
     res.status(500).json({ error: 'Failed to fetch tasks' })
@@ -396,7 +534,10 @@ coworkRoutes.post('/:id/emails', async (req: Request, res: Response) => {
 // ─── Remove email from space ────────────────────────────────
 coworkRoutes.delete('/:id/emails/:emailId', async (req: Request, res: Response) => {
   try {
-    await prisma.emailLink.delete({ where: { id: req.params.emailId as string } })
+    // Scope the delete to this space so a space id can't delete another space's email.
+    await prisma.emailLink.delete({
+      where: { id: req.params.emailId as string, coworkSpaceId: req.params.id as string },
+    })
     res.json({ success: true })
   } catch (error) {
     console.error('[cowork] DELETE /:id/emails/:emailId error:', error)
@@ -506,7 +647,13 @@ coworkRoutes.post('/:id/files', async (req: Request, res: Response) => {
 // ─── Remove a file from a space ─────────────────────────────
 coworkRoutes.delete('/:id/files/:fileId', async (req: Request, res: Response) => {
   try {
-    await prisma.document.delete({ where: { id: req.params.fileId as string } })
+    // Only delete documents actually attached to this space.
+    await prisma.document.delete({
+      where: {
+        id: req.params.fileId as string,
+        coworkSpaces: { some: { id: req.params.id as string } },
+      },
+    })
     res.json({ success: true })
   } catch (error) {
     console.error('[cowork] DELETE /:id/files/:fileId error:', error)

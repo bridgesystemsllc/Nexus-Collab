@@ -52,6 +52,9 @@ export interface ErpComponent {
   vendor: string
   unitCost?: number
   status?: string
+  quantityOnHand?: number
+  quantityAvailable?: number
+  quantityAllocated?: number
   source: 'ERP_KAREVE'
 }
 
@@ -552,6 +555,10 @@ function syntheticComponents(): ErpComponent[] {
 
 function mapErpComponent(raw: Record<string, any>): ErpComponent {
   const unitCostRaw = raw.unitCost ?? raw.unit_cost ?? raw.cost
+  // Inventory quantities: preserve undefined when the feed omits/garbles them
+  // so a partial payload never zeroes out previously-synced stock levels.
+  const qty = (v: unknown): number | undefined =>
+    v != null && String(v).trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : undefined
   return {
     // Aliases cover the KarEve /nexus/sync/components shape
     // (skuNumber/itemName/category/brandId) plus older generic shapes.
@@ -573,6 +580,9 @@ function mapErpComponent(raw: Record<string, any>): ErpComponent {
             ? 'Active'
             : 'Inactive'
           : undefined,
+    quantityOnHand: qty(raw.quantityOnHand ?? raw.quantity_on_hand ?? raw.quantity),
+    quantityAvailable: qty(raw.quantityAvailable ?? raw.quantity_available),
+    quantityAllocated: qty(raw.quantityAllocated ?? raw.quantity_allocated),
     source: 'ERP_KAREVE',
   }
 }

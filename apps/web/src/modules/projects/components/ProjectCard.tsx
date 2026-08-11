@@ -115,6 +115,29 @@ export function ProjectCard({
           highlightDepartmentId={highlightDepartmentId}
         />
         <div className="flex items-center gap-2 shrink-0">
+          {(project.members?.length ?? 0) > 0 && (
+            <span className="flex -space-x-1.5" title={project.members!.map((m) => m.member.name).join(', ')}>
+              {project.members!.slice(0, 3).map((m) => (
+                <span
+                  key={m.memberId}
+                  className="w-5 h-5 rounded-full border border-[var(--bg-elevated)] bg-[var(--accent-secondary)] text-white text-[8px] font-bold flex items-center justify-center"
+                >
+                  {(m.member.name || '?')
+                    .split(/\s+/)
+                    .map((p) => p[0])
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .join('')
+                    .toUpperCase()}
+                </span>
+              ))}
+              {project.members!.length > 3 && (
+                <span className="w-5 h-5 rounded-full border border-[var(--bg-elevated)] bg-[var(--bg-overlay)] text-[var(--text-secondary)] text-[8px] font-bold flex items-center justify-center">
+                  +{project.members!.length - 3}
+                </span>
+              )}
+            </span>
+          )}
           {openBlockers > 0 && (
             <span
               className="inline-flex items-center gap-1 text-[11px] text-[var(--warning)]"

@@ -3,7 +3,11 @@ import {
   ArrowLeft, CalendarDays, Users, Target, FileText, Activity as ActivityIcon, MessageSquare,
   GitBranch, Lock, Share2, Tag,
 } from 'lucide-react'
-import { useProject, useProjectHealth, useTasks, useProjectTimeline, useProjectCollabs, useUpdateProject } from '../hooks/useProjects'
+import {
+  useProject, useProjectHealth, useTasks, useProjectTimeline, useProjectCollabs,
+  useUpdateProject, useAddProjectMember, useRemoveProjectMember,
+} from '../hooks/useProjects'
+import { useMembers } from '@/hooks/useData'
 import { useProjectScope } from '../context/ProjectScopeContext'
 import { HealthRing } from '../components/HealthRing'
 import { DepartmentLaneChips } from '../components/DepartmentLaneChips'
@@ -385,22 +389,7 @@ function OverviewTab({
           )}
         </Panel>
 
-        <Panel title="Team" icon={Users}>
-          {project.members?.length ? (
-            <ul className="space-y-1.5">
-              {project.members.map((m: any) => (
-                <li key={m.id} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="text-[var(--text-primary)]">{m.member.name}</span>
-                  <span className="text-[var(--text-tertiary)]">
-                    {m.role.replace(/_/g, ' ').toLowerCase()}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-xs text-[var(--text-tertiary)]">No members added yet.</p>
-          )}
-        </Panel>
+        <PeoplePanel project={project} />
 
         <Panel title="Key dates" icon={CalendarDays}>
           <dl className="space-y-1.5 text-xs">
@@ -483,6 +472,74 @@ function OverviewTab({
         </Panel>
       </div>
     </div>
+  )
+}
+
+// ─── People panel ────────────────────────────────────────────
+// The project roster: who is on this project, which department each person
+// represents, add/remove. Assigned people also see the project in Cowork.
+function PeoplePanel({ project }: { project: any }) {
+  const { data: orgMembers = [] } = useMembers()
+  const addMember = useAddProjectMember(project.id)
+  const removeMember = useRemoveProjectMember(project.id)
+  const [adding, setAdding] = useState('')
+
+  const rosterIds = new Set((project.members ?? []).map((m: any) => m.memberId))
+  const candidates = (orgMembers as any[]).filter((m: any) => !rosterIds.has(m.id))
+
+  return (
+    <Panel title="People" icon={Users}>
+      {project.members?.length ? (
+        <ul className="space-y-1.5 mb-3">
+          {project.members.map((m: any) => (
+            <li key={m.id} className="flex items-center justify-between gap-2 text-xs">
+              <span className="min-w-0">
+                <span className="block text-[var(--text-primary)] truncate">{m.member.name}</span>
+                <span className="block text-[10px] text-[var(--text-tertiary)]">
+                  {m.role.replace(/_/g, ' ').toLowerCase()}
+                  {m.department ? ` · ${m.department.name}` : ''}
+                </span>
+              </span>
+              {m.role !== 'PROJECT_MANAGER' && (
+                <button
+                  onClick={() => removeMember.mutate(m.memberId)}
+                  disabled={removeMember.isPending}
+                  className="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--danger)] text-[11px]"
+                  title="Remove from project"
+                >
+                  Remove
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-[var(--text-tertiary)] mb-3">No members added yet.</p>
+      )}
+      <div className="flex items-center gap-2">
+        <select
+          value={adding}
+          onChange={(e) => setAdding(e.target.value)}
+          className="flex-1 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-1.5 text-xs text-[var(--text-primary)]"
+        >
+          <option value="">Add a person…</option>
+          {candidates.map((m: any) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+        <button
+          onClick={() => {
+            if (!adding) return
+            addMember.mutate({ memberId: adding }, { onSuccess: () => setAdding('') })
+          }}
+          disabled={!adding || addMember.isPending}
+          className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-40"
+          style={{ background: 'var(--accent-secondary)' }}
+        >
+          Add
+        </button>
+      </div>
+    </Panel>
   )
 }
 
