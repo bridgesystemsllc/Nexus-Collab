@@ -447,6 +447,16 @@ const patchProjectSchema = createProjectSchema
     targetEndDate: z.coerce.date().nullable().optional(),
     actualEndDate: z.coerce.date().nullable().optional(),
     lessonsLearned: z.string().max(10_000).optional(),
+    // .partial() above only makes these optional, not nullable — the base
+    // schema's .optional() fields still reject an explicit null. These four
+    // columns are genuinely nullable (String? / DateTime? in schema.prisma),
+    // so a client clearing the field must be able to send null and have it
+    // stick. `title` is deliberately excluded: the column is non-null and a
+    // project must always have a title.
+    description: z.string().max(10_000).nullable().optional(),
+    businessCase: z.string().max(10_000).nullable().optional(),
+    successCriteria: z.string().max(10_000).nullable().optional(),
+    startDate: z.coerce.date().nullable().optional(),
   })
   .strict()
 

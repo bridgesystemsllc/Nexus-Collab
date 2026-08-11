@@ -84,6 +84,14 @@ export function ProjectDetailView({
     await update.mutateAsync({ [field]: next === '' ? null : next })
   }
 
+  // Required text: the column is non-null, so an emptied value is refused
+  // rather than sent. InlineEdit keeps the draft and shows this message.
+  const saveRequired = (field: string, label: string) => async (next: unknown) => {
+    const text = String(next ?? '').trim()
+    if (!text) throw new Error(`${label} cannot be empty`)
+    await update.mutateAsync({ [field]: text })
+  }
+
   // brands/retailers/markets are text[] on the server and reject null, so an
   // emptied list must become [] rather than following the saveField path.
   const saveList = (field: string) => async (next: unknown) => {
@@ -149,7 +157,7 @@ export function ProjectDetailView({
                 canEdit={caps.editProject}
                 label="project title"
                 maxLength={300}
-                onSave={saveField('title')}
+                onSave={saveRequired('title', 'Project title')}
               />
             </div>
             {project.projectType && (
