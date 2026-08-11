@@ -26,11 +26,13 @@ export function projectCapabilities(
   const governance = can(actor, 'SET_BASELINE', project).allowed
 
   // Lane-scoped task actions need a task to judge. Probe with a task in the
-  // actor's own lane, which is exactly the "own lane" question.
+  // actor's own lane, assigned to the actor — a plain contributor may only
+  // edit tasks in their own lane that they themselves own, so that is the
+  // "own lane" question EDIT_TASK_OWN_LANE actually asks.
   const ownLaneProbe: PolicyTask = {
     id: 'probe',
     departmentId: actor.departmentId ?? null,
-    ownerId: null,
+    ownerId: actor.id,
     acceptanceStatus: null,
   }
 
