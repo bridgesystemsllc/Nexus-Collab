@@ -57,6 +57,10 @@ export function PhaseEditor({
     }
   }
 
+  const resetDraft = () => {
+    setAdding(false); setName(''); setStart(''); setEnd(''); setError(null)
+  }
+
   const move = async (index: number, delta: -1 | 1) => {
     const target = index + delta
     if (target < 0 || target >= ordered.length) return
@@ -135,7 +139,7 @@ export function PhaseEditor({
           <input autoFocus value={name} placeholder="Phase name" maxLength={200}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') { setAdding(false); setError(null) }
+              if (e.key === 'Escape') { resetDraft() }
               if (e.key === 'Enter') { e.preventDefault(); void submit() }
             }}
             className={`${field} flex-1 min-w-[10rem]`} />
@@ -147,7 +151,7 @@ export function PhaseEditor({
             {create.isPending && <Loader2 size={12} className="animate-spin" />}
             Add
           </button>
-          <button type="button" onClick={() => { setAdding(false); setError(null) }}
+          <button type="button" onClick={resetDraft}
             className="px-2 py-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
             Cancel
           </button>

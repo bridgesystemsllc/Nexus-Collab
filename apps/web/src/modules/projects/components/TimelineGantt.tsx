@@ -160,12 +160,15 @@ export function TimelineGantt({
 
   if (rows.length === 0 && milestones.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-[var(--border-default)] py-16 text-center">
-        <ZoomIn size={24} className="mx-auto text-[var(--text-tertiary)] mb-2" />
-        <p className="text-sm text-[var(--text-secondary)]">Nothing scheduled yet</p>
-        <p className="text-xs text-[var(--text-tertiary)] mt-1">
-          Add phases, milestones or dated tasks and they will appear here.
-        </p>
+      <div className="space-y-3">
+        <PhaseEditor projectId={projectId} phases={phases} canEdit={canEdit} />
+        <div className="rounded-xl border border-dashed border-[var(--border-default)] py-16 text-center">
+          <ZoomIn size={24} className="mx-auto text-[var(--text-tertiary)] mb-2" />
+          <p className="text-sm text-[var(--text-secondary)]">Nothing scheduled yet</p>
+          <p className="text-xs text-[var(--text-tertiary)] mt-1">
+            Add phases, milestones or dated tasks and they will appear here.
+          </p>
+        </div>
       </div>
     )
   }
