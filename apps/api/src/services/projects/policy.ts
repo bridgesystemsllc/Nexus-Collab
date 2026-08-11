@@ -196,7 +196,6 @@ export function can(
     case 'VIEW_PROJECT':
       return ALLOW
 
-    // ── Project-level administration: PM or org admin only ──
     // Editing project content is open to anyone working on the project.
     // Baselining and the three below are not: baselineEndDate is frozen at
     // approval and every slip metric is measured against it.
@@ -207,6 +206,7 @@ export function can(
         ? ALLOW
         : deny('You are not a member of this project')
 
+    // ── Project-level administration: PM or org admin only ──
     case 'SET_BASELINE':
     case 'ADD_DEPARTMENT':
     case 'PUBLISH_REPORT':

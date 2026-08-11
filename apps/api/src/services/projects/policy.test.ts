@@ -306,7 +306,7 @@ describe('helpers', () => {
 describe('assertCan', () => {
   it('throws a 403-shaped PolicyError carrying the reason', () => {
     try {
-      assertCan(RD_CONTRIB, 'EDIT_PROJECT', project())
+      assertCan(RD_CONTRIB, 'SET_BASELINE', project())
       expect.unreachable('should have thrown')
     } catch (err) {
       expect(err).toBeInstanceOf(PolicyError)
