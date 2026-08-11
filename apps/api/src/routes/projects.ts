@@ -10,6 +10,7 @@ import { allocateProjectNumber } from '../services/projects/numbering'
 import { applyTemplate } from '../services/projects/template'
 import { logActivity, diffFields, touchProject } from '../services/projects/activity'
 import { splitByTier } from '../services/projects/fieldTiers'
+import { projectCapabilities } from '../services/projects/capabilities'
 
 export const projectRoutes: ReturnType<typeof Router> = Router()
 
@@ -256,7 +257,7 @@ projectRoutes.get('/:id', async (req: Request, res: Response) => {
       },
     })
 
-    return ok(res, project)
+    return ok(res, project && { ...project, capabilities: projectCapabilities(actor, policyProject) })
   } catch (err) {
     return fail(res, err)
   }
