@@ -79,6 +79,11 @@ export function ProjectDetailView({
   const laneTasks = departmentId ? tasks.filter((t) => t.departmentId === departmentId) : tasks
   // The server computes this from the same policy the write routes enforce.
   const caps = project?.capabilities ?? NO_CAPABILITIES
+  // Collab and portfolio scopes have no scope department, so the board needs a
+  // lane to fall back on. Use the actor's own lane on this project — the same
+  // lane the server's createTask capability was probed against.
+  const myLaneId =
+    project.members?.find((m: any) => m.memberId === currentMemberId)?.department?.id ?? null
 
   const saveField = (field: string) => async (next: unknown) => {
     await update.mutateAsync({ [field]: next === '' ? null : next })
@@ -242,6 +247,7 @@ export function ProjectDetailView({
             onOpenTask={setSelectedTask}
             currentMemberId={currentMemberId}
             canCreate={caps.createTask}
+            fallbackDepartmentId={myLaneId}
           />
         )}
         {tab === 'checkins' && (

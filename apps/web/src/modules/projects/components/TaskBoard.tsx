@@ -10,6 +10,10 @@ import {
 import { formatDate } from './ProjectCard'
 import { TaskComposer } from './TaskComposer'
 
+// Sentinel for the composer opened from the board itself rather than from a
+// column — the empty board has no columns to hang it on.
+const BOARD_COMPOSER = '__board__'
+
 // ─── Task board ──────────────────────────────────────────────
 // Swimlanes by department inside a collab (where "who is doing what" is the
 // question) and by status inside a department (where everyone is the same
@@ -25,9 +29,10 @@ interface Props {
   onOpenTask: (task: ProjectTask) => void
   currentMemberId?: string | null
   canCreate: boolean
+  fallbackDepartmentId: string | null
 }
 
-export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId, canCreate }: Props) {
+export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId, canCreate, fallbackDepartmentId }: Props) {
   const defaultGrouping = useDefaultBoardGrouping()
   const { departmentId: scopeDeptId } = useProjectScope()
   const [grouping, setGrouping] = useState<'status' | 'department'>(defaultGrouping)
@@ -81,6 +86,14 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId, canCr
         droppableStatus: null as TaskStatus | null,
       }))
   }, [visible, grouping])
+
+  // Under department grouping a column IS a department lane, so a task added
+  // there belongs to that lane. 'unassigned' is a display bucket, not a real
+  // department, so it falls through like any non-column composer.
+  const departmentForColumn = (key: string | null) =>
+    grouping === 'department' && key && key !== 'unassigned' && key !== BOARD_COMPOSER
+      ? key
+      : (scopeDeptId ?? fallbackDepartmentId ?? null)
 
   const onDrop = (status: TaskStatus | null) => {
     const taskId = dragging
@@ -148,7 +161,7 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId, canCr
         {canCreate && (
           <button
             type="button"
-            onClick={() => setComposerFor(columns[0]?.key ?? null)}
+            onClick={() => setComposerFor(columns[0]?.key ?? BOARD_COMPOSER)}
             className="ml-auto px-3 py-1.5 rounded-full text-xs font-medium text-white inline-flex items-center gap-1.5"
             style={{ background: 'var(--accent-secondary)' }}
           >
@@ -181,7 +194,7 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId, canCr
             <div className="max-w-sm mx-auto">
               <button
                 type="button"
-                onClick={() => setComposerFor(columns[0]?.key ?? null)}
+                onClick={() => setComposerFor(BOARD_COMPOSER)}
                 className="w-full px-3 py-2 rounded-lg text-xs font-medium text-white inline-flex items-center justify-center gap-1.5"
                 style={{ background: 'var(--accent-secondary)' }}
               >
@@ -195,7 +208,7 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId, canCr
               <TaskComposer
                 projectId={projectId}
                 defaultStatus="NOT_STARTED"
-                defaultDepartmentId={scopeDeptId ?? null}
+                defaultDepartmentId={departmentForColumn(composerFor)}
                 onClose={() => setComposerFor(null)}
                 onCreated={() => setComposerFor(null)}
               />
@@ -236,7 +249,7 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId, canCr
                 <TaskComposer
                   projectId={projectId}
                   defaultStatus={col.droppableStatus ?? 'NOT_STARTED'}
-                  defaultDepartmentId={scopeDeptId ?? null}
+                  defaultDepartmentId={departmentForColumn(col.key)}
                   onClose={() => setComposerFor(null)}
                   onCreated={() => setComposerFor(null)}
                 />
