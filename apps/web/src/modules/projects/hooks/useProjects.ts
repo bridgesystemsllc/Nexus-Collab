@@ -134,7 +134,10 @@ export function useCreateMilestone(projectId: string) {
 export function useUpdateMilestone(projectId: string) {
   return useTimelineMutation(
     projectId,
-    ({ milestoneId, ...body }: { milestoneId: string } & Partial<client.MilestoneBody>) =>
+    ({ milestoneId, ...body }: { milestoneId: string } & Partial<client.MilestoneBody> & {
+      status?: 'PENDING' | 'AT_RISK' | 'MISSED' | 'COMPLETE'
+      completedDate?: string | null
+    }) =>
       client.updateMilestone(projectId, milestoneId, body),
   )
 }

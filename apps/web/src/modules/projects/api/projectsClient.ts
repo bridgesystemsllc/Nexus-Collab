@@ -158,8 +158,14 @@ export const reorderPhases = (projectId: string, orderedIds: string[]) =>
 export const createMilestone = (projectId: string, body: MilestoneBody) =>
   send<any>('post', `/${projectId}/milestones`, body)
 
-export const updateMilestone = (projectId: string, milestoneId: string, body: Partial<MilestoneBody>) =>
-  send<any>('patch', `/${projectId}/milestones/${milestoneId}`, body)
+export const updateMilestone = (
+  projectId: string,
+  milestoneId: string,
+  body: Partial<MilestoneBody> & {
+    status?: 'PENDING' | 'AT_RISK' | 'MISSED' | 'COMPLETE'
+    completedDate?: string | null
+  },
+) => send<any>('patch', `/${projectId}/milestones/${milestoneId}`, body)
 
 export const deleteMilestone = (projectId: string, milestoneId: string) =>
   send<null>('delete', `/${projectId}/milestones/${milestoneId}`)
