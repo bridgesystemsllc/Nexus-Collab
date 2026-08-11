@@ -86,7 +86,12 @@ paths to click through once it builds:
 2. **Empty the title.** It must be *refused* with "Project title cannot be
    empty", not cleared — the column is non-null.
 3. **Add a task from a collab or portfolio view.** Both scopes have no scope
-   department; the lane now falls back to the actor's own lane on the project.
+   department. The lane now comes from the server as
+   `capabilities.defaultTaskLaneId` (the actor's own department, which is what
+   `CREATE_TASK_OWN_LANE` is evaluated against). An earlier attempt derived it
+   client-side from `currentMemberId` — which no route ever passes, so it was
+   always `null` and this path was dead. Worth testing from the Projects page
+   specifically, since portfolio scope is the default there.
 4. **Add a task from an empty board** in department grouping. The button must
    actually open a composer — it was previously a no-op.
 5. **Add the first phase to a brand-new project** with no phases and no dated
@@ -96,24 +101,55 @@ paths to click through once it builds:
 7. **Check a viewer sees no edit affordances at all** — capabilities now come
    from the server and default closed, where the old client guess failed open.
 
+## What the review pass caught
+
+Seventeen defects were found and fixed by adversarial review; none were caught
+by a compiler, because none ran. The ones worth knowing about, because they
+shape how this code behaves:
+
+| Where | Defect |
+|---|---|
+| `capabilities.ts` | probe used `ownerId: null`, so `editTaskOwnLane` was false for **every** contributor |
+| `ProjectDetailView.tsx` | the fail-open permission guess existed at **four** call sites, not one |
+| `projects.ts` | `.partial()` does not imply nullable — clearing any content field 422'd |
+| `TaskBoard.tsx` | task creation dead in collab/portfolio scope; empty board's buttons were literal no-ops |
+| `TimelineGantt.tsx` | phase editor unreachable on an empty timeline — the state every new project starts in |
+| `ProjectDetailView.tsx` | `currentMemberId` is declared but **never passed by any route**, so the lane fallback was always null |
+| `projectCheckins.ts` | widening `EDIT_PROJECT` silently let contributors change check-in cadence |
+
+That last-but-one item is worth dwelling on: because `currentMemberId` is
+always undefined, the *old* guess `project.projectManager?.id === currentMemberId || !currentMemberId`
+evaluated to `true` for everyone. Before this branch, every user saw every edit
+affordance on every project. The server refused the writes, so it presented as
+confusing 403s rather than a data breach — but the UI was telling everyone they
+could edit.
+
 ## Known deferred items
 
-- **`tiers.unrecognised` is computed but never inspected** by the PATCH route.
-  Both `fieldTiers.ts` and the design spec promise an unclassified field "fails
-  closed and loudly"; the route does not deliver that. Safe today only because
-  `patchProjectSchema` is `.strict()`, so `status` is the only key that can
-  land there. Fix is ~3 lines, or correct the two promises.
 - **A tag containing a comma splits into two tags** — brands/retailers/markets
   round-trip through `join(', ')` / `split(',')`. The plan accepted this
   trade-off explicitly; a chip editor was judged out of scope.
 - **Untested no-op branches** in the inline-edit reducer: `SUBMIT`/`CANCEL`
   while saving, `BEGIN` while editing or failed. Implemented correctly by
   inspection; simply unasserted.
+- **No optimistic update.** Design spec §2.2 asked for saves to apply
+  optimistically and roll back on failure. `useUpdateProject` has no
+  `onMutate`, so a saved field briefly shows its old value until the
+  invalidation refetch lands. Implementing this blind — with no way to run a
+  test — was judged riskier than the flicker. Left as a deliberate deviation.
+- **Keyboard tab-away does not disarm the phase-delete confirm.** Escape and
+  clicking elsewhere both clear it; tabbing away leaves it armed. It still
+  takes a second deliberate click to delete, so nothing is destroyed by
+  accident.
+- **`editGovernance` and `setBaseline` capabilities are unconsumed** by any UI.
+  Forward capacity, not dead code — but nothing exercises them yet.
 
 ## If something fails
 
-The full decision history — every defect found, who found it, and why each fix
-was chosen — is in the SDD ledger at
-`.superpowers/sdd/2026-08-10-project-editability/progress.md`, along with
-per-task reports. That directory is git-ignored scratch; read it before
-deleting it if you need the reasoning behind any change.
+The full decision history — every defect, who found it, and the reasoning
+behind each fix — is in the SDD ledger at
+`.superpowers/sdd/2026-08-10-project-editability/progress.md`, with per-task
+reports beside it. **That directory is git-ignored, so it exists only on the
+machine this was built on and will not appear on Replit.** The table above is
+the portable summary; if you need more than that, pull it from the build
+machine before it is cleaned up.
