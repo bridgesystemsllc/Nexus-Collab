@@ -1067,7 +1067,11 @@ export function InlineEdit<T extends string | string[] | null>({
   const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement | HTMLSelectElement>(null)
 
   useEffect(() => {
-    if (state.phase === 'editing') inputRef.current?.focus()
+    // 'failed' is included deliberately: disabling the focused input while the
+    // save is in flight blurs it, so the editor must take focus back when it
+    // re-enables — otherwise a rejected save silently ejects keyboard users
+    // from the field they were editing.
+    if (state.phase === 'editing' || state.phase === 'failed') inputRef.current?.focus()
   }, [state.phase])
 
   const draft = currentDraft(state, value)
