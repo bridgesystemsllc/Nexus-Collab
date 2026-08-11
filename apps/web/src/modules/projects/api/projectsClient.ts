@@ -143,7 +143,7 @@ export const updatePhase = (
   projectId: string,
   phaseId: string,
   body: Partial<PhaseBody> & {
-    status?: string
+    status?: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE' | 'BLOCKED' | 'SKIPPED'
     actualStart?: string | null
     actualEnd?: string | null
   },

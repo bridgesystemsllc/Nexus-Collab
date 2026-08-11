@@ -111,7 +111,11 @@ export function useCreatePhase(projectId: string) {
 export function useUpdatePhase(projectId: string) {
   return useTimelineMutation(
     projectId,
-    ({ phaseId, ...body }: { phaseId: string } & Partial<client.PhaseBody>) =>
+    ({ phaseId, ...body }: { phaseId: string } & Partial<client.PhaseBody> & {
+      status?: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE' | 'BLOCKED' | 'SKIPPED'
+      actualStart?: string | null
+      actualEnd?: string | null
+    }) =>
       client.updatePhase(projectId, phaseId, body),
   )
 }
