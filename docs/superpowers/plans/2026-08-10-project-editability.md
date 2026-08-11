@@ -1239,10 +1239,15 @@ and the component import:
 import { InlineEdit } from '../components/InlineEdit'
 ```
 
-Inside `ProjectDetailView`, alongside the `caps` line from Task 5:
+Inside `ProjectDetailView`: `useUpdateProject` is a **hook**, so it must be
+called unconditionally — place it with the other data hooks, ABOVE the
+`isLoading` / `isError` early returns. Calling it alongside `caps` (which sits
+below those returns) would be a conditional hook call and React would throw
+"Rendered fewer hooks than expected" on first load. The three plain helper
+functions below are not hooks and do belong next to `caps`.
 
 ```ts
-  const update = useUpdateProject(projectId)
+  const update = useUpdateProject(projectId)   // ← above the early returns
 
   const saveField = (field: string) => async (next: unknown) => {
     await update.mutateAsync({ [field]: next === '' ? null : next })
