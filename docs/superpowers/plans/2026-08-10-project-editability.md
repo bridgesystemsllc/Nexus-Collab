@@ -467,10 +467,19 @@ interface ProjectCapabilities {
   editTaskOwnLane: boolean
   editTimeline: boolean
   setBaseline: boolean
+  publishReport: boolean
 }
 ```
 
 Task 5 mirrors this shape in the web `types.ts`. Keep the key names identical.
+
+`publishReport` was added during execution: Task 5's grep found two further
+fail-open call sites this plan had missed — `canRequest` on `CheckInPanel` and
+`canGenerate` on `ReportsPanel`. The first maps to `editProject`
+(`projectCheckins.ts:215`), but report generation asserts `PUBLISH_REPORT`
+(`projectReports.ts:259`), which had no capability. It currently equals
+`editGovernance` in value, but is kept separate because the two answer
+different questions and will diverge if either rule changes.
 
 `editTaskOwnLane` exists because the Gantt's task-bar drag calls
 `PATCH /tasks/:taskId`, which asserts `assertCanEditTask` — a per-task lane
