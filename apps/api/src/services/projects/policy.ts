@@ -128,6 +128,14 @@ function inParticipatingDept(actor: PolicyActor, project: PolicyProject): boolea
   return project.departments.some((d) => d.departmentId === actor.departmentId)
 }
 
+// Anyone with standing on this project: an explicit member, or a member of a
+// participating department. Distinct from canView, which also admits the
+// owning department. Callers must check isViewerOnly first — a VIEWER is a
+// participant.
+export function isProjectParticipant(actor: PolicyActor, project: PolicyProject): boolean {
+  return !!membership(actor, project) || inParticipatingDept(actor, project)
+}
+
 function isViewerOnly(actor: PolicyActor, project: PolicyProject): boolean {
   const m = membership(actor, project)
   if (m) return m.role === 'VIEWER'
@@ -189,7 +197,16 @@ export function can(
       return ALLOW
 
     // ── Project-level administration: PM or org admin only ──
+    // Editing project content is open to anyone working on the project.
+    // Baselining and the three below are not: baselineEndDate is frozen at
+    // approval and every slip metric is measured against it.
     case 'EDIT_PROJECT':
+      if (admin || pm) return ALLOW
+      if (viewerOnly) return deny('Viewers cannot edit this project')
+      return isProjectParticipant(actor, project)
+        ? ALLOW
+        : deny('You are not a member of this project')
+
     case 'SET_BASELINE':
     case 'ADD_DEPARTMENT':
     case 'PUBLISH_REPORT':

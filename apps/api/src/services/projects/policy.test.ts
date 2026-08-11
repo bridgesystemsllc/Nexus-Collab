@@ -127,8 +127,8 @@ describe('CREATE_PROJECT', () => {
   })
 })
 
-describe('project administration is PM/admin only', () => {
-  it.each(['EDIT_PROJECT', 'SET_BASELINE', 'ADD_DEPARTMENT', 'PUBLISH_REPORT'] as const)(
+describe('project governance stays PM/admin only', () => {
+  it.each(['SET_BASELINE', 'ADD_DEPARTMENT', 'PUBLISH_REPORT'] as const)(
     '%s allows PM and admin, denies lane lead and contributor',
     (action) => {
       expect(can(PM, action, project()).allowed).toBe(true)
@@ -137,6 +137,46 @@ describe('project administration is PM/admin only', () => {
       expect(can(RD_CONTRIB, action, project()).allowed).toBe(false)
     },
   )
+})
+
+describe('EDIT_PROJECT extends to any non-viewer participant', () => {
+  it('allows the PM and an org admin', () => {
+    expect(can(PM, 'EDIT_PROJECT', project()).allowed).toBe(true)
+    expect(can(ADMIN, 'EDIT_PROJECT', project()).allowed).toBe(true)
+  })
+
+  it('allows a lane lead and a contributor in a participating department', () => {
+    expect(can(RD_LEAD, 'EDIT_PROJECT', project()).allowed).toBe(true)
+    expect(can(RD_CONTRIB, 'EDIT_PROJECT', project()).allowed).toBe(true)
+  })
+
+  it('denies an explicit VIEWER member', () => {
+    const p = project({
+      members: [{ memberId: RD_CONTRIB.id, role: 'VIEWER', departmentId: RD }],
+    })
+    const d = can(RD_CONTRIB, 'EDIT_PROJECT', p)
+    expect(d.allowed).toBe(false)
+    expect(d.reason).toContain('Viewers')
+  })
+
+  it('denies a department participating only as VIEWER', () => {
+    const p = project({
+      departments: [{ departmentId: RD, role: 'VIEWER', laneLeadId: null }],
+    })
+    expect(can(RD_CONTRIB, 'EDIT_PROJECT', p).allowed).toBe(false)
+  })
+
+  it('prefers an explicit CONTRIBUTOR membership over a VIEWER department lane', () => {
+    const p = project({
+      departments: [{ departmentId: RD, role: 'VIEWER', laneLeadId: null }],
+      members: [{ memberId: RD_CONTRIB.id, role: 'CONTRIBUTOR', departmentId: RD }],
+    })
+    expect(can(RD_CONTRIB, 'EDIT_PROJECT', p).allowed).toBe(true)
+  })
+
+  it('denies someone whose department is not participating', () => {
+    expect(can(OUTSIDER, 'EDIT_PROJECT', project()).allowed).toBe(false)
+  })
 
   it('recognises a PROJECT_MANAGER membership as well as the header field', () => {
     const p = project({
