@@ -2253,3 +2253,15 @@ Recorded here so review has them in one place.
 
 7. **Task title length.** `createTaskSchema` allows `title` up to **500**
    characters, not 300; the composer matches the server.
+
+8. **`.partial()` does not imply nullable — found during execution.** Task 8's
+   `saveField` maps `'' → null` to clear a field, but `patchProjectSchema` is
+   built with `.partial()`, which makes fields optional without making them
+   nullable. Clearing `description`, `businessCase`, `successCriteria` or
+   `startDate` would have returned 422 at runtime. Neither a typecheck nor a
+   build catches this — it is a data-contract mismatch, not a type error.
+   Those four are now `.nullable().optional()` in the route's `.extend()`
+   block. `title` is deliberately excluded: its Prisma column is `String`
+   (non-null) and zod enforces `min(1)`, so an emptied title must be refused
+   rather than cleared — hence the `saveRequired(field, label)` helper, which
+   throws and lets `InlineEdit`'s failed state surface the message.
