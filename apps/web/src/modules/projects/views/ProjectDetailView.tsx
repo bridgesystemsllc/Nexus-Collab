@@ -241,6 +241,7 @@ export function ProjectDetailView({
             tasks={departmentId && laneTasks.length > 0 ? tasks : tasks}
             onOpenTask={setSelectedTask}
             currentMemberId={currentMemberId}
+            canCreate={caps.createTask}
           />
         )}
         {tab === 'checkins' && (
