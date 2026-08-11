@@ -16,6 +16,7 @@ import { useModalBehaviour } from '../lib/useModalBehaviour'
 import { ReportsPanel } from '../components/ReportsPanel'
 import { ProgressBar, SlipBadge, formatDate, slipDays } from '../components/ProjectCard'
 import { STATUS_LABELS, toPercent, type ProjectTask } from '../types'
+import { NO_CAPABILITIES } from '../types'
 
 // ─── Project detail ──────────────────────────────────────────
 // The same component under every scope. In a collab it gains a "shared via"
@@ -70,6 +71,8 @@ export function ProjectDetailView({
   const percent = toPercent(project.percentComplete)
   const slip = slipDays(project)
   const laneTasks = departmentId ? tasks.filter((t) => t.departmentId === departmentId) : tasks
+  // The server computes this from the same policy the write routes enforce.
+  const caps = project?.capabilities ?? NO_CAPABILITIES
 
   return (
     <div className="space-y-4">
@@ -191,7 +194,7 @@ export function ProjectDetailView({
           <OverviewTab
             project={project}
             health={health}
-            canEdit={project.projectManager?.id === currentMemberId || !currentMemberId}
+            canEdit={caps.editProject}
           />
         )}
         {tab === 'tasks' && (
@@ -214,7 +217,7 @@ export function ProjectDetailView({
             isLoading={timelineLoading}
             // Rescheduling is a project-manager action; the server enforces
             // it either way, this just avoids offering a drag that will 403.
-            canReschedule={project.projectManager?.id === currentMemberId || !currentMemberId}
+            canReschedule={caps.editTaskOwnLane}
           />
         )}
         {tab === 'reports' && (
