@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../index'
-import { assertCan, type PolicyActor, type PolicyProject } from '../services/projects/policy'
+import { assertCan, can, PolicyError, type PolicyActor, type PolicyProject } from '../services/projects/policy'
 import {
   resolveActor, loadProjectForPolicy, visibilityWhere, errorResponse,
   NotFoundError, ValidationError, ConflictError,
@@ -9,6 +9,8 @@ import {
 import { allocateProjectNumber } from '../services/projects/numbering'
 import { applyTemplate } from '../services/projects/template'
 import { logActivity, diffFields, touchProject } from '../services/projects/activity'
+import { splitByTier } from '../services/projects/fieldTiers'
+import { projectCapabilities } from '../services/projects/capabilities'
 import { syncCoworkAddSafe, syncCoworkAddManySafe, syncCoworkRemoveSafe } from '../services/projects/coworkSync'
 
 export const projectRoutes: ReturnType<typeof Router> = Router()
@@ -262,7 +264,7 @@ projectRoutes.get('/:id', async (req: Request, res: Response) => {
       },
     })
 
-    return ok(res, project)
+    return ok(res, project && { ...project, capabilities: projectCapabilities(actor, policyProject) })
   } catch (err) {
     return fail(res, err)
   }
@@ -496,6 +498,16 @@ const patchProjectSchema = createProjectSchema
     targetEndDate: z.coerce.date().nullable().optional(),
     actualEndDate: z.coerce.date().nullable().optional(),
     lessonsLearned: z.string().max(10_000).optional(),
+    // .partial() above only makes these optional, not nullable — the base
+    // schema's .optional() fields still reject an explicit null. These four
+    // columns are genuinely nullable (String? / DateTime? in schema.prisma),
+    // so a client clearing the field must be able to send null and have it
+    // stick. `title` is deliberately excluded: the column is non-null and a
+    // project must always have a title.
+    description: z.string().max(10_000).nullable().optional(),
+    businessCase: z.string().max(10_000).nullable().optional(),
+    successCriteria: z.string().max(10_000).nullable().optional(),
+    startDate: z.coerce.date().nullable().optional(),
   })
   .strict()
 
@@ -505,6 +517,27 @@ projectRoutes.patch('/:id', async (req: Request, res: Response) => {
     const policyProject = await requireProject(req.params.id as string)
     assertCan(actor, 'EDIT_PROJECT', policyProject)
     const body = parseOrThrow(patchProjectSchema, req.body)
+
+    // EDIT_PROJECT is open to any non-viewer participant, but governance
+    // fields are not. Reject the whole request naming the offending fields —
+    // dropping them silently looks like a save that worked.
+    const tiers = splitByTier(body as Record<string, unknown>)
+    if (Object.keys(tiers.governance).length > 0) {
+      if (!can(actor, 'SET_BASELINE', policyProject).allowed) {
+        throw new PolicyError(
+          `Only the project manager or an admin can change: ${Object.keys(tiers.governance).sort().join(', ')}`,
+        )
+      }
+    }
+
+    // status has its own transition endpoint with its own rules; anything else
+    // here is a field nobody classified. Both fail closed — fieldTiers.ts
+    // promises exactly this.
+    if (tiers.unrecognised.length > 0) {
+      throw new ValidationError('These fields cannot be set here', {
+        fields: tiers.unrecognised.sort(),
+      })
+    }
 
     const before = await prisma.project.findUnique({ where: { id: policyProject.id } })
     if (!before) throw new NotFoundError('Project not found')

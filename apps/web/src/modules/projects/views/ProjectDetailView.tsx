@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import {
   ArrowLeft, CalendarDays, Users, Target, FileText, Activity as ActivityIcon, MessageSquare,
-  GitBranch, Lock, Share2,
+  GitBranch, Lock, Share2, Tag,
 } from 'lucide-react'
-import { useProject, useProjectHealth, useTasks, useProjectTimeline, useProjectCollabs, useAddProjectMember, useRemoveProjectMember } from '../hooks/useProjects'
+import {
+  useProject, useProjectHealth, useTasks, useProjectTimeline, useProjectCollabs,
+  useUpdateProject, useAddProjectMember, useRemoveProjectMember,
+} from '../hooks/useProjects'
 import { useMembers } from '@/hooks/useData'
 import { useProjectScope } from '../context/ProjectScopeContext'
 import { HealthRing } from '../components/HealthRing'
@@ -13,10 +16,12 @@ import { TimelineGantt } from '../components/TimelineGantt'
 import { CheckInPanel } from '../components/CheckInPanel'
 import { LinkedRecords } from '../components/LinkedRecords'
 import { ActivityFeed } from '../components/ActivityFeed'
+import { InlineEdit } from '../components/InlineEdit'
 import { useModalBehaviour } from '../lib/useModalBehaviour'
 import { ReportsPanel } from '../components/ReportsPanel'
 import { ProgressBar, SlipBadge, formatDate, slipDays } from '../components/ProjectCard'
 import { STATUS_LABELS, toPercent, type ProjectTask } from '../types'
+import { NO_CAPABILITIES } from '../types'
 
 // ─── Project detail ──────────────────────────────────────────
 // The same component under every scope. In a collab it gains a "shared via"
@@ -52,6 +57,11 @@ export function ProjectDetailView({
   const { data: timeline, isLoading: timelineLoading } = useProjectTimeline(
     tab === 'timeline' ? projectId : null,
   )
+  // Declared here, not alongside `caps` below, because it is a hook: the
+  // isLoading/isError checks below return early, and a hook called after an
+  // early return fires a different number of times across renders (React
+  // throws "Rendered fewer hooks than expected").
+  const update = useUpdateProject(projectId)
 
   if (isLoading) return <DetailSkeleton onBack={onBack} />
   if (isError || !project) {
@@ -71,6 +81,30 @@ export function ProjectDetailView({
   const percent = toPercent(project.percentComplete)
   const slip = slipDays(project)
   const laneTasks = departmentId ? tasks.filter((t) => t.departmentId === departmentId) : tasks
+  // The server computes this from the same policy the write routes enforce.
+  const caps = project?.capabilities ?? NO_CAPABILITIES
+
+  const saveField = (field: string) => async (next: unknown) => {
+    await update.mutateAsync({ [field]: next === '' ? null : next })
+  }
+
+  // Required text: the column is non-null, so an emptied value is refused
+  // rather than sent. InlineEdit keeps the draft and shows this message.
+  const saveRequired = (field: string, label: string) => async (next: unknown) => {
+    const text = String(next ?? '').trim()
+    if (!text) throw new Error(`${label} cannot be empty`)
+    await update.mutateAsync({ [field]: text })
+  }
+
+  // brands/retailers/markets are text[] on the server and reject null, so an
+  // emptied list must become [] rather than following the saveField path.
+  const saveList = (field: string) => async (next: unknown) => {
+    const items = String(next ?? '').split(',').map((s) => s.trim()).filter(Boolean)
+    await update.mutateAsync({ [field]: items })
+  }
+
+  /** Project dates arrive as ISO strings; <input type="date"> wants YYYY-MM-DD. */
+  const toDateInput = (v: string | null | undefined) => (v ? String(v).slice(0, 10) : '')
 
   return (
     <div className="space-y-4">
@@ -120,9 +154,20 @@ export function ProjectDetailView({
                 </span>
               )}
             </div>
-            <h1 className="text-lg font-semibold tracking-tight text-[var(--text-primary)] leading-snug">
-              {project.title}
-            </h1>
+            <div
+              role="heading"
+              aria-level={1}
+              className="text-lg font-semibold tracking-tight text-[var(--text-primary)] leading-snug"
+            >
+              <InlineEdit
+                value={project.title}
+                variant="text"
+                canEdit={caps.editProject}
+                label="project title"
+                maxLength={300}
+                onSave={saveRequired('title', 'Project title')}
+              />
+            </div>
             {project.projectType && (
               <p className="text-xs text-[var(--text-tertiary)] mt-0.5">{project.projectType.label}</p>
             )}
@@ -192,7 +237,10 @@ export function ProjectDetailView({
           <OverviewTab
             project={project}
             health={health}
-            canEdit={project.projectManager?.id === currentMemberId || !currentMemberId}
+            canEdit={caps.editProject}
+            saveField={saveField}
+            saveList={saveList}
+            toDateInput={toDateInput}
           />
         )}
         {tab === 'tasks' && (
@@ -201,12 +249,14 @@ export function ProjectDetailView({
             tasks={departmentId && laneTasks.length > 0 ? tasks : tasks}
             onOpenTask={setSelectedTask}
             currentMemberId={currentMemberId}
+            canCreate={caps.createTask}
+            fallbackDepartmentId={caps.defaultTaskLaneId}
           />
         )}
         {tab === 'checkins' && (
           <CheckInPanel
             projectId={projectId}
-            canRequest={project.projectManager?.id === currentMemberId || !currentMemberId}
+            canRequest={caps.editProject}
           />
         )}
         {tab === 'timeline' && (
@@ -215,7 +265,9 @@ export function ProjectDetailView({
             isLoading={timelineLoading}
             // Rescheduling is a project-manager action; the server enforces
             // it either way, this just avoids offering a drag that will 403.
-            canReschedule={project.projectManager?.id === currentMemberId || !currentMemberId}
+            canReschedule={caps.editTaskOwnLane}
+            projectId={projectId}
+            canEdit={caps.editTimeline}
           />
         )}
         {tab === 'reports' && (
@@ -224,7 +276,7 @@ export function ProjectDetailView({
             projectStatus={project.status}
             // Generating and publishing are project-manager actions; the server
             // enforces it either way, this just avoids offering a 403.
-            canGenerate={project.projectManager?.id === currentMemberId || !currentMemberId}
+            canGenerate={caps.publishReport}
           />
         )}
         {tab === 'activity' && <ActivityFeed projectId={projectId} />}
@@ -259,20 +311,54 @@ function BackButton({ onBack }: { onBack: () => void }) {
 }
 
 function OverviewTab({
-  project, health, canEdit,
-}: { project: any; health: any; canEdit: boolean }) {
+  project, health, canEdit, saveField, saveList, toDateInput,
+}: {
+  project: any
+  health: any
+  canEdit: boolean
+  saveField: (field: string) => (next: unknown) => Promise<void>
+  saveList: (field: string) => (next: unknown) => Promise<void>
+  toDateInput: (v: string | null | undefined) => string
+}) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <div className="lg:col-span-2 space-y-4">
         <Panel title="Business case" icon={FileText}>
-          <Prose text={project.businessCase} empty="No business case recorded yet." />
+          <InlineEdit
+            value={project.businessCase ?? ''}
+            variant="prose"
+            canEdit={canEdit}
+            label="business case"
+            placeholder="No business case recorded yet."
+            maxLength={10000}
+            onSave={saveField('businessCase')}
+          />
         </Panel>
         <Panel title="Success criteria" icon={Target}>
-          <Prose text={project.successCriteria} empty="No success criteria recorded yet." />
+          <InlineEdit
+            value={project.successCriteria ?? ''}
+            variant="prose"
+            canEdit={canEdit}
+            label="success criteria"
+            placeholder="No success criteria recorded yet."
+            maxLength={10000}
+            onSave={saveField('successCriteria')}
+          />
         </Panel>
-        {project.description && (
+        {/* Rendered whenever it can be edited: the old `project.description &&`
+            guard meant a project without a description had no panel, and so no
+            way to ever add one. */}
+        {(canEdit || project.description) && (
           <Panel title="Description" icon={FileText}>
-            <Prose text={project.description} empty="" />
+            <InlineEdit
+              value={project.description ?? ''}
+              variant="prose"
+              canEdit={canEdit}
+              label="description"
+              placeholder="No description yet."
+              maxLength={10000}
+              onSave={saveField('description')}
+            />
           </Panel>
         )}
       </div>
@@ -307,13 +393,81 @@ function OverviewTab({
 
         <Panel title="Key dates" icon={CalendarDays}>
           <dl className="space-y-1.5 text-xs">
-            <Row label="Start" value={formatDate(project.startDate)} />
-            <Row label="Target end" value={formatDate(project.targetEndDate)} />
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-[var(--text-tertiary)] shrink-0">Start</dt>
+              <dd className="flex-1 max-w-[60%]">
+                <InlineEdit
+                  value={toDateInput(project.startDate)}
+                  displayValue={formatDate(project.startDate)}
+                  variant="date"
+                  canEdit={canEdit}
+                  label="start date"
+                  placeholder="Not set"
+                  onSave={saveField('startDate')}
+                />
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-[var(--text-tertiary)] shrink-0">Target end</dt>
+              <dd className="flex-1 max-w-[60%]">
+                <InlineEdit
+                  value={toDateInput(project.targetEndDate)}
+                  displayValue={formatDate(project.targetEndDate)}
+                  variant="date"
+                  canEdit={canEdit}
+                  label="target end date"
+                  placeholder="Not set"
+                  onSave={saveField('targetEndDate')}
+                />
+              </dd>
+            </div>
             <Row
               label="Baseline"
               value={project.baselineEndDate ? formatDate(project.baselineEndDate) : 'Not baselined'}
             />
             {project.actualEndDate && <Row label="Actual end" value={formatDate(project.actualEndDate)} />}
+          </dl>
+        </Panel>
+
+        <Panel title="Classification" icon={Tag}>
+          <dl className="space-y-2 text-xs">
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-[var(--text-tertiary)] shrink-0">Priority</dt>
+              <dd className="flex-1 max-w-[60%]">
+                <InlineEdit
+                  value={project.priority ?? 'MEDIUM'}
+                  variant="select"
+                  canEdit={canEdit}
+                  label="priority"
+                  options={[
+                    { value: 'CRITICAL', label: 'Critical' },
+                    { value: 'HIGH', label: 'High' },
+                    { value: 'MEDIUM', label: 'Medium' },
+                    { value: 'LOW', label: 'Low' },
+                  ]}
+                  onSave={saveField('priority')}
+                />
+              </dd>
+            </div>
+            {([
+              ['brands', 'Brands'],
+              ['retailers', 'Retailers'],
+              ['markets', 'Markets'],
+            ] as const).map(([field, label]) => (
+              <div key={field}>
+                <dt className="text-[var(--text-tertiary)] mb-0.5">{label}</dt>
+                <dd>
+                  <InlineEdit
+                    value={(project[field] ?? []).join(', ')}
+                    variant="text"
+                    canEdit={canEdit}
+                    label={label.toLowerCase()}
+                    placeholder="None"
+                    onSave={saveList(field)}
+                  />
+                </dd>
+              </div>
+            ))}
           </dl>
         </Panel>
       </div>
@@ -399,11 +553,6 @@ function Panel({ title, icon: Icon, children }: { title: string; icon: React.Ele
       {children}
     </section>
   )
-}
-
-function Prose({ text, empty }: { text?: string | null; empty: string }) {
-  if (!text?.trim()) return <p className="text-xs text-[var(--text-tertiary)]">{empty}</p>
-  return <p className="text-sm text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">{text}</p>
 }
 
 function Row({ label, value }: { label: string; value: string }) {

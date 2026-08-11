@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, GitBranch, Inbox, Lock, ArrowRightLeft } from 'lucide-react'
+import { AlertTriangle, GitBranch, Inbox, Lock, ArrowRightLeft, Plus } from 'lucide-react'
 import { useSetTaskStatus } from '../hooks/useProjects'
 import { Toast, type ToastData } from '@/components/shared/Toast'
 import { useProjectScope, useDefaultBoardGrouping } from '../context/ProjectScopeContext'
@@ -8,6 +8,11 @@ import {
   type ProjectTask, type TaskStatus,
 } from '../types'
 import { formatDate } from './ProjectCard'
+import { TaskComposer } from './TaskComposer'
+
+// Sentinel for the composer opened from the board itself rather than from a
+// column — the empty board has no columns to hang it on.
+const BOARD_COMPOSER = '__board__'
 
 // ─── Task board ──────────────────────────────────────────────
 // Swimlanes by department inside a collab (where "who is doing what" is the
@@ -23,9 +28,11 @@ interface Props {
   tasks: ProjectTask[]
   onOpenTask: (task: ProjectTask) => void
   currentMemberId?: string | null
+  canCreate: boolean
+  fallbackDepartmentId: string | null
 }
 
-export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId }: Props) {
+export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId, canCreate, fallbackDepartmentId }: Props) {
   const defaultGrouping = useDefaultBoardGrouping()
   const { departmentId: scopeDeptId } = useProjectScope()
   const [grouping, setGrouping] = useState<'status' | 'department'>(defaultGrouping)
@@ -37,6 +44,8 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId }: Pro
   // announced at the viewport rather than in a banner that may be scrolled
   // out of sight. Silently snapping back is the failure mode to avoid.
   const [toast, setToast] = useState<ToastData | null>(null)
+  // Which column's composer is open, or null. One at a time.
+  const [composerFor, setComposerFor] = useState<string | null>(null)
 
   const setStatus = useSetTaskStatus(projectId)
 
@@ -77,6 +86,14 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId }: Pro
         droppableStatus: null as TaskStatus | null,
       }))
   }, [visible, grouping])
+
+  // Under department grouping a column IS a department lane, so a task added
+  // there belongs to that lane. 'unassigned' is a display bucket, not a real
+  // department, so it falls through like any non-column composer.
+  const departmentForColumn = (key: string | null) =>
+    grouping === 'department' && key && key !== 'unassigned' && key !== BOARD_COMPOSER
+      ? key
+      : (scopeDeptId ?? fallbackDepartmentId ?? null)
 
   const onDrop = (status: TaskStatus | null) => {
     const taskId = dragging
@@ -140,6 +157,18 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId }: Pro
             My tasks only
           </button>
         )}
+
+        {canCreate && (
+          <button
+            type="button"
+            onClick={() => setComposerFor(columns[0]?.key ?? BOARD_COMPOSER)}
+            className="ml-auto px-3 py-1.5 rounded-full text-xs font-medium text-white inline-flex items-center gap-1.5"
+            style={{ background: 'var(--accent-secondary)' }}
+          >
+            <Plus size={13} />
+            New task
+          </button>
+        )}
       </div>
 
       <Toast toast={toast} onDismiss={() => setToast(null)} duration={4000} />
@@ -159,7 +188,33 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId }: Pro
       )}
 
       {visible.length === 0 ? (
-        <EmptyBoard mineOnly={mineOnly} />
+        <div className="space-y-3">
+          <EmptyBoard mineOnly={mineOnly} />
+          {canCreate && composerFor === null && (
+            <div className="max-w-sm mx-auto">
+              <button
+                type="button"
+                onClick={() => setComposerFor(BOARD_COMPOSER)}
+                className="w-full px-3 py-2 rounded-lg text-xs font-medium text-white inline-flex items-center justify-center gap-1.5"
+                style={{ background: 'var(--accent-secondary)' }}
+              >
+                <Plus size={13} />
+                Add the first task
+              </button>
+            </div>
+          )}
+          {canCreate && composerFor !== null && (
+            <div className="max-w-sm mx-auto">
+              <TaskComposer
+                projectId={projectId}
+                defaultStatus="NOT_STARTED"
+                defaultDepartmentId={departmentForColumn(composerFor)}
+                onClose={() => setComposerFor(null)}
+                onCreated={() => setComposerFor(null)}
+              />
+            </div>
+          )}
+        </div>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-2">
           {columns.map((col) => (
@@ -189,6 +244,28 @@ export function TaskBoard({ projectId, tasks, onOpenTask, currentMemberId }: Pro
                   {col.tasks.length}
                 </span>
               </div>
+
+              {canCreate && composerFor === col.key ? (
+                <TaskComposer
+                  projectId={projectId}
+                  defaultStatus={col.droppableStatus ?? 'NOT_STARTED'}
+                  defaultDepartmentId={departmentForColumn(col.key)}
+                  onClose={() => setComposerFor(null)}
+                  onCreated={() => setComposerFor(null)}
+                />
+              ) : canCreate ? (
+                <button
+                  type="button"
+                  onClick={() => setComposerFor(col.key)}
+                  aria-label={`Add a task to ${col.label}`}
+                  className="w-full rounded-lg border border-dashed border-[var(--border-subtle)] py-1.5
+                    text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)]
+                    hover:border-[var(--accent)] transition-colors inline-flex items-center justify-center gap-1"
+                >
+                  <Plus size={12} />
+                  Add
+                </button>
+              ) : null}
 
               <div className="space-y-1.5">
                 {col.tasks.map((task) => (

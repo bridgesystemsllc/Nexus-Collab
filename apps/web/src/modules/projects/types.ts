@@ -81,6 +81,30 @@ export interface ProjectSummary {
   _count?: { tasks?: number; milestones?: number; risks?: number }
 }
 
+/** Mirrors ProjectCapabilities in apps/api/src/services/projects/capabilities.ts. */
+export interface ProjectCapabilities {
+  editProject: boolean
+  editGovernance: boolean
+  createTask: boolean
+  editTaskOwnLane: boolean
+  editTimeline: boolean
+  setBaseline: boolean
+  publishReport: boolean
+  defaultTaskLaneId: string | null
+}
+
+/** Deny everything when the server sent nothing — never fail open. */
+export const NO_CAPABILITIES: ProjectCapabilities = {
+  editProject: false,
+  editGovernance: false,
+  createTask: false,
+  editTaskOwnLane: false,
+  editTimeline: false,
+  setBaseline: false,
+  publishReport: false,
+  defaultTaskLaneId: null,
+}
+
 export interface ProjectDetail extends ProjectSummary {
   businessCase?: string | null
   successCriteria?: string | null
@@ -92,6 +116,7 @@ export interface ProjectDetail extends ProjectSummary {
   actualSpend?: string | number | null
   currency: string
   customFields: Record<string, unknown>
+  capabilities?: ProjectCapabilities
   checkinCadence: string
   nextCheckinAt?: string | null
   executiveSponsor?: MemberRef | null

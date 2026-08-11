@@ -304,7 +304,10 @@ projectCheckinRoutes.post('/:id/checkins/schedule', async (req: Request, res: Re
   try {
     const actor = await resolveActor(prisma, req)
     const project = await requireProject(req.params.id as string)
-    assertCan(actor, 'EDIT_PROJECT', project)
+    // Check-in cadence is governance-tier (see services/projects/fieldTiers.ts),
+    // and EDIT_PROJECT now includes every non-viewer member. SET_BASELINE is
+    // the branch's canonical "PM or admin" probe.
+    assertCan(actor, 'SET_BASELINE', project)
 
     const body = parseOrThrow(
       z.object({
@@ -341,7 +344,10 @@ projectCheckinRoutes.post('/:id/checkins/ensure-schedule', async (req: Request, 
   try {
     const actor = await resolveActor(prisma, req)
     const project = await requireProject(req.params.id as string)
-    assertCan(actor, 'EDIT_PROJECT', project)
+    // Check-in cadence is governance-tier (see services/projects/fieldTiers.ts),
+    // and EDIT_PROJECT now includes every non-viewer member. SET_BASELINE is
+    // the branch's canonical "PM or admin" probe.
+    assertCan(actor, 'SET_BASELINE', project)
     const next = await ensureCheckinSchedule(prisma, project.id)
     return ok(res, { nextCheckinAt: next }, { nextCheckinLabel: next ? formatEt(next) : null })
   } catch (err) {

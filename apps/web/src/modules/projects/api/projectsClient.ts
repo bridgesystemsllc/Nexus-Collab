@@ -113,6 +113,63 @@ export const setBaseline = (id: string, force = false) =>
   send<ProjectDetail>('post', `/${id}/baseline`, { force })
 export const deleteProject = (id: string) => send<null>('delete', `/${id}`)
 
+// ─── Timeline: phases and milestones ─────────────────────────
+// Bodies mirror the zod schemas in apps/api/src/routes/projectTimeline.ts
+// exactly. All are .strict(): an extra key is a 422, not a warning.
+
+export interface PhaseBody {
+  name: string
+  sequence: number
+  departmentId?: string
+  startDate?: string
+  endDate?: string
+  colorHex?: string
+}
+
+export interface MilestoneBody {
+  name: string
+  description?: string
+  dueDate: string
+  phaseId?: string
+  ownerId?: string
+  departmentId?: string
+  isGate?: boolean
+}
+
+export const createPhase = (projectId: string, body: PhaseBody) =>
+  send<any>('post', `/${projectId}/phases`, body)
+
+export const updatePhase = (
+  projectId: string,
+  phaseId: string,
+  body: Partial<PhaseBody> & {
+    status?: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE' | 'BLOCKED' | 'SKIPPED'
+    actualStart?: string | null
+    actualEnd?: string | null
+  },
+) => send<any>('patch', `/${projectId}/phases/${phaseId}`, body)
+
+export const deletePhase = (projectId: string, phaseId: string) =>
+  send<null>('delete', `/${projectId}/phases/${phaseId}`)
+
+export const reorderPhases = (projectId: string, orderedIds: string[]) =>
+  send<any>('post', `/${projectId}/phases/reorder`, { orderedIds })
+
+export const createMilestone = (projectId: string, body: MilestoneBody) =>
+  send<any>('post', `/${projectId}/milestones`, body)
+
+export const updateMilestone = (
+  projectId: string,
+  milestoneId: string,
+  body: Partial<MilestoneBody> & {
+    status?: 'PENDING' | 'AT_RISK' | 'MISSED' | 'COMPLETE'
+    completedDate?: string | null
+  },
+) => send<any>('patch', `/${projectId}/milestones/${milestoneId}`, body)
+
+export const deleteMilestone = (projectId: string, milestoneId: string) =>
+  send<null>('delete', `/${projectId}/milestones/${milestoneId}`)
+
 // ─── Departments & members on a project ──────────────────────
 export const fetchProjectDepartments = (id: string) => get<any[]>(`/${id}/departments`)
 export const addProjectDepartment = (id: string, body: Record<string, unknown>) =>
