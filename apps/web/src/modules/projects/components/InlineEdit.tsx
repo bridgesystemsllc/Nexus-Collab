@@ -32,7 +32,13 @@ export function InlineEdit<T extends string | string[] | null>({
   const inputRef = useRef<HTMLTextAreaElement | HTMLInputElement | HTMLSelectElement>(null)
 
   useEffect(() => {
-    if (state.phase === 'editing') inputRef.current?.focus()
+    // 'failed' is included, not just 'editing': disabling a focused form
+    // control blurs it per the HTML spec, and `busy` disables the input
+    // while saving. When a save is rejected the input re-enables but the
+    // browser does not give focus back on its own, so this effect must
+    // refocus for both phases or a failed save silently ejects the user
+    // from the field they were editing.
+    if (state.phase === 'editing' || state.phase === 'failed') inputRef.current?.focus()
   }, [state.phase])
 
   const draft = currentDraft(state, value)
