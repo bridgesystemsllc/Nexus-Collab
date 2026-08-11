@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../index'
-import { assertCan, type PolicyActor, type PolicyProject } from '../services/projects/policy'
+import { assertCan, can, PolicyError, type PolicyActor, type PolicyProject } from '../services/projects/policy'
 import {
   resolveActor, loadProjectForPolicy, visibilityWhere, errorResponse,
   NotFoundError, ValidationError, ConflictError,
@@ -9,6 +9,7 @@ import {
 import { allocateProjectNumber } from '../services/projects/numbering'
 import { applyTemplate } from '../services/projects/template'
 import { logActivity, diffFields, touchProject } from '../services/projects/activity'
+import { splitByTier } from '../services/projects/fieldTiers'
 
 export const projectRoutes: ReturnType<typeof Router> = Router()
 
@@ -454,6 +455,18 @@ projectRoutes.patch('/:id', async (req: Request, res: Response) => {
     const policyProject = await requireProject(req.params.id as string)
     assertCan(actor, 'EDIT_PROJECT', policyProject)
     const body = parseOrThrow(patchProjectSchema, req.body)
+
+    // EDIT_PROJECT is open to any non-viewer participant, but governance
+    // fields are not. Reject the whole request naming the offending fields —
+    // dropping them silently looks like a save that worked.
+    const tiers = splitByTier(body as Record<string, unknown>)
+    if (Object.keys(tiers.governance).length > 0) {
+      if (!can(actor, 'SET_BASELINE', policyProject).allowed) {
+        throw new PolicyError(
+          `Only the project manager or an admin can change: ${Object.keys(tiers.governance).sort().join(', ')}`,
+        )
+      }
+    }
 
     const before = await prisma.project.findUnique({ where: { id: policyProject.id } })
     if (!before) throw new NotFoundError('Project not found')
