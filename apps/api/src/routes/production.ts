@@ -9,6 +9,8 @@ import { prisma } from '../index'
 
 export const productionRoutes = Router()
 
+// Planning dates (orderDate/deliveryDue/eta) are rendered as YYYY-MM-DD;
+// sync metadata (lastSyncedAt) keeps a full ISO timestamp — see the GET handler.
 function toIso(d: Date | null): string | null {
   return d ? d.toISOString().slice(0, 10) : null
 }

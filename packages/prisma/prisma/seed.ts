@@ -225,7 +225,7 @@ async function main() {
       },
     })
   }
-  console.log(`Seeded ${productionOrders.length} production orders`)
+  console.log(`✅ Production orders: ${productionOrders.length}`)
 
   // ─── Pulse
   await prisma.pulse.createMany({ data: [
