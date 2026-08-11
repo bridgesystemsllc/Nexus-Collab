@@ -208,7 +208,7 @@ export function ProjectDetailView({
         {tab === 'checkins' && (
           <CheckInPanel
             projectId={projectId}
-            canRequest={project.projectManager?.id === currentMemberId || !currentMemberId}
+            canRequest={caps.editProject}
           />
         )}
         {tab === 'timeline' && (
@@ -226,7 +226,7 @@ export function ProjectDetailView({
             projectStatus={project.status}
             // Generating and publishing are project-manager actions; the server
             // enforces it either way, this just avoids offering a 403.
-            canGenerate={project.projectManager?.id === currentMemberId || !currentMemberId}
+            canGenerate={caps.publishReport}
           />
         )}
         {tab === 'activity' && <ActivityFeed projectId={projectId} />}

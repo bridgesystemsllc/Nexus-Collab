@@ -33,6 +33,7 @@ describe('projectCapabilities', () => {
       editTaskOwnLane: true,
       editTimeline: true,
       setBaseline: true,
+      publishReport: true,
     })
   })
 
@@ -44,6 +45,7 @@ describe('projectCapabilities', () => {
     expect(caps.editTaskOwnLane).toBe(true)
     expect(caps.editGovernance).toBe(false)
     expect(caps.setBaseline).toBe(false)
+    expect(caps.publishReport).toBe(false)
   })
 
   it('gives a viewer nothing', () => {
@@ -53,6 +55,7 @@ describe('projectCapabilities', () => {
     expect(caps.editTimeline).toBe(false)
     expect(caps.createTask).toBe(false)
     expect(caps.editGovernance).toBe(false)
+    expect(caps.publishReport).toBe(false)
   })
 
   it('keeps editTimeline in lockstep with editProject', () => {

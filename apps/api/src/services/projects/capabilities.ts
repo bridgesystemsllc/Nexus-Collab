@@ -16,6 +16,7 @@ export interface ProjectCapabilities {
   /** Every timeline write route asserts EDIT_PROJECT, so this tracks it. */
   editTimeline: boolean
   setBaseline: boolean
+  publishReport: boolean
 }
 
 export function projectCapabilities(
@@ -43,5 +44,6 @@ export function projectCapabilities(
     editTaskOwnLane: can(actor, 'EDIT_TASK_OWN_LANE', project, ownLaneProbe).allowed,
     editTimeline: editProject,
     setBaseline: governance,
+    publishReport: can(actor, 'PUBLISH_REPORT', project).allowed,
   }
 }
