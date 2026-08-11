@@ -79,11 +79,6 @@ export function ProjectDetailView({
   const laneTasks = departmentId ? tasks.filter((t) => t.departmentId === departmentId) : tasks
   // The server computes this from the same policy the write routes enforce.
   const caps = project?.capabilities ?? NO_CAPABILITIES
-  // Collab and portfolio scopes have no scope department, so the board needs a
-  // lane to fall back on. Use the actor's own lane on this project — the same
-  // lane the server's createTask capability was probed against.
-  const myLaneId =
-    project.members?.find((m: any) => m.memberId === currentMemberId)?.department?.id ?? null
 
   const saveField = (field: string) => async (next: unknown) => {
     await update.mutateAsync({ [field]: next === '' ? null : next })
@@ -155,7 +150,11 @@ export function ProjectDetailView({
                 </span>
               )}
             </div>
-            <div className="text-lg font-semibold tracking-tight text-[var(--text-primary)] leading-snug">
+            <div
+              role="heading"
+              aria-level={1}
+              className="text-lg font-semibold tracking-tight text-[var(--text-primary)] leading-snug"
+            >
               <InlineEdit
                 value={project.title}
                 variant="text"
@@ -247,7 +246,7 @@ export function ProjectDetailView({
             onOpenTask={setSelectedTask}
             currentMemberId={currentMemberId}
             canCreate={caps.createTask}
-            fallbackDepartmentId={myLaneId}
+            fallbackDepartmentId={caps.defaultTaskLaneId}
           />
         )}
         {tab === 'checkins' && (
@@ -410,6 +409,7 @@ function OverviewTab({
               <dd className="flex-1 max-w-[60%]">
                 <InlineEdit
                   value={toDateInput(project.startDate)}
+                  displayValue={formatDate(project.startDate)}
                   variant="date"
                   canEdit={canEdit}
                   label="start date"
@@ -423,6 +423,7 @@ function OverviewTab({
               <dd className="flex-1 max-w-[60%]">
                 <InlineEdit
                   value={toDateInput(project.targetEndDate)}
+                  displayValue={formatDate(project.targetEndDate)}
                   variant="date"
                   canEdit={canEdit}
                   label="target end date"

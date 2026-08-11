@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, Loader2 } from 'lucide-react'
 import {
   useCreatePhase, useUpdatePhase, useDeletePhase, useReorderPhases,
@@ -27,11 +27,36 @@ export function PhaseEditor({
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // A phase delete detaches every task on it, so it gets a two-step confirm
+  // rather than firing on the first click. Holding just the id (not a modal)
+  // keeps it inline and keyboard-reachable — see the focus/escape handling
+  // below.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const confirmBtnRef = useRef<HTMLButtonElement | null>(null)
 
   const create = useCreatePhase(projectId)
   const update = useUpdatePhase(projectId)
   const remove = useDeletePhase(projectId)
   const reorder = useReorderPhases(projectId)
+
+  // Clicking anywhere outside the armed "Confirm" button, or pressing
+  // Escape, disarms it. window.confirm is deliberately not used — a native
+  // modal dialog would block the automation harness.
+  useEffect(() => {
+    if (!confirmingId) return
+    const onMouseDown = (e: MouseEvent) => {
+      if (!confirmBtnRef.current?.contains(e.target as Node)) setConfirmingId(null)
+    }
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setConfirmingId(null)
+    }
+    document.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [confirmingId])
 
   if (!canEdit) return null
 
@@ -118,18 +143,32 @@ export function PhaseEditor({
               className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] disabled:opacity-30">
               <ChevronDown size={13} />
             </button>
-            <button
-              type="button"
-              aria-label={`Delete ${p.name}`}
-              onClick={() => {
-                setError(null)
-                remove.mutateAsync(p.id).catch((err) =>
-                  setError(err?.message ?? 'Could not delete the phase'))
-              }}
-              className="text-[var(--text-tertiary)] hover:text-[var(--danger)] opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <Trash2 size={13} />
-            </button>
+            {confirmingId === p.id ? (
+              <button
+                ref={confirmBtnRef}
+                type="button"
+                aria-label={`Confirm delete ${p.name}`}
+                onClick={() => {
+                  setConfirmingId(null)
+                  setError(null)
+                  remove.mutateAsync(p.id).catch((err) =>
+                    setError(err?.message ?? 'Could not delete the phase'))
+                }}
+                className="px-1.5 py-0.5 rounded text-[10px] font-medium text-white transition-opacity"
+                style={{ background: 'var(--danger)' }}
+              >
+                Confirm
+              </button>
+            ) : (
+              <button
+                type="button"
+                aria-label={`Delete ${p.name}`}
+                onClick={() => setConfirmingId(p.id)}
+                className="text-[var(--text-tertiary)] hover:text-[var(--danger)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
           </li>
         ))}
       </ul>

@@ -17,6 +17,12 @@ export interface ProjectCapabilities {
   editTimeline: boolean
   setBaseline: boolean
   publishReport: boolean
+  /**
+   * The lane a new task should default to: the actor's own department, which
+   * is what CREATE_TASK_OWN_LANE is evaluated against. The client cannot
+   * derive this — it has no reliable handle on the current member.
+   */
+  defaultTaskLaneId: string | null
 }
 
 export function projectCapabilities(
@@ -45,5 +51,6 @@ export function projectCapabilities(
     editTimeline: editProject,
     setBaseline: governance,
     publishReport: can(actor, 'PUBLISH_REPORT', project).allowed,
+    defaultTaskLaneId: actor.departmentId ?? null,
   }
 }

@@ -89,6 +89,7 @@ export interface ProjectCapabilities {
   editTimeline: boolean
   setBaseline: boolean
   publishReport: boolean
+  defaultTaskLaneId: string | null
 }
 
 /** Deny everything when the server sent nothing — never fail open. */
@@ -100,6 +101,7 @@ export const NO_CAPABILITIES: ProjectCapabilities = {
   editTimeline: false,
   setBaseline: false,
   publishReport: false,
+  defaultTaskLaneId: null,
 }
 
 export interface ProjectDetail extends ProjectSummary {

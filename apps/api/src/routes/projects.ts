@@ -479,6 +479,15 @@ projectRoutes.patch('/:id', async (req: Request, res: Response) => {
       }
     }
 
+    // status has its own transition endpoint with its own rules; anything else
+    // here is a field nobody classified. Both fail closed — fieldTiers.ts
+    // promises exactly this.
+    if (tiers.unrecognised.length > 0) {
+      throw new ValidationError('These fields cannot be set here', {
+        fields: tiers.unrecognised.sort(),
+      })
+    }
+
     const before = await prisma.project.findUnique({ where: { id: policyProject.id } })
     if (!before) throw new NotFoundError('Project not found')
 

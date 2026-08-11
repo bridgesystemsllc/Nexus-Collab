@@ -34,6 +34,7 @@ describe('projectCapabilities', () => {
       editTimeline: true,
       setBaseline: true,
       publishReport: true,
+      defaultTaskLaneId: RD,
     })
   })
 
@@ -46,6 +47,7 @@ describe('projectCapabilities', () => {
     expect(caps.editGovernance).toBe(false)
     expect(caps.setBaseline).toBe(false)
     expect(caps.publishReport).toBe(false)
+    expect(caps.defaultTaskLaneId).toBe(RD)
   })
 
   it('gives a viewer nothing', () => {

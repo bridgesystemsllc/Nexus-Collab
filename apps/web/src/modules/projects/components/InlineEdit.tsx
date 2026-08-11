@@ -20,10 +20,12 @@ interface Props<T> {
   placeholder?: string
   maxLength?: number
   options?: { value: string; label: string }[]
+  /** Read-mode override. Edit mode still uses `value` verbatim. */
+  displayValue?: string
 }
 
 export function InlineEdit<T extends string | string[] | null>({
-  value, variant, onSave, canEdit, label, placeholder = 'Not set', maxLength, options = [],
+  value, variant, onSave, canEdit, label, placeholder = 'Not set', maxLength, options = [], displayValue,
 }: Props<T>) {
   const [state, dispatch] = useReducer(
     inlineEditReducer<T>,
@@ -55,7 +57,11 @@ export function InlineEdit<T extends string | string[] | null>({
 
   if (!canEdit || state.phase === 'read') {
     const isEmpty = value === null || value === '' || (Array.isArray(value) && value.length === 0)
-    const shown = isEmpty ? placeholder : Array.isArray(value) ? value.join(', ') : String(value)
+    const shown = isEmpty
+      ? placeholder
+      : displayValue
+        ? displayValue
+        : Array.isArray(value) ? value.join(', ') : String(value)
 
     if (!canEdit) {
       return (
