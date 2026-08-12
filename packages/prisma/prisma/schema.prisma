@@ -33,6 +33,28 @@ model Organization {
   invites            OrganizationInvite[]
 }
 
+// ─── Session ────────────────────────────────────────────────
+// Owned and created at runtime by connect-pg-simple (`createTableIfMissing`),
+// not by Prisma. It is declared here anyway because `prisma db push` drops any
+// table it does not know about — and scripts/post-merge.sh runs db push after
+// every merge, so this table was being destroyed automatically and logging
+// every user out, several times a week.
+//
+// The shape must match connect-pg-simple exactly or db push will "correct" the
+// table into something the session store cannot use:
+//   sid    varchar        primary key
+//   sess   json           (not jsonb — the library writes json)
+//   expire timestamp(6)   without time zone
+// Prisma never reads or writes this model; it exists so db push leaves it alone.
+model Session {
+  sid    String   @id @db.VarChar
+  sess   Json     @db.Json
+  expire DateTime @db.Timestamp(6)
+
+  @@index([expire], map: "IDX_session_expire")
+  @@map("session")
+}
+
 // ─── Organization Invite ────────────────────────────────────
 model OrganizationInvite {
   id           String       @id @default(cuid())
