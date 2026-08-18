@@ -175,3 +175,127 @@ describe('rollupProject', () => {
     expect(rollupProject([], tasks).percentComplete).toBe(33.33)
   })
 })
+
+// ─── Subtasks ────────────────────────────────────────────────
+// A parent with children is a container: it takes its completion from them and
+// leaves the project denominator, so a task broken into eight pieces does not
+// suddenly outweigh its neighbours nine to one.
+
+const sub = (id: string, parentId: string, over: Partial<RollupTask> = {}): RollupTask => ({
+  id, parentId, status: 'NOT_STARTED', percentComplete: 0, ...over,
+})
+
+describe('subtask rollup', () => {
+  it("takes the parent's percent from its children", () => {
+    const tasks: RollupTask[] = [
+      { id: 'p', status: 'NOT_STARTED', percentComplete: 0 },
+      sub('a', 'p', { status: 'COMPLETE' }),
+      sub('b', 'p', { status: 'COMPLETE' }),
+      sub('c', 'p'),
+      sub('d', 'p'),
+    ]
+    // Two of four children done — the parent is the only counted task.
+    expect(rollupProject([], tasks).percentComplete).toBe(50)
+  })
+
+  it("ignores a parent's own status when it has children", () => {
+    // Ticking the container complete over open work must not report 100%.
+    const tasks: RollupTask[] = [
+      { id: 'p', status: 'COMPLETE', percentComplete: 100 },
+      sub('a', 'p', { status: 'COMPLETE' }),
+      sub('b', 'p'),
+    ]
+    expect(rollupProject([], tasks).percentComplete).toBe(50)
+  })
+
+  it('does not let a parent outweigh its peers by its number of children', () => {
+    // The whole point of the decision. One plain task done, one parent with
+    // four children none done: 50%, not 20%.
+    const tasks: RollupTask[] = [
+      { id: 'solo', status: 'COMPLETE', percentComplete: 100 },
+      { id: 'p', status: 'NOT_STARTED', percentComplete: 0 },
+      sub('a', 'p'), sub('b', 'p'), sub('c', 'p'), sub('d', 'p'),
+    ]
+    expect(rollupProject([], tasks).percentComplete).toBe(50)
+  })
+
+  it("inherits the children's hours when the parent has no estimate", () => {
+    // A 20-hour parent competing with a 1-hour task must not weigh the same.
+    const tasks: RollupTask[] = [
+      { id: 'small', status: 'COMPLETE', percentComplete: 100, estimatedHours: 1 },
+      { id: 'p', status: 'NOT_STARTED', percentComplete: 0 },
+      sub('a', 'p', { estimatedHours: 10 }),
+      sub('b', 'p', { estimatedHours: 10 }),
+    ]
+    // 1h done out of 21h, not 1 of 2 tasks.
+    expect(rollupProject([], tasks).percentComplete).toBeCloseTo(4.76, 1)
+  })
+
+  it("prefers the parent's own estimate over its children's", () => {
+    const tasks: RollupTask[] = [
+      { id: 'p', status: 'NOT_STARTED', percentComplete: 0, estimatedHours: 5 },
+      sub('a', 'p', { estimatedHours: 100, status: 'COMPLETE' }),
+      { id: 'other', status: 'NOT_STARTED', percentComplete: 0, estimatedHours: 5 },
+    ]
+    // Parent is 100% done and weighs 5, not 100 — so the project is at 50%.
+    expect(rollupProject([], tasks).percentComplete).toBe(50)
+  })
+
+  it('excludes a cancelled subtask from its parent, not the whole parent', () => {
+    const tasks: RollupTask[] = [
+      { id: 'p', status: 'NOT_STARTED', percentComplete: 0 },
+      sub('a', 'p', { status: 'COMPLETE' }),
+      sub('b', 'p', { status: 'CANCELLED' }),
+    ]
+    // One counted child, done. The parent is complete.
+    expect(rollupProject([], tasks).percentComplete).toBe(100)
+  })
+
+  it('drops a cancelled parent from the project entirely', () => {
+    const tasks: RollupTask[] = [
+      { id: 'live', status: 'COMPLETE', percentComplete: 100 },
+      { id: 'p', status: 'CANCELLED', percentComplete: 0 },
+      sub('a', 'p'), sub('b', 'p'),
+    ]
+    expect(rollupProject([], tasks).percentComplete).toBe(100)
+  })
+
+  it('treats an orphaned subtask as top-level rather than losing it', () => {
+    // The parent is not in the set — filtered out, or deleted. Silently
+    // dropping the child would make real work vanish from the percentage.
+    const tasks: RollupTask[] = [
+      { id: 'a', parentId: 'gone', status: 'COMPLETE', percentComplete: 100 },
+      { id: 'b', parentId: 'gone', status: 'NOT_STARTED', percentComplete: 0 },
+    ]
+    expect(rollupProject([], tasks).percentComplete).toBe(50)
+  })
+
+  it('rolls subtasks up through their parent into the phase', () => {
+    const phases: RollupPhase[] = [{ id: 'ph1' }]
+    const tasks: RollupTask[] = [
+      { id: 'p', status: 'NOT_STARTED', percentComplete: 0, phaseId: 'ph1' },
+      sub('a', 'p', { status: 'COMPLETE', phaseId: 'ph1' }),
+      sub('b', 'p', { phaseId: 'ph1' }),
+    ]
+    const r = rollupProject(phases, tasks)
+    expect(r.phases[0]!.percentComplete).toBe(50)
+    // One counted task in the phase — the parent, not its children.
+    expect(r.phases[0]!.taskCount).toBe(1)
+  })
+
+  it('behaves exactly as before when nothing has a parent', () => {
+    const tasks: RollupTask[] = [
+      { id: 'a', status: 'COMPLETE', percentComplete: 100 },
+      { id: 'b', status: 'NOT_STARTED', percentComplete: 0 },
+    ]
+    expect(rollupProject([], tasks).percentComplete).toBe(50)
+  })
+
+  it('reports a parent with only cancelled children as 0, not NaN', () => {
+    const tasks: RollupTask[] = [
+      { id: 'p', status: 'NOT_STARTED', percentComplete: 0 },
+      sub('a', 'p', { status: 'CANCELLED' }),
+    ]
+    expect(rollupProject([], tasks).percentComplete).toBe(0)
+  })
+})
