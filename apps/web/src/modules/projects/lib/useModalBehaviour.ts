@@ -13,6 +13,17 @@ const FOCUSABLE = [
   'select:not([disabled])', 'textarea:not([disabled])', '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
+/**
+ * Open modals, outermost first. Escape must close only the topmost one.
+ *
+ * Every instance listens on `document` in the capture phase, and
+ * `stopPropagation` does not stop other listeners bound to the same element —
+ * that needs `stopImmediatePropagation`, and even then the outer modal is
+ * registered first so it would win. Without this stack, one Escape inside a
+ * picker opened over the task drawer closed both.
+ */
+const openModals: object[] = []
+
 // Generic over the element type: dialogs hang this on a <div>, the task drawer
 // on an <aside>, and a hook that only fits one of them invites a second copy.
 export function useModalBehaviour<T extends HTMLElement = HTMLDivElement>(onClose: () => void) {
@@ -23,6 +34,10 @@ export function useModalBehaviour<T extends HTMLElement = HTMLDivElement>(onClos
   close.current = onClose
 
   useEffect(() => {
+    // Identity for this instance's place in the stack.
+    const token = {}
+    openModals.push(token)
+
     const opener = document.activeElement as HTMLElement | null
 
     const focusables = () =>
@@ -35,6 +50,10 @@ export function useModalBehaviour<T extends HTMLElement = HTMLDivElement>(onClos
     else ref.current?.focus()
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // Only the topmost modal responds. A nested picker closes itself and
+      // leaves the drawer it was opened from standing.
+      if (openModals[openModals.length - 1] !== token) return
+
       if (e.key === 'Escape') {
         e.stopPropagation()
         close.current()
@@ -68,6 +87,8 @@ export function useModalBehaviour<T extends HTMLElement = HTMLDivElement>(onClos
     document.addEventListener('keydown', onKeyDown, true)
     return () => {
       document.removeEventListener('keydown', onKeyDown, true)
+      const i = openModals.lastIndexOf(token)
+      if (i !== -1) openModals.splice(i, 1)
       // Return focus where it came from, but not if the opener has since been
       // unmounted — focusing a detached node silently drops focus to <body>.
       if (opener && document.contains(opener)) opener.focus()

@@ -7,6 +7,7 @@ import {
 import * as client from '../api/projectsClient'
 import { useModalBehaviour } from '../lib/useModalBehaviour'
 import { formatDate } from './ProjectCard'
+import { TaskConversations } from './TaskConversations'
 import {
   TASK_STATUS_LABELS, PRIORITY_COLORS, type ProjectTask, type TaskStatus, type Priority,
 } from '../types'
@@ -396,6 +397,9 @@ export function TaskDetailDrawer({
             </form>
           )}
         </Section>
+
+        {/* Email and Teams */}
+        <TaskConversations taskId={task.id} canEdit={canEdit} />
 
         {/* Dependencies — counts only; the Gantt is where they are edited. */}
         {(task._count?.dependenciesIn || task._count?.dependenciesOut) ? (
