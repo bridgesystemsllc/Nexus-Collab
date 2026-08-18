@@ -16,6 +16,7 @@ import { TimelineGantt } from '../components/TimelineGantt'
 import { CheckInPanel } from '../components/CheckInPanel'
 import { LinkedRecords } from '../components/LinkedRecords'
 import { ActivityFeed } from '../components/ActivityFeed'
+import { TaskDetailDrawer } from '../components/TaskDetailDrawer'
 import { InlineEdit } from '../components/InlineEdit'
 import { useModalBehaviour } from '../lib/useModalBehaviour'
 import { ReportsPanel } from '../components/ReportsPanel'
@@ -283,7 +284,16 @@ export function ProjectDetailView({
       </div>
 
       {selectedTask && (
-        <TaskDrawer task={selectedTask} onClose={() => setSelectedTask(null)} />
+        <TaskDetailDrawer
+          task={selectedTask}
+          projectId={projectId}
+          canEdit={project.capabilities?.editTaskOwnLane ?? false}
+          members={(project.members ?? []).map((m: any) => ({ id: m.member.id, name: m.member.name }))}
+          onClose={() => setSelectedTask(null)}
+          // Opening a subtask swaps the drawer's subject rather than stacking
+          // a second drawer on top of the first.
+          onOpenTask={setSelectedTask}
+        />
       )}
     </div>
   )
@@ -564,88 +574,6 @@ function Row({ label, value }: { label: string; value: string }) {
   )
 }
 
-function TaskDrawer({ task, onClose }: { task: ProjectTask; onClose: () => void }) {
-  // The previous onKeyDown here only fired when focus was already inside the
-  // drawer — and nothing moved it there on open, so Escape did nothing after
-  // clicking a card. The shared hook listens at the document, moves focus in,
-  // traps Tab, and hands focus back to the card on close.
-  const ref = useModalBehaviour<HTMLElement>(onClose)
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex justify-end bg-black/20"
-      onClick={onClose}
-      role="presentation"
-    >
-      <aside
-        ref={ref}
-        tabIndex={-1}
-        className="w-full max-w-md h-full overflow-y-auto bg-[var(--bg-elevated)] border-l border-[var(--border-default)] p-5"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label={task.title}
-      >
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div>
-            <span className="font-mono text-xs text-[var(--text-tertiary)]">#{task.taskNumber ?? '–'}</span>
-            <h3 className="text-base font-medium text-[var(--text-primary)] mt-0.5">{task.title}</h3>
-          </div>
-          <button onClick={onClose} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] text-sm">
-            Close
-          </button>
-        </div>
-
-        {task.acceptanceStatus === 'PENDING' && (
-          <div
-            className="rounded-lg px-3 py-2 text-xs mb-4"
-            style={{ background: 'rgba(255,159,10,0.10)', color: 'var(--text-primary)' }}
-          >
-            Requested by {task.requestedBy?.name ?? 'another department'} — awaiting acceptance
-            by {task.department?.name ?? 'this lane'}.
-          </div>
-        )}
-
-        {task.blockedReason && (
-          <div
-            className="rounded-lg px-3 py-2 text-xs mb-4"
-            style={{ background: 'rgba(255,69,58,0.08)', color: 'var(--text-primary)' }}
-          >
-            <strong>Blocked:</strong> {task.blockedReason}
-          </div>
-        )}
-
-        <dl className="space-y-2 text-xs">
-          <Row label="Status" value={task.status.replace(/_/g, ' ').toLowerCase()} />
-          <Row label="Lane" value={task.department?.name ?? '—'} />
-          <Row label="Assignee" value={task.owner?.name ?? 'Unassigned'} />
-          <Row label="Priority" value={task.priority.toLowerCase()} />
-          <Row label="Due" value={formatDate(task.dueDate)} />
-        </dl>
-
-        {task.description && (
-          <p className="mt-4 text-sm text-[var(--text-secondary)] whitespace-pre-wrap leading-relaxed">
-            {task.description}
-          </p>
-        )}
-
-        {!!task.checklist?.length && (
-          <div className="mt-4">
-            <p className="text-xs font-medium text-[var(--text-primary)] mb-2">Checklist</p>
-            <ul className="space-y-1">
-              {task.checklist.map((c) => (
-                <li key={c.id} className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                  <input type="checkbox" checked={c.isDone} readOnly className="accent-[var(--accent-secondary)]" />
-                  <span className={c.isDone ? 'line-through text-[var(--text-tertiary)]' : ''}>{c.label}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </aside>
-    </div>
-  )
-}
 
 // Phase 9 fills this in. A labelled placeholder beats a blank panel.
 

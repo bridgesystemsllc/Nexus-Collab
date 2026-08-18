@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, GitBranch, Inbox, Lock, ArrowRightLeft, Plus } from 'lucide-react'
+import { AlertTriangle, GitBranch, Inbox, Lock, ArrowRightLeft, Plus, ListTree } from 'lucide-react'
 import { useSetTaskStatus } from '../hooks/useProjects'
 import { Toast, type ToastData } from '@/components/shared/Toast'
 import { useProjectScope, useDefaultBoardGrouping } from '../context/ProjectScopeContext'
@@ -361,6 +361,22 @@ function TaskCard({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Subtask progress. The board shows parents only, so without this a
+              card broken into five pieces looks identical to a one-line task. */}
+          {task.subtaskProgress && task.subtaskProgress.total > 0 && (
+            <span
+              className="inline-flex items-center gap-0.5 text-[10px] tabular-nums"
+              style={{
+                color: task.subtaskProgress.done === task.subtaskProgress.total
+                  ? 'var(--success)'
+                  : 'var(--text-tertiary)',
+              }}
+              title={`${task.subtaskProgress.done} of ${task.subtaskProgress.total} subtasks done`}
+            >
+              <ListTree size={10} />
+              {task.subtaskProgress.done}/{task.subtaskProgress.total}
+            </span>
+          )}
           {task.status === 'BLOCKED' && (
             <span title={task.blockedReason ?? 'Blocked'} className="inline-flex">
               <Lock size={10} style={{ color: 'var(--danger)' }} />

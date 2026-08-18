@@ -85,7 +85,10 @@ export async function recomputeProject(
       where: { projectId, deletedAt: null },
       select: {
         id: true, status: true, percentComplete: true, estimatedHours: true,
-        phaseId: true, dueDate: true, blockedSince: true,
+        // parentId matters: without it every subtask arrives as top-level and
+        // the project counts a parent's children individually, so a task split
+        // into four weighs five times its neighbour.
+        phaseId: true, parentId: true, dueDate: true, blockedSince: true,
       },
     }),
     prisma.projectPhase.findMany({ where: { projectId }, select: { id: true, status: true } }),
@@ -108,6 +111,7 @@ export async function recomputeProject(
       percentComplete: t.percentComplete,
       estimatedHours: t.estimatedHours ? Number(t.estimatedHours) : null,
       phaseId: t.phaseId,
+      parentId: t.parentId,
     })),
   )
 

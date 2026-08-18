@@ -162,6 +162,15 @@ export interface ProjectTask {
   phase?: { id: string; name: string; sequence: number } | null
   checklist?: { id: string; label: string; isDone: boolean; sortOrder: number }[]
   _count?: { dependenciesIn?: number; dependenciesOut?: number; subtasks?: number }
+  parentId?: string | null
+  /** Children, returned inline on the task list so the board needs no follow-up. */
+  subtasks?: ProjectTask[]
+  /**
+   * Derived server-side from the same rollup the project percentage uses, so a
+   * parent's card and the project total can never disagree. Null when the task
+   * has no subtasks — distinct from a parent whose children are all still open.
+   */
+  subtaskProgress?: { done: number; total: number; percentComplete: number } | null
   // Present on the timeline endpoint only.
   isCriticalPath?: boolean
   floatDays?: number | null

@@ -7,6 +7,7 @@ import {
   NotFoundError, ValidationError, ConflictError,
 } from '../services/projects/context'
 import { allocateTaskNumber } from '../services/projects/numbering'
+import { rollupTasks } from '../services/projects/rollup'
 import { assertNoCycle } from '../services/projects/dependencies'
 import { logActivity, diffFields, touchProject } from '../services/projects/activity'
 import { scheduleRecompute } from '../services/projects/recompute'
@@ -135,16 +136,26 @@ projectTaskRoutes.get('/:id/tasks', async (req: Request, res: Response) => {
         assigneeId: z.string().optional(),
         status: z.string().optional(),
         phaseId: z.string().optional(),
+      // Escape hatch for views that genuinely want the flat list (search,
+      // exports). The board never sets it.
+      includeSubtasks: z
+        .union([z.boolean(), z.enum(['true', 'false'])])
+        .transform((v) => v === true || v === 'true')
+        .default(false),
         groupBy: z.enum(['status', 'department', 'assignee', 'phase']).optional(),
       }),
       req.query,
     )
 
     // One query for the whole board — no per-column or per-row follow-ups.
+    // Subtasks are excluded by default: the board shows parents, each carrying
+    // a progress figure for its children, and the children live in the task
+    // drawer. A project broken into subtasks would otherwise fill the board.
     const tasks = await prisma.task.findMany({
       where: {
         projectId,
         deletedAt: null,
+        ...(q.includeSubtasks ? {} : { parentId: null }),
         ...(q.departmentId ? { departmentId: q.departmentId } : {}),
         ...(q.assigneeId ? { ownerId: q.assigneeId } : {}),
         ...(q.status ? { status: { in: q.status.split(',') } } : {}),
@@ -157,22 +168,57 @@ projectTaskRoutes.get('/:id/tasks', async (req: Request, res: Response) => {
         requestedBy: { select: { id: true, name: true } },
         phase: { select: { id: true, name: true, sequence: true } },
         checklist: { orderBy: { sortOrder: 'asc' } },
+        // Enough of each subtask to render the parent's progress and the
+        // drawer's list, without a query per parent.
+        subtasks: {
+          where: { deletedAt: null },
+          orderBy: [{ sortOrder: 'asc' }, { taskNumber: 'asc' }],
+          select: {
+            id: true, taskNumber: true, title: true, status: true, priority: true,
+            dueDate: true, estimatedHours: true, percentComplete: true,
+            departmentId: true, ownerId: true,
+            owner: { select: { id: true, name: true, avatar: true } },
+            department: { select: { id: true, name: true, color: true } },
+          },
+        },
         _count: { select: { dependenciesIn: true, dependenciesOut: true, subtasks: true } },
       },
     })
 
-    if (!q.groupBy) return ok(res, tasks, { total: tasks.length })
+    // Derived here, not in the client: the same arithmetic the project rollup
+    // uses, so a parent's card and the project percentage can never disagree.
+    const shaped = tasks.map((t) => {
+      if (t.subtasks.length === 0) return { ...t, subtaskProgress: null }
+      const counted = t.subtasks.filter((c) => c.status !== 'CANCELLED')
+      return {
+        ...t,
+        subtaskProgress: {
+          done: counted.filter((c) => c.status === 'COMPLETE').length,
+          total: counted.length,
+          percentComplete: rollupTasks(
+            t.subtasks.map((c) => ({
+              id: c.id,
+              status: c.status,
+              percentComplete: Number(c.percentComplete),
+              estimatedHours: c.estimatedHours ? Number(c.estimatedHours) : null,
+            })),
+          ),
+        },
+      }
+    })
 
-    const key = (t: (typeof tasks)[number]): string => {
+    if (!q.groupBy) return ok(res, shaped, { total: shaped.length })
+
+    const key = (t: (typeof shaped)[number]): string => {
       if (q.groupBy === 'status') return t.status
       if (q.groupBy === 'department') return t.departmentId ?? 'unassigned'
       if (q.groupBy === 'assignee') return t.ownerId ?? 'unassigned'
       return t.phaseId ?? 'unphased'
     }
-    const groups: Record<string, typeof tasks> = {}
-    for (const t of tasks) (groups[key(t)] ??= []).push(t)
+    const groups: Record<string, typeof shaped> = {}
+    for (const t of shaped) (groups[key(t)] ??= []).push(t)
 
-    return ok(res, groups, { total: tasks.length, groupBy: q.groupBy })
+    return ok(res, groups, { total: shaped.length, groupBy: q.groupBy })
   } catch (err) {
     return fail(res, err)
   }
@@ -215,6 +261,37 @@ projectTaskRoutes.post('/:id/tasks', async (req: Request, res: Response) => {
         'That department is not participating in this project. Add it first.',
         { departmentId: ['Not a participating department'] },
       )
+    }
+
+    // ── Subtasks ──
+    // One level only. Nesting deeper would let parentId form a cycle, which
+    // the rollup walks — and a subtask of a subtask has no defined weight in a
+    // model where the parent is the unit the project counts.
+    if (body.parentId) {
+      const parent = await prisma.task.findUnique({
+        where: { id: body.parentId },
+        select: { id: true, projectId: true, parentId: true, deletedAt: true, status: true },
+      })
+      if (!parent || parent.deletedAt) {
+        throw new ValidationError('Parent task not found', { parentId: ['Not found'] })
+      }
+      if (parent.projectId !== projectId) {
+        // A cross-project parent would make the child count toward a project
+        // its own project cannot see.
+        throw new ValidationError('The parent task belongs to a different project', {
+          parentId: ['Must be a task on this project'],
+        })
+      }
+      if (parent.parentId) {
+        throw new ValidationError('A subtask cannot have subtasks of its own', {
+          parentId: ['That task is already a subtask'],
+        })
+      }
+      if (parent.status === 'CANCELLED') {
+        throw new ValidationError('Cannot add work to a cancelled task', {
+          parentId: ['That task is cancelled'],
+        })
+      }
     }
 
     // Own lane or another lane? The distinction is the whole cross-department
