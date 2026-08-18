@@ -51,41 +51,96 @@ async function call(method: string, path: string, body?: unknown) {
   return { status: res.status, json, text }
 }
 
-// Everything created here is prefixed so teardown can find it even if a test
-// fails partway through and never reaches its own cleanup.
-const TAG = `ITEST-${Date.now()}`
-const created = { projects: [] as string[], collabs: [] as string[] }
+// Everything this suite creates carries this prefix, and teardown matches on it
+// rather than on ids collected in memory.
+const TAG_PREFIX = 'ITEST-'
+const TAG = `${TAG_PREFIX}${Date.now()}`
+
+/**
+ * Delete every row matching a title/name prefix, children first.
+ *
+ * Collected ids only work if afterAll actually runs, and it does not when the
+ * process is killed. A run interrupted mid-suite left ten projects and five
+ * collabs in the development database, which is how this was found. Matching
+ * on the prefix means a sweep before each run clears whatever the last one
+ * abandoned, so debris cannot accumulate.
+ *
+ * `phases` and `milestones` are in the list because a project cannot be deleted
+ * while they reference it — the previous version omitted both, so any test that
+ * created one would have failed teardown on a foreign key.
+ */
+async function sweep(prefix: string, opts: { excludingThisRun?: boolean } = {}) {
+  // Only relevant if two runs overlap. They should not — the config is serial —
+  // but a sweep that could delete a live run's data is not worth the risk.
+  const matches = (field: 'title' | 'name' | 'message') =>
+    opts.excludingThisRun
+      ? { AND: [{ [field]: { startsWith: prefix } }, { NOT: { [field]: { startsWith: TAG } } }] }
+      : { [field]: { startsWith: prefix } }
+
+  const projects = await prisma.project.findMany({
+    where: matches('title') as never,
+    select: { id: true },
+  })
+  const projectIds = projects.map((p) => p.id)
+
+  if (projectIds.length) {
+    const where = { projectId: { in: projectIds } }
+    await prisma.collabProjectLink.deleteMany({ where })
+    await prisma.projectCheckin.deleteMany({ where })
+    await prisma.projectHealthSnapshot.deleteMany({ where })
+    await prisma.projectReport.deleteMany({ where })
+    await prisma.projectModuleLink.deleteMany({ where })
+    await prisma.projectActivity.deleteMany({ where })
+    await prisma.projectMilestone.deleteMany({ where })
+    await prisma.task.deleteMany({ where })
+    await prisma.projectPhase.deleteMany({ where })
+    await prisma.projectMember.deleteMany({ where })
+    await prisma.projectDepartment.deleteMany({ where })
+    await prisma.project.deleteMany({ where: { id: { in: projectIds } } })
+  }
+
+  const collabs = await prisma.coworkSpace.findMany({
+    where: matches('name') as never,
+    select: { id: true },
+  })
+  const collabIds = collabs.map((c) => c.id)
+  if (collabIds.length) {
+    await prisma.collabProjectLink.deleteMany({ where: { coworkSpaceId: { in: collabIds } } })
+    await prisma.activity.deleteMany({ where: { coworkSpaceId: { in: collabIds } } })
+    await prisma.coworkSpace.deleteMany({ where: { id: { in: collabIds } } })
+  }
+
+  // The engines raise pulses quoting task titles, so those carry the tag too.
+  const pulses = await prisma.pulse.deleteMany({
+    where: opts.excludingThisRun
+      ? { AND: [{ message: { contains: prefix } }, { NOT: { message: { contains: TAG } } }] }
+      : { message: { contains: prefix } },
+  })
+
+  return { projects: projectIds.length, collabs: collabIds.length, pulses: pulses.count }
+}
 
 beforeAll(async () => {
   if (!serverUp) return
+
+  // Clear anything a previous run abandoned, before this one adds to it.
+  const leftover = await sweep(TAG_PREFIX, { excludingThisRun: true })
+  if (leftover.projects || leftover.collabs) {
+    console.warn(
+      `  [cleanup] removed ${leftover.projects} project(s) and ${leftover.collabs} collab(s) ` +
+        'left behind by an interrupted run',
+    )
+  }
+
   const login = await fetch(`${BASE}/api/dev-login`, { redirect: 'manual' })
   const set = login.headers.get('set-cookie')
   if (set) cookie = set.split(';')[0]!
 })
 
 afterAll(async () => {
-  if (serverUp) {
-    // Ordered by foreign key so nothing is left dangling.
-    const ids = created.projects
-    if (ids.length) {
-      await prisma.collabProjectLink.deleteMany({ where: { projectId: { in: ids } } })
-      await prisma.projectCheckin.deleteMany({ where: { projectId: { in: ids } } })
-      await prisma.projectHealthSnapshot.deleteMany({ where: { projectId: { in: ids } } })
-      await prisma.projectReport.deleteMany({ where: { projectId: { in: ids } } })
-      await prisma.projectModuleLink.deleteMany({ where: { projectId: { in: ids } } })
-      await prisma.projectActivity.deleteMany({ where: { projectId: { in: ids } } })
-      await prisma.task.deleteMany({ where: { projectId: { in: ids } } })
-      await prisma.projectMember.deleteMany({ where: { projectId: { in: ids } } })
-      await prisma.projectDepartment.deleteMany({ where: { projectId: { in: ids } } })
-      await prisma.project.deleteMany({ where: { id: { in: ids } } })
-    }
-    if (created.collabs.length) {
-      await prisma.collabProjectLink.deleteMany({ where: { coworkSpaceId: { in: created.collabs } } })
-      await prisma.activity.deleteMany({ where: { coworkSpaceId: { in: created.collabs } } })
-      await prisma.coworkSpace.deleteMany({ where: { id: { in: created.collabs } } })
-    }
-    await prisma.pulse.deleteMany({ where: { message: { contains: TAG } } })
-  }
+  // Matched on this run's tag, so a test that threw before its own cleanup is
+  // still covered.
+  if (serverUp) await sweep(TAG).catch((err) => console.error('  [cleanup] failed:', err?.message))
   await prisma.$disconnect()
 })
 
@@ -99,7 +154,6 @@ async function makeProject(title: string, ownerDepartmentId: string, extra: Reco
     ...extra,
   })
   if (res.status !== 201) throw new Error(`create failed ${res.status}: ${res.text.slice(0, 200)}`)
-  created.projects.push(res.json.data.id)
   return res.json.data
 }
 
@@ -225,8 +279,7 @@ describe.skipIf(!serverUp)('projects integration', () => {
         name: `${TAG} collab`, type: 'INITIATIVE', deptNames: [ops.name, mkt.name],
       })
       const collabId = (space.json.data ?? space.json).id
-      created.collabs.push(collabId)
-
+    
       const before = await prisma.projectDepartment.count({
         where: { projectId: project.id, departmentId: mkt.id },
       })
@@ -257,8 +310,7 @@ describe.skipIf(!serverUp)('projects integration', () => {
         name: `${TAG} collab clean`, type: 'INITIATIVE', deptNames: [mkt.name],
       })
       const collabId = (space.json.data ?? space.json).id
-      created.collabs.push(collabId)
-
+    
       await call('POST', `/collabs/${collabId}/projects`, { projectId: project.id })
       const unlink = await call('DELETE', `/collabs/${collabId}/projects/${project.id}`)
 
@@ -279,8 +331,7 @@ describe.skipIf(!serverUp)('projects integration', () => {
         name: `${TAG} collab work`, type: 'INITIATIVE', deptNames: [mkt.name],
       })
       const collabId = (space.json.data ?? space.json).id
-      created.collabs.push(collabId)
-
+    
       await call('POST', `/collabs/${collabId}/projects`, { projectId: project.id })
       const task = (await call('POST', `/projects/${project.id}/tasks`, {
         title: `${TAG} marketing work`, departmentId: mkt.id,
@@ -305,8 +356,7 @@ describe.skipIf(!serverUp)('projects integration', () => {
         name: `${TAG} collab conf`, type: 'INITIATIVE', deptNames: [depts[0].name],
       })
       const collabId = (space.json.data ?? space.json).id
-      created.collabs.push(collabId)
-
+    
       const link = await call('POST', `/collabs/${collabId}/projects`, { projectId: project.id })
       expect(link.status).toBe(409)
       expect(link.json.error.message).toMatch(/confidential/i)
@@ -320,8 +370,7 @@ describe.skipIf(!serverUp)('projects integration', () => {
         name: `${TAG} collab same`, type: 'INITIATIVE', deptNames: [mkt.name],
       })
       const collabId = (space.json.data ?? space.json).id
-      created.collabs.push(collabId)
-      await call('POST', `/collabs/${collabId}/projects`, { projectId: project.id })
+          await call('POST', `/collabs/${collabId}/projects`, { projectId: project.id })
 
       const task = (await call('POST', `/projects/${project.id}/tasks`, {
         title: `${TAG} shared`, departmentId: mkt.id,
