@@ -1,8 +1,25 @@
 # Project Editability — Verification Handoff
 
 **Branch:** `feat/project-editability` · **Base:** `1f863a0` · 25 commits
-**Status: NOT VERIFIED.** No test, typecheck, or build has been run against any
-of this code.
+**Status: VERIFIED 2026-08-18**, after the branch had already been merged (#90).
+
+All five commands below pass. The four predicted failure sites — the
+`useReducer` generic, the ref union, `project: any` threading, Prisma drift —
+produced no type errors. All seven hand-tested behaviours hold, except one that
+did not and has been fixed:
+
+> **`capabilities.defaultTaskLaneId` returned a lane the server rejects.** It
+> was `actor.departmentId` unconditionally. The policy is satisfied by the
+> actor's own department, but the create route *additionally* refuses a
+> department that is not participating in the project — so an admin opening
+> another department's project got an "Add task" button that 422'd on save
+> ("That department is not participating in this project"). Reachable from the
+> Projects page, whose default scope is the whole portfolio. It now resolves to
+> a lane that exists on the project, and returns null rather than an unusable
+> one. Nine regression tests in `capabilities.test.ts`.
+
+Evidence for each path is in the section "Behaviour worth exercising by hand"
+below; every item there was exercised against a running app on 2026-08-18.
 
 ## Why this document exists
 

@@ -18,9 +18,14 @@ export interface ProjectCapabilities {
   setBaseline: boolean
   publishReport: boolean
   /**
-   * The lane a new task should default to: the actor's own department, which
-   * is what CREATE_TASK_OWN_LANE is evaluated against. The client cannot
-   * derive this — it has no reliable handle on the current member.
+   * The lane a new task should default to. The client cannot derive this — it
+   * has no reliable handle on the current member.
+   *
+   * Must be a lane that exists ON THIS PROJECT, not merely the actor's own
+   * department. CREATE_TASK_OWN_LANE is satisfied by the actor's department,
+   * but the create route additionally rejects any department that is not
+   * participating — so returning a non-participating lane hands the UI a
+   * default the server will refuse.
    */
   defaultTaskLaneId: string | null
 }
@@ -43,14 +48,50 @@ export function projectCapabilities(
     acceptanceStatus: null,
   }
 
+  const createTask = can(actor, 'CREATE_TASK_OWN_LANE', project, ownLaneProbe).allowed
+
   return {
     editProject,
     editGovernance: governance,
-    createTask: can(actor, 'CREATE_TASK_OWN_LANE', project, ownLaneProbe).allowed,
+    createTask,
     editTaskOwnLane: can(actor, 'EDIT_TASK_OWN_LANE', project, ownLaneProbe).allowed,
     editTimeline: editProject,
     setBaseline: governance,
     publishReport: can(actor, 'PUBLISH_REPORT', project).allowed,
-    defaultTaskLaneId: actor.departmentId ?? null,
+    defaultTaskLaneId: defaultTaskLane(actor, project, createTask),
   }
+}
+
+/**
+ * A lane the actor can actually create a task in on this project.
+ *
+ * Two rules have to agree. The policy asks "is this the actor's own lane"; the
+ * create route separately rejects a department that is not participating in
+ * the project. Returning the actor's department without checking the second
+ * gives an admin viewing another department's project an "Add task" button
+ * that 422s on save — reachable from the Projects page, whose default scope is
+ * the whole portfolio.
+ */
+function defaultTaskLane(
+  actor: PolicyActor,
+  project: PolicyProject,
+  createTask: boolean,
+): string | null {
+  const lanes = project.departments.map((d) => d.departmentId)
+
+  // The actor's own lane, when the project actually has it. Correct for the
+  // common case and the only option a plain contributor has.
+  if (actor.departmentId && lanes.includes(actor.departmentId)) return actor.departmentId
+
+  // Otherwise the actor is working outside their department. Only offer a
+  // fallback to someone the policy lets create in any lane — for anyone else
+  // createTask is already false and the UI shows no button to default.
+  if (!createTask) return null
+
+  // The owning lane is the least surprising home for a task on someone else's
+  // project; any participating lane beats none.
+  if (project.ownerDepartmentId && lanes.includes(project.ownerDepartmentId)) {
+    return project.ownerDepartmentId
+  }
+  return lanes[0] ?? project.ownerDepartmentId ?? null
 }
