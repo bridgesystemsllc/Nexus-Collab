@@ -108,6 +108,7 @@ model Member {
   projectActivity    ProjectActivity[]   @relation("ActivityActor")
   collabLinksMade    CollabProjectLink[] @relation("CollabLinker")
   collabLinksRemoved CollabProjectLink[] @relation("CollabUnlinker")
+  chatLinksMade      TaskChatLink[]      @relation("ChatLinker")
 
   @@index([orgId])
   @@index([clerkUserId])
@@ -510,6 +511,7 @@ model Task {
   coworkSpaces CoworkSpace[] @relation("CoworkTasks")
   documents    Document[]    @relation("TaskDocs")
   emails       EmailLink[]
+  chatLinks    TaskChatLink[]
   notes        Note[]
   parentId     String?
   parent       Task?         @relation("SubTasks", fields: [parentId], references: [id])
@@ -645,6 +647,34 @@ model EmailLink {
 
   @@index([taskId])
   @@index([coworkSpaceId])
+}
+
+// ─── Teams chat linked to a task ────────────────────────────
+// EmailLink already covers mail. A Teams chat is a different shape — no
+// subject, no from/to, a rolling conversation rather than a message — so it
+// gets its own table instead of nullable columns on a model that means
+// something else.
+//
+// Only the identifiers and enough display text to render the list are stored.
+// The messages themselves stay in Teams and are fetched per view: caching them
+// would mean showing an edited or deleted message as if it still stood.
+model TaskChatLink {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  /// Microsoft Graph chat id.
+  chatId      String
+  /// Group chat name. Null for a 1:1, which Teams titles by its members.
+  topic       String?
+  chatType    String // oneOnOne | group | meeting
+  /// Cached for display so the list needs no Graph call per row.
+  memberNames String[]
+  linkedById  String?
+  linkedBy    Member?  @relation("ChatLinker", fields: [linkedById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([taskId, chatId])
+  @@index([taskId])
 }
 
 // ─── Note ───────────────────────────────────────────────────

@@ -13,8 +13,14 @@ import { encryptJson, decryptJson } from './encryption'
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0'
 
-// Delegated scopes for the foundation + the two downstream attach features.
-// Read-only by design; offline_access is required to get a refresh token.
+// Delegated scopes for the foundation + the attach features.
+//
+// Chat.Read and ChatMessage.Send were added for attaching a Teams chat to a
+// task and replying to it. Adding a scope invalidates existing consent: a
+// member connected before this list changed holds a token without it, and
+// Graph answers 403 rather than 401. graphGet/graphPost translate that into
+// MicrosoftNotConnectedError so the UI prompts a reconnect instead of showing
+// a hard error — see isConsentError below.
 export const MS_SCOPES = [
   'openid',
   'profile',
@@ -24,6 +30,11 @@ export const MS_SCOPES = [
   'Mail.Read',
   'Mail.Send',
   'Files.Read',
+  // Teams: read the member's chats and their messages, and post a reply.
+  // Delegated only — the app-only equivalents sit behind Microsoft's
+  // protected-API approval, which this does not need.
+  'Chat.Read',
+  'ChatMessage.Send',
 ]
 
 // Thrown when a member has no connected Microsoft account (or the refresh
@@ -228,8 +239,27 @@ export async function getAccessTokenForMember(memberId: string): Promise<string>
   }
 }
 
+/**
+ * Is this 403 a consent problem rather than a genuine refusal?
+ *
+ * Exchange says ErrorAccessDenied; Teams says Authorization_RequestDenied or
+ * a bare Forbidden. All three mean the same thing here — the token predates a
+ * scope the call needs — and all three are recovered by reconnecting. Matching
+ * only the Exchange code would have left every Teams call after this change
+ * failing with an opaque error for anyone who connected earlier.
+ */
+function isConsentError(status: number, body: string): boolean {
+  if (status !== 403) return false
+  return (
+    body.includes('ErrorAccessDenied') ||
+    body.includes('Authorization_RequestDenied') ||
+    body.includes('AccessDenied') ||
+    body.includes('Forbidden')
+  )
+}
+
 // Authenticated GET against Microsoft Graph for the given member. Downstream
-// features (Outlook/OneDrive) build on this. `pathWithQuery` starts with '/'.
+// features (Outlook/OneDrive/Teams) build on this. `pathWithQuery` starts with '/'.
 export async function graphGet<T = any>(memberId: string, pathWithQuery: string): Promise<T> {
   const token = await getAccessTokenForMember(memberId)
   const res = await fetch(`${GRAPH_BASE}${pathWithQuery}`, {
@@ -241,13 +271,10 @@ export async function graphGet<T = any>(memberId: string, pathWithQuery: string)
   }
   if (!res.ok) {
     const text = await res.text()
-    // 403 ErrorAccessDenied means the token is valid but lacks a required
-    // permission (e.g. the member consented before a new scope was added).
-    // Re-consenting (reconnect) is the recovery, so surface it like a lapsed
-    // connection rather than a generic hard error.
-    if (res.status === 403 && text.includes('ErrorAccessDenied')) {
-      throw new MicrosoftNotConnectedError()
-    }
+    // A valid token missing a required permission — the member consented
+    // before the scope was added. Reconnecting is the recovery, so surface it
+    // like a lapsed connection rather than a generic hard error.
+    if (isConsentError(res.status, text)) throw new MicrosoftNotConnectedError()
     throw new Error(`Graph request failed (${res.status}): ${text}`)
   }
   return (await res.json()) as T
@@ -266,11 +293,9 @@ export async function graphPost<T = any>(memberId: string, pathWithQuery: string
   if (res.status === 401) throw new MicrosoftNotConnectedError()
   if (!res.ok) {
     const text = await res.text()
-    // See graphGet: a valid token missing a required scope (e.g. Mail.Send for
-    // replies) returns 403 ErrorAccessDenied — recover via reconnect/re-consent.
-    if (res.status === 403 && text.includes('ErrorAccessDenied')) {
-      throw new MicrosoftNotConnectedError()
-    }
+    // See graphGet: a valid token missing a required scope recovers via
+    // reconnect/re-consent.
+    if (isConsentError(res.status, text)) throw new MicrosoftNotConnectedError()
     throw new Error(`Graph request failed (${res.status}): ${text}`)
   }
   if (res.status === 202 || res.status === 204) return null

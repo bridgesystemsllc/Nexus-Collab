@@ -39,6 +39,7 @@ import { projectCheckinRoutes } from './routes/projectCheckins'
 import { projectReportRoutes } from './routes/projectReports'
 import { collabProjectRoutes, projectCollabRoutes } from './routes/collabProjects'
 import { projectAnalyticsRoutes } from './routes/projectAnalytics'
+import { taskConversationRoutes } from './routes/taskConversations'
 import { jobRoutes } from './routes/jobs'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
@@ -140,6 +141,9 @@ api.use('/inventory-import', inventoryImportRoutes)
 // Projects & Initiatives. The task router mounts on the same base so its
 // /tasks/* paths sit alongside /projects/:id/*; it is registered first because
 // its specific paths (/tasks/my, /tasks/bulk) must win over /:id.
+// Email and Teams conversations attached to a task. Mounted under /projects
+// so it shares the module's base; its own paths all start /tasks/.
+api.use('/projects/tasks', taskConversationRoutes)
 api.use('/projects', projectAnalyticsRoutes)
 api.use('/projects', projectCollabRoutes)
 api.use('/projects', projectTaskRoutes)
