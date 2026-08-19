@@ -1,0 +1,73 @@
+name: CI
+
+# Runs on every PR into main, and on main itself so a bad merge is caught even
+# if it lands without a PR. Nothing here needs a database or any secret.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A new push supersedes the run in flight for the same ref. Without this, a
+# branch pushed three times queues three full runs and the first two are waste.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: test · typecheck · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # `prisma generate` resolves env("DATABASE_URL") from the datasource block
+      # in packages/prisma/prisma/schema.prisma. It never opens a connection —
+      # generate only reads the schema — so a placeholder is sufficient. The one
+      # suite that does need a live database (*.integration.test.ts) is excluded
+      # from the default vitest run by apps/api/vitest.config.ts.
+      DATABASE_URL: postgresql://nexus:nexus@localhost:5432/nexus
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Must precede setup-node: `cache: pnpm` below needs the pnpm binary to
+      # resolve the store path.
+      #
+      # Pinned to 9 deliberately. pnpm-lock.yaml is lockfileVersion 9.0, and
+      # pnpm 10 stopped running dependency lifecycle scripts by default, which
+      # would silently change what a clean install produces here versus on a
+      # developer machine or Replit.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20          # matches replit.nix (nodejs_20) and engines
+          cache: pnpm
+
+      # --frozen-lockfile fails when pnpm-lock.yaml disagrees with any
+      # package.json. That is a signal, not an inconvenience: it means someone
+      # changed a dependency without committing the lockfile.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The API typecheck reads Prisma's generated types. Skipping this produces
+      # a wall of errors that have nothing to do with the change under review.
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Test
+        run: pnpm test
+
+      # Covers apps/api only. The web app is typechecked by its build step
+      # below, whose script is `tsc -b && vite build`.
+      - name: Typecheck API
+        run: pnpm typecheck
+
+      - name: Build web
+        run: pnpm build
+
+      - name: Build API
+        run: pnpm build:api
