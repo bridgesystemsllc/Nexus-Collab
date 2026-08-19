@@ -35,14 +35,14 @@ interface Props {
   canEdit: boolean
   members?: { id: string; name: string }[]
   onClose: () => void
-  /** Opening a subtask swaps the drawer's subject rather than stacking drawers. */
+  /** Opening a subtask swaps the modal's subject rather than stacking modals. */
   onOpenTask?: (task: ProjectTask) => void
 }
 
 export function TaskDetailModal({
   task, projectId, canEdit, members = [], onClose, onOpenTask,
 }: Props) {
-  const ref = useModalBehaviour<HTMLElement>(onClose)
+  const ref = useModalBehaviour(onClose)
   const qc = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   const [newSubtask, setNewSubtask] = useState('')
@@ -251,8 +251,8 @@ export function TaskDetailModal({
                   type="number" min="0" step="0.5" disabled={!canEdit} className={field}
                   defaultValue={task.estimatedHours != null ? String(task.estimatedHours) : ''}
                   onBlur={(e) => {
-                    const v = e.target.value === '' ? null : Number(e.target.value)
-                    if (v !== (task.estimatedHours == null ? null : Number(task.estimatedHours))) {
+                    const v = e.target.value === '' ? undefined : Number(e.target.value)
+                    if (v !== (task.estimatedHours == null ? undefined : Number(task.estimatedHours))) {
                       update.mutate({ estimatedHours: v })
                     }
                   }}
@@ -277,6 +277,7 @@ export function TaskDetailModal({
               </Labelled>
               <Labelled label="Progress (%)">
                 <input
+                  key={String(task.percentComplete ?? 0)}
                   type="number" min="0" max="100" step="5" disabled={!canEdit} className={field}
                   defaultValue={String(task.percentComplete ?? 0)}
                   onBlur={(e) => {
@@ -321,7 +322,7 @@ export function TaskDetailModal({
                 placeholder={canEdit ? 'What does done look like?' : 'No description'}
                 onBlur={(e) => {
                   const v = e.target.value.trim()
-                  if (v !== (task.description ?? '')) update.mutate({ description: v || null })
+                  if (v !== (task.description ?? '')) update.mutate({ description: v || undefined })
                 }}
                 className={`${field} resize-y leading-relaxed`}
               />

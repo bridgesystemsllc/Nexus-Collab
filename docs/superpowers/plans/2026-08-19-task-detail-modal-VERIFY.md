@@ -35,8 +35,24 @@ only and this branch does not touch the API.
    `Completed <date>` or `Created in <lane>`. It must stay visible while either
    column scrolls. It was a trailing paragraph in the drawer and became a
    spanning footer here; confirm it did not get lost.
+9. **Escape inside the attachments panel.** Open Files & comments → Add
+   comment → type something → press Escape. The whole task modal closes and
+   the draft is lost. `TaskAttachments`' own sub-modals do not register with
+   `useModalBehaviour`'s stack, so the task modal stays topmost and answers the
+   key. Known; it belongs to the same cross-cutting ticket as the `canEdit`
+   rollout. Note that step 4's picker test passes, because `TaskConversations`
+   *does* use the hook — so this failure hides behind a passing neighbour.
 
 ## Known gaps
+
+### Below `lg`, the body becomes two stacked scrollers
+
+The two columns each keep `min-h-0 overflow-y-auto`, so on a narrow screen the
+definite body height is split between two independently scrolling panes rather
+than one continuous scroll as the drawer had. Nothing is clipped or
+unreachable, so the responsive check passes — but it is an ergonomics
+regression on mobile and wants an explicit look in the browser before anyone
+calls this done.
 
 ### The attachments API has no authorization at all
 
@@ -47,11 +63,19 @@ module, which was rebuilt around capabilities that fail closed.
 
 - `DELETE /attachments/:id` (`:242-257`) finds the row, confirms it exists, and
   soft-deletes it. There is no actor resolution, no ownership check, and no
-  capability check. **Any authenticated user can delete any attachment on any
-  entity, given its id.**
+  capability check. **There is no authentication gate on the API router at
+  all** — `api.use(attachMember)` (`apps/api/src/index.ts:105`) is explicitly
+  non-blocking (`apps/api/src/auth/session.ts:164-176`), and there is no
+  `requireAuth`/`requireSession` anywhere on the `/api/v1` router. So `DELETE
+  /api/v1/tasks/attachments/:id` is reachable by **anyone who can reach the
+  API**, with no session at all.
 - The `POST` routes for email, file, file-by-URL and comment are equally
   unguarded.
 - `createdBy` is read from `req.body`, so attribution is client-supplied.
+  `resolveActingMemberId` (`apps/api/src/routes/taskAttachments.ts:10-20`)
+  falls back to `prisma.member.findFirst()` when the client-supplied
+  `createdBy` does not resolve, so an unattributable upload is attributed to
+  an arbitrary member.
 - The router sits behind `attachMember` (`apps/api/src/index.ts:131`), which
   `apps/api/src/auth/session.ts:164-176` documents as explicitly
   **non-blocking** — it never rejects a request.
