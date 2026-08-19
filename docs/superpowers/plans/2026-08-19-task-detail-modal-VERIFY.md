@@ -43,6 +43,14 @@ only and this branch does not touch the API.
    rollout. Note that step 4's picker test passes, because `TaskConversations`
    *does* use the hook — so this failure hides behind a passing neighbour.
 
+## Fixed during final review
+
+- **Clearing the Estimate field returned a 422.** The handler sent `null` for
+  `estimatedHours`, which is `.optional()` but not `.nullable()`. Fixed in
+  `f1dce13` — both the mutated value and the change-detection baseline now use
+  `undefined`. The same bug in the Description field was found and fixed in the
+  same commit.
+
 ## Known gaps
 
 ### Below `lg`, the body becomes two stacked scrollers
@@ -92,17 +100,6 @@ too — a worse bug than the one it fixes. The real fix is cross-cutting: an
 optional `canEdit` prop rolled out to every consumer, plus server-side
 authorization on the routes. The missing DELETE ownership check is the urgent
 half and is independent of any UI work.
-
-### Clearing the Estimate field returns a 422
-
-`TaskDetailModal.tsx`'s `Estimate (hours)` handler sends `null` when the field
-is emptied, but the server declares `estimatedHours: z.number().nonnegative().optional()`
-(`apps/api/src/routes/projectTasks.ts:242`) — optional, **not nullable**. So
-clearing an estimate fails validation instead of clearing.
-
-Pre-existing, and sitting a few lines above the `Actual (hours)` field added by
-this branch, which handles the same case correctly by sending `undefined`. One
-line to fix; it is queued for this branch's final review.
 
 ### `milestoneId` is not surfaced
 
