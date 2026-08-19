@@ -262,7 +262,54 @@ export function TaskDetailModal({
                   {task.phase?.name ?? 'Unphased'}
                 </p>
               </Labelled>
+              <Labelled label="Actual (hours)">
+                <input
+                  type="number" min="0" step="0.5" disabled={!canEdit} className={field}
+                  defaultValue={task.actualHours != null ? String(task.actualHours) : ''}
+                  onBlur={(e) => {
+                    const v = e.target.value === '' ? undefined : Number(e.target.value)
+                    if (v !== (task.actualHours == null ? undefined : Number(task.actualHours))) {
+                      update.mutate({ actualHours: v })
+                    }
+                  }}
+                />
+              </Labelled>
+              <Labelled label="Progress (%)">
+                <input
+                  type="number" min="0" max="100" step="5" disabled={!canEdit} className={field}
+                  defaultValue={String(task.percentComplete ?? 0)}
+                  onBlur={(e) => {
+                    if (e.target.value === '') { e.target.value = String(task.percentComplete ?? 0); return }
+                    // The server rejects anything outside 0-100; clamping here turns
+                    // a fat-fingered 1000 into a saved 100 rather than an error.
+                    const v = Math.min(100, Math.max(0, Math.round(Number(e.target.value))))
+                    e.target.value = String(v)
+                    if (v !== (task.percentComplete ?? 0)) update.mutate({ percentComplete: v })
+                  }}
+                />
+              </Labelled>
             </div>
+
+            <Section title="Tags">
+              <input
+                type="text"
+                disabled={!canEdit}
+                className={field}
+                placeholder={canEdit ? 'comma, separated, tags' : 'No tags'}
+                defaultValue={(task.tags ?? []).join(', ')}
+                onBlur={(e) => {
+                  const next = e.target.value.split(',').map((s) => s.trim()).filter(Boolean)
+                  const current = task.tags ?? []
+                  const changed =
+                    next.length !== current.length || next.some((t, i) => t !== current[i])
+                  // `tags` is z.array(z.string()).default([]) — optional under
+                  // .partial() but NOT nullable. An emptied list must send [], never
+                  // null, or the save 422s and the user sees a validation error
+                  // instead of cleared tags.
+                  if (changed) update.mutate({ tags: next })
+                }}
+              />
+            </Section>
 
             {/* Description */}
             <Section title="Description">

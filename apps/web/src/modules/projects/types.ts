@@ -147,6 +147,8 @@ export interface ProjectTask {
   dueDate?: string | null
   completedAt?: string | null
   estimatedHours?: string | number | null
+  /** Decimal on the server, so it arrives as a string. Mirrors estimatedHours. */
+  actualHours?: string | number | null
   percentComplete: number
   blockedReason?: string | null
   blockedSince?: string | null
