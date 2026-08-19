@@ -16,7 +16,7 @@ import { TimelineGantt } from '../components/TimelineGantt'
 import { CheckInPanel } from '../components/CheckInPanel'
 import { LinkedRecords } from '../components/LinkedRecords'
 import { ActivityFeed } from '../components/ActivityFeed'
-import { TaskDetailDrawer } from '../components/TaskDetailDrawer'
+import { TaskDetailModal } from '../components/TaskDetailModal'
 import { InlineEdit } from '../components/InlineEdit'
 import { useModalBehaviour } from '../lib/useModalBehaviour'
 import { ReportsPanel } from '../components/ReportsPanel'
@@ -284,14 +284,14 @@ export function ProjectDetailView({
       </div>
 
       {selectedTask && (
-        <TaskDetailDrawer
+        <TaskDetailModal
           task={selectedTask}
           projectId={projectId}
           canEdit={project.capabilities?.editTaskOwnLane ?? false}
           members={(project.members ?? []).map((m: any) => ({ id: m.member.id, name: m.member.name }))}
           onClose={() => setSelectedTask(null)}
-          // Opening a subtask swaps the drawer's subject rather than stacking
-          // a second drawer on top of the first.
+          // Opening a subtask swaps the modal's subject rather than stacking
+          // a second modal on top of the first.
           onOpenTask={setSelectedTask}
         />
       )}
