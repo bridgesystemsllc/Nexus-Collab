@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle, Ban, Check, CheckSquare, ChevronRight, Clock, GitBranch,
-  ListTree, Plus, Square, Trash2, X,
+  ListTree, Paperclip, Plus, Square, Trash2, X,
 } from 'lucide-react'
 import * as client from '../api/projectsClient'
 import { useModalBehaviour } from '../lib/useModalBehaviour'
 import { formatDate } from './ProjectCard'
 import { TaskConversations } from './TaskConversations'
+import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import {
   TASK_STATUS_LABELS, PRIORITY_COLORS, type ProjectTask, type TaskStatus, type Priority,
 } from '../types'
@@ -462,6 +463,11 @@ export function TaskDetailModal({
           <div className="min-h-0 space-y-4 overflow-y-auto p-5">
             {/* Email and Teams */}
             <TaskConversations taskId={task.id} canEdit={canEdit} />
+
+            {/* Files and comments */}
+            <Section title="Files & comments" icon={Paperclip}>
+              <TaskAttachments taskId={task.id} module="projects" />
+            </Section>
 
             {/* Dependencies — counts only; the Gantt is where they are edited. */}
             {(task._count?.dependenciesIn || task._count?.dependenciesOut) ? (
