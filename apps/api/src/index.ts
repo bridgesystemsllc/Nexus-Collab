@@ -40,6 +40,7 @@ import { projectReportRoutes } from './routes/projectReports'
 import { collabProjectRoutes, projectCollabRoutes } from './routes/collabProjects'
 import { projectAnalyticsRoutes } from './routes/projectAnalytics'
 import { taskConversationRoutes } from './routes/taskConversations'
+import { rbacRoutes } from './routes/rbac'
 import { jobRoutes } from './routes/jobs'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
@@ -143,6 +144,9 @@ api.use('/inventory-import', inventoryImportRoutes)
 // its specific paths (/tasks/my, /tasks/bulk) must win over /:id.
 // Email and Teams conversations attached to a task. Mounted under /projects
 // so it shares the module's base; its own paths all start /tasks/.
+// Roles and permissions. Its own base — this is workspace authority, not a
+// projects concern.
+api.use('/rbac', rbacRoutes)
 api.use('/projects/tasks', taskConversationRoutes)
 api.use('/projects', projectAnalyticsRoutes)
 api.use('/projects', projectCollabRoutes)
