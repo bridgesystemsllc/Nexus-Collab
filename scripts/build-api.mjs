@@ -39,6 +39,21 @@ const ENTRY_POINTS = ['dist/index.js', 'dist/worker.js', 'dist/jobs/runDue.js']
 // inconvenient. Growth here is worth noticing in review.
 const KNOWN_TYPE_ERRORS = 46
 
+// @nexus/shared must exist as built output before this runs: the API resolves
+// it through package exports, not through a source path mapping.
+if (!existsSync(join(root, 'packages/shared/dist/index.js'))) {
+  console.log('[build:api] building @nexus/shared first…')
+  // The package's own script, so CJS and ESM are both produced — building
+  // only the CJS half here would leave the web bundle to fail later.
+  const shared = spawnSync('pnpm', ['--filter', '@nexus/shared', 'build'], {
+    cwd: root, encoding: 'utf8', shell: process.platform === 'win32',
+  })
+  if (shared.status !== 0) {
+    console.error('[build:api] @nexus/shared failed to build:\n' + (shared.stdout ?? '') + (shared.stderr ?? ''))
+    process.exit(1)
+  }
+}
+
 console.log('[build:api] compiling…')
 const tsc = spawnSync('npx', ['tsc', '-p', 'tsconfig.json'], {
   cwd: api,

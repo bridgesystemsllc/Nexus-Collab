@@ -1,3 +1,7 @@
+// Validation shared by the API routes and the React forms — one source of
+// truth, so a form cannot accept what the server will reject.
+export * from './validation/user'
+
 // ─── Shared Types for NEXUS ─────────────────────────────────
 
 export type Role = 'ADMIN' | 'OPS_MANAGER' | 'DEPT_LEAD' | 'PROJECT_LEAD' | 'MEMBER'

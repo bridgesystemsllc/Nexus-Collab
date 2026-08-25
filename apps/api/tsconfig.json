@@ -14,7 +14,6 @@
     "declarationMap": true,
     "sourceMap": true,
     "paths": {
-      "@nexus/shared": ["../../packages/shared/src"],
       "@nexus/prisma": ["../../packages/prisma"]
     }
   },

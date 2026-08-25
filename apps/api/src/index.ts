@@ -41,6 +41,8 @@ import { collabProjectRoutes, projectCollabRoutes } from './routes/collabProject
 import { projectAnalyticsRoutes } from './routes/projectAnalytics'
 import { taskConversationRoutes } from './routes/taskConversations'
 import { rbacRoutes } from './routes/rbac'
+import { userRoutes } from './routes/users'
+import { auditRoutes } from './routes/audit'
 import { jobRoutes } from './routes/jobs'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
@@ -147,6 +149,10 @@ api.use('/inventory-import', inventoryImportRoutes)
 // Roles and permissions. Its own base — this is workspace authority, not a
 // projects concern.
 api.use('/rbac', rbacRoutes)
+// User management. `/users` is the new admin directory; the older
+// `/members` routes are left alone for the screens that still use them.
+api.use('/users', userRoutes)
+api.use('/audit', auditRoutes)
 api.use('/projects/tasks', taskConversationRoutes)
 api.use('/projects', projectAnalyticsRoutes)
 api.use('/projects', projectCollabRoutes)
