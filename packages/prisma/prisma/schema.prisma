@@ -110,6 +110,35 @@ model Member {
   collabLinksRemoved CollabProjectLink[] @relation("CollabUnlinker")
   chatLinksMade      TaskChatLink[]      @relation("ChatLinker")
 
+  // ── User Management ──
+  // `role` above stays the authority for the projects module. `roleId` is the
+  // new permission system; Role.legacyRole keeps the two in step on write.
+  roleId             String?
+  roleRef            Role?               @relation(fields: [roleId], references: [id])
+  /// invited | active | suspended | deactivated. Distinct from `status`, which
+  /// is presence (AVAILABLE/FOCUSED/IN_MEETING/OOO).
+  lifecycleStatus    String              @default("active")
+  displayName        String?
+  jobTitle           String?
+  phone              String?
+  timezone           String              @default("America/New_York")
+  locale             String              @default("en-CA")
+  emailVerifiedAt    DateTime?
+  /// Holds the new address during an email change; promoted on verification.
+  pendingEmail       String?
+  lastLoginAt        DateTime?
+  deactivatedAt      DateTime?
+  createdById        String?
+  createdBy          Member?             @relation("MemberCreator", fields: [createdById], references: [id])
+  createdMembers     Member[]            @relation("MemberCreator")
+
+  preference           UserPreference?
+  notificationPrefs    NotificationPreference[]
+  permissionOverrides  UserPermissionOverride[] @relation("OverrideSubject")
+  overridesGranted     UserPermissionOverride[] @relation("OverrideGrantor")
+  invitationsSentNew   UserInvitation[]         @relation("InvitationSender")
+  auditEntries         AuditLog[]               @relation("AuditActor")
+
   @@index([orgId])
   @@index([clerkUserId])
 }
@@ -1231,4 +1260,178 @@ model ProjectNumberCounter {
   updatedAt DateTime @updatedAt
 
   @@unique([orgId, year])
+}
+
+// ═══════════════════════════════════════════════════════════
+// User Management & Settings
+// ═══════════════════════════════════════════════════════════
+// The user table is `Member` above — it already carries 20+ relations across
+// projects, tasks and reports, so this module extends it rather than
+// introducing a parallel `users` table that half the app would not know about.
+//
+// Two collisions with the spec, resolved deliberately:
+//   · `Member.status` already means PRESENCE (AVAILABLE/FOCUSED/OOO). Lifecycle
+//     lives in `lifecycleStatus` so neither meaning is overloaded.
+//   · `Member.role` is a legacy string read in 18+ places (policy.ts's
+//     isOrgAdmin, task routes, report routes). It stays authoritative for
+//     those; `roleId` is the new system, and Role.legacyRole is what keeps the
+//     two in step. See rbac/resolve.ts.
+
+/// A named bundle of permissions. System roles are seeded and immutable;
+/// custom roles clone one as a starting point.
+model Role {
+  id          String   @id @default(cuid())
+  /// Stable slug: owner | admin | manager | member | guest, or a custom key.
+  key         String   @unique
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  /// Lower is more powerful. An assigner may only grant a role of strictly
+  /// higher rank than their own — the privilege-escalation guard.
+  rank        Int
+  /// The legacy `Member.role` string written whenever this role is assigned.
+  ///
+  /// The projects module reads that string directly and treats both ADMIN and
+  /// OPS_MANAGER as org admin. Mapping `manager` onto OPS_MANAGER would have
+  /// silently promoted every department lead to org admin the first time their
+  /// profile was saved, so `manager` maps to DEPT_LEAD instead.
+  legacyRole  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     Member[]
+  permissions RolePermission[]
+  invitations UserInvitation[]
+
+  @@index([rank])
+}
+
+/// Seeded catalogue. Never user-created — a permission with no code behind it
+/// is a checkbox that lies.
+model Permission {
+  key         String   @id
+  resource    String
+  action      String
+  label       String
+  description String?
+  sortOrder   Int      @default(0)
+
+  roles       RolePermission[]
+  overrides   UserPermissionOverride[]
+
+  @@index([resource])
+}
+
+model RolePermission {
+  roleId        String
+  role          Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionKey String
+  permission    Permission @relation(fields: [permissionKey], references: [key], onDelete: Cascade)
+
+  @@id([roleId, permissionKey])
+  @@index([permissionKey])
+}
+
+/// Per-user exception to their role. A deny always beats a grant.
+model UserPermissionOverride {
+  id            String     @id @default(cuid())
+  memberId      String
+  member        Member     @relation("OverrideSubject", fields: [memberId], references: [id], onDelete: Cascade)
+  permissionKey String
+  permission    Permission @relation(fields: [permissionKey], references: [key], onDelete: Cascade)
+  /// grant | deny
+  effect        String
+  grantedById   String?
+  grantedBy     Member?    @relation("OverrideGrantor", fields: [grantedById], references: [id])
+  /// Required. An override nobody can explain is one nobody dares remove.
+  reason        String
+  expiresAt     DateTime?
+  createdAt     DateTime   @default(now())
+
+  @@unique([memberId, permissionKey])
+  @@index([memberId])
+  @@index([expiresAt])
+}
+
+/// Invitation to join. Separate from the older OrganizationInvite, which the
+/// onboarding flow still owns and which stores its token in plaintext.
+model UserInvitation {
+  id          String    @id @default(cuid())
+  email       String
+  firstName   String?
+  lastName    String?
+  roleId      String
+  role        Role      @relation(fields: [roleId], references: [id])
+  departmentId String?
+  message     String?
+  /// SHA-256 of the raw token. The raw value exists only in the email — a
+  /// database read must never be enough to accept someone else's invitation.
+  tokenHash   String    @unique
+  invitedById String?
+  invitedBy   Member?   @relation("InvitationSender", fields: [invitedById], references: [id])
+  orgId       String
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([email])
+  @@index([orgId])
+}
+
+model UserPreference {
+  memberId           String   @id
+  member             Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  theme              String   @default("system")
+  density            String   @default("comfortable")
+  defaultLandingPage String   @default("dashboard")
+  weekStartsOn       Int      @default(1)
+  dateFormat         String   @default("MMM d, yyyy")
+  timeFormat         String   @default("12h")
+  sidebarCollapsed   Boolean  @default(false)
+  /// off | daily | weekly
+  digestFrequency    String   @default("daily")
+  /// Minutes from midnight in the member's own timezone, or null for none.
+  quietHoursStart    Int?
+  quietHoursEnd      Int?
+  updatedAt          DateTime @updatedAt
+}
+
+/// One row per member per channel per event. A missing row means "use the
+/// seeded default" — never "off". An event added later must not arrive
+/// silently switched off for everyone who predates it.
+model NotificationPreference {
+  memberId String
+  member   Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  /// in_app | email | digest
+  channel  String
+  eventKey String
+  enabled  Boolean
+
+  @@id([memberId, channel, eventKey])
+  @@index([memberId])
+}
+
+/// Append-only. The repository exposes append() and query() and nothing else;
+/// there is no update or delete path anywhere in the codebase.
+model AuditLog {
+  id                 String   @id @default(cuid())
+  actorId            String?
+  actor              Member?  @relation("AuditActor", fields: [actorId], references: [id])
+  /// Denormalised so the trail still names someone after the actor is
+  /// deactivated or their address changes.
+  actorEmailSnapshot String?
+  action             String
+  entityType         String
+  entityId           String?
+  /// { field: { from, to } } — secrets redacted before write.
+  changes            Json?
+  /// ip, userAgent, requestId
+  metadata           Json?
+  createdAt          DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt(sort: Desc)])
 }
