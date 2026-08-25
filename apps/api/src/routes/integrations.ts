@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express'
 import crypto from 'crypto'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '../index'
 import { encrypt, decrypt, encryptJson, decryptJson } from '../lib/encryption'
 import {
@@ -127,7 +128,10 @@ async function persistErpLiveResult(probe: ErpProbeResult, base: string): Promis
         liveVerified: probe.ok,
         lastTestAt: new Date().toISOString(),
         lastTestError: probe.ok ? null : erpProbeError(probe, base),
-      } as Record<string, unknown>,
+        // Prisma's Json input type is a closed union, and `Record<string,
+        // unknown>` is not one of its members. The values here are all JSON
+        // scalars, so the assertion states a fact rather than hiding one.
+      } as Prisma.InputJsonObject,
     },
   })
 }

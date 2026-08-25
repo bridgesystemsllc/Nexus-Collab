@@ -867,6 +867,10 @@ model TransitionMilestone {
   skuId         String
   sku           TransitionSku @relation(fields: [skuId], references: [id], onDelete: Cascade)
   milestoneName String
+  /// Milestones are a sequence, not a set — "Agreement Signed" before "Trial
+  /// Batch" is the whole point. The routes have always read and written this;
+  /// the column was simply never added.
+  sortOrder     Int           @default(0)
   dueDate       DateTime?
   completed     Boolean       @default(false)
   completedDate DateTime?
