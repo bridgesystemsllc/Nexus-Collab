@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Truck,
   UserCog,
+  Cog,
 } from 'lucide-react'
 import type { ElementType } from 'react'
 import { useAppStore } from '@/stores/appStore'
@@ -39,6 +40,7 @@ type StaticPage =
   | 'dept-manager'
   | 'pulse'
   | 'people'
+  | 'settings'
 
 type NavItem =
   | {
@@ -96,6 +98,7 @@ const systemSection: NavSection = {
     { id: 'dept-manager', label: 'Dept Manager', icon: Boxes },
     { id: 'pulse', label: 'Pulse', icon: Bell },
     { id: 'people', label: 'People', icon: UserCog },
+    { id: 'settings', label: 'Settings', icon: Cog },
   ],
 }
 

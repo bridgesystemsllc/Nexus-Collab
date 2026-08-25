@@ -184,9 +184,9 @@ export function InviteUserDrawer({ onClose, onInvited }: Props) {
                 {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
               {me.isSuccess && roles.length === 0 && (
-                <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
+                <span className="mt-1 block text-[10px] text-[var(--text-tertiary)]">
                   You cannot grant any role — only roles below your own can be assigned.
-                </p>
+                </span>
               )}
             </Field>
 
@@ -235,16 +235,19 @@ export function InviteUserDrawer({ onClose, onInvited }: Props) {
 function Field({
   label, error, required, children,
 }: { label: string; error?: string; required?: boolean; children: React.ReactNode }) {
+  // The control is nested inside the label so the association is implicit —
+  // a <label> merely adjacent to an input names nothing, and a screen reader
+  // reads the field as unlabelled.
   return (
-    <div>
-      <label className="mb-1 block text-[11px] font-medium text-[var(--text-secondary)]">
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-medium text-[var(--text-secondary)]">
         {label}
         {required && <span style={{ color: 'var(--danger)' }}> *</span>}
-      </label>
+      </span>
       {children}
       {/* Inline, under the field. Only true server failures use a toast (§7.3). */}
-      {error && <p className="mt-1 text-[10px]" style={{ color: 'var(--danger)' }} role="alert">{error}</p>}
-    </div>
+      {error && <span className="mt-1 block text-[10px]" style={{ color: 'var(--danger)' }} role="alert">{error}</span>}
+    </label>
   )
 }
 

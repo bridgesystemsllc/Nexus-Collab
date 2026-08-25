@@ -126,6 +126,11 @@ model Member {
   emailVerifiedAt    DateTime?
   /// Holds the new address during an email change; promoted on verification.
   pendingEmail       String?
+  /// SHA-256 of the verification token. The raw value only ever exists in the
+  /// message sent to the NEW address — reading this table must not be enough
+  /// to complete somebody else's email change.
+  pendingEmailTokenHash String?
+  pendingEmailExpiresAt DateTime?
   lastLoginAt        DateTime?
   deactivatedAt      DateTime?
   createdById        String?

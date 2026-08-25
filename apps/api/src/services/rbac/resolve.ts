@@ -192,6 +192,84 @@ export function assignableRoles<T extends RankedRole>(actor: RbacSubject, roles:
   return roles.filter((r) => r.rank > actorRank).sort((a, b) => a.rank - b.rank)
 }
 
+// ─── Role editing ────────────────────────────────────────────
+
+export interface EditableRole {
+  id: string
+  key: string
+  rank: number
+  isSystem: boolean
+}
+
+export type EditDecision =
+  | { allowed: true }
+  | { allowed: false; code: 'FORBIDDEN'; message: string }
+
+/**
+ * May `actor` change what this role can do?
+ *
+ * Assignment and editing are different questions with the same shape, and
+ * getting only the first one right leaves the door open: an admin who cannot
+ * grant the Owner role can still add `billing:manage` to Member and then hand
+ * Member to a confederate. Editing is therefore bounded by rank too.
+ *
+ * Editing your own role is refused for the plainest reason — it is editing
+ * what you yourself may do, which is the escalation the rank rule exists to
+ * stop.
+ */
+export function canEditRole(actor: RbacSubject, role: EditableRole): EditDecision {
+  if (!can(actor, 'roles:manage')) {
+    return { allowed: false, code: 'FORBIDDEN', message: 'You cannot manage roles.' }
+  }
+  if (role.isSystem) {
+    return {
+      allowed: false,
+      code: 'FORBIDDEN',
+      message: `${role.key} is a built-in role and cannot be edited. Clone it to make a version you can change.`,
+    }
+  }
+
+  const actorRank = actor.role?.rank
+  if (actorRank === undefined || actorRank === null) {
+    return { allowed: false, code: 'FORBIDDEN', message: 'You have no role, so you cannot edit one.' }
+  }
+  if (actor.role?.id === role.id) {
+    return { allowed: false, code: 'FORBIDDEN', message: 'You cannot edit your own role.' }
+  }
+  if (role.rank <= actorRank) {
+    return {
+      allowed: false,
+      code: 'FORBIDDEN',
+      message: 'You cannot edit a role at or above your own.',
+    }
+  }
+
+  return { allowed: true }
+}
+
+/**
+ * Permissions the actor is trying to put into a role but does not hold.
+ *
+ * Without this, `roles:manage` is a way to mint authority from nothing: create
+ * a role with every permission, hand it to someone who will act for you. You
+ * may only put into a role what you could already do yourself.
+ *
+ * Removing a permission is never restricted — taking authority away is not an
+ * escalation, and forbidding it would make an over-powered role permanent.
+ */
+export function ungrantablePermissions(
+  actor: RbacSubject,
+  currentKeys: PermissionKey[],
+  nextKeys: PermissionKey[],
+  now = new Date(),
+): PermissionKey[] {
+  const current = new Set(currentKeys)
+  return nextKeys
+    .filter((key) => !current.has(key))
+    .filter((key) => !can(actor, key, now))
+    .sort()
+}
+
 // ─── Last Owner ──────────────────────────────────────────────
 
 /**

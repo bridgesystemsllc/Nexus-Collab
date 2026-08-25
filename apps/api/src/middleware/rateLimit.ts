@@ -102,3 +102,16 @@ export const inviteRateLimit = rateLimit('invite', {
   windowMs: 60 * 60_000,
   message: 'You have sent a lot of invitations in the last hour. Try again shortly.',
 })
+
+/**
+ * 5 email-change requests an hour per member.
+ *
+ * §6.7 sets this budget for password changes. There are no passwords here, and
+ * changing the address a session recovers to is the same kind of operation —
+ * it moves where account control lives.
+ */
+export const emailChangeRateLimit = rateLimit('email-change', {
+  limit: 5,
+  windowMs: 60 * 60_000,
+  message: 'Too many email change attempts. Try again in an hour.',
+})
