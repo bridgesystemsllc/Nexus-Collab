@@ -98,6 +98,9 @@ memberRoutes.post('/invite', async (req: Request, res: Response) => {
     const inviter = await prisma.member.findFirst({
       where: { role: 'admin' },
     }) || await prisma.member.findFirst()
+    // `invitedBy` is required, and an invite nobody sent has no one to chase
+    // when it is queried later.
+    if (!inviter) return res.status(400).json({ error: 'No member to attribute the invite to' })
 
     const token = crypto.randomUUID()
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
@@ -105,12 +108,12 @@ memberRoutes.post('/invite', async (req: Request, res: Response) => {
     const invite = await prisma.organizationInvite.create({
       data: {
         orgId: org.id,
-        email: data.email,
+        invitedEmail: data.email,
         role: data.role || 'member',
         token,
         status: 'pending',
         expiresAt,
-        invitedById: inviter?.id,
+        invitedBy: inviter.id,
       },
     })
 
@@ -140,7 +143,8 @@ memberRoutes.get('/invites', async (_req: Request, res: Response) => {
   try {
     const invites = await prisma.organizationInvite.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { invitedBy: { select: { name: true, email: true } } },
+      // `invitedBy` is the foreign key column; `inviter` is the relation.
+      include: { inviter: { select: { name: true, email: true } } },
     })
     res.json(invites)
   } catch (error) {

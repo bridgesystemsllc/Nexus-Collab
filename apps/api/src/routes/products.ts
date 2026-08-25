@@ -165,8 +165,14 @@ productRoutes.post('/sync-kareve', async (_req: Request, res: Response) => {
         throw new Error(`KarEve API returned ${response.status}`)
       }
 
-      const data = await response.json()
-      kareveProducts = Array.isArray(data) ? data : data.products || data.data || []
+      // `response.json()` is `unknown` — the shape is whatever KarEve sent, and
+      // this endpoint has always coped with three of them.
+      const data = await response.json() as unknown
+      kareveProducts = Array.isArray(data)
+        ? data
+        : (data as { products?: unknown[]; data?: unknown[] })?.products
+          ?? (data as { products?: unknown[]; data?: unknown[] })?.data
+          ?? []
     } catch (fetchError: any) {
       await prisma.syncLog.update({
         where: { id: syncLog.id },

@@ -52,11 +52,10 @@ const TRACK2_MILESTONES = [
 
 interface SkuSeed {
   materialCode: string
-  skuName: string
+  description: string
   track: string
   currentCm: string | null
-  cmCode: string | null
-  processDescription: string | null
+  manufacturingProcess: string | null
   priority: string
   overallStatus: string
   discoDecision?: string | null
@@ -65,37 +64,37 @@ interface SkuSeed {
 
 const SEED_SKUS: SkuSeed[] = [
   // ─── Track 1: loreal_coman (20 SKUs) ───
-  { materialCode: 'K2674205', skuName: 'Coco Creme Shampoo 12 floz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'High', overallStatus: 'Not Started' },
-  { materialCode: 'K2674305', skuName: 'Coco Creme Conditioner 12 floz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'High', overallStatus: 'Not Started' },
-  { materialCode: 'K3386108', skuName: 'Blk Vanilla Cond Accessible 8.5oz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'High', overallStatus: 'Not Started' },
-  { materialCode: 'K3692911', skuName: 'Goddess Strength Conditioner 11oz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'High', overallStatus: 'Not Started' },
-  { materialCode: 'K3905223', skuName: 'Black Vanilla Hydrating Cond 12floz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
-  { materialCode: 'K3905507', skuName: 'Black Vanilla Replenish Shmp 12floz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
-  { materialCode: 'K4415110', skuName: 'Goddess Strength Shampoo 11oz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'High', overallStatus: 'Not Started' },
-  { materialCode: 'K5356706', skuName: 'Goddess Strgth Shp 8.5floz Accessbl', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
-  { materialCode: 'K5405603', skuName: 'INTL BV Hydrating Cond 12floz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
-  { materialCode: 'K5405800', skuName: 'INTL COCO CREME COND 12oz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
-  { materialCode: 'K5405900', skuName: 'INTL COCO CREME SHAMPOO 12oz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
-  { materialCode: 'K5406001', skuName: 'INTL Goddess Strength INT TRMT 11oz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
-  { materialCode: 'K5454506', skuName: 'Goddess Strength Dp Cond 8.5floz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
-  { materialCode: 'K5517706', skuName: 'Born to Repair Born to Repair Shamp', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Low', overallStatus: 'Not Started' },
-  { materialCode: 'K5517805', skuName: 'CD Born to Repair Cond 11floz', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Low', overallStatus: 'Not Started' },
-  { materialCode: 'K6423100', skuName: 'CD Goddess Strength Con and Sh Samp', track: 'loreal_coman', currentCm: 'Unette', cmCode: 'CM_UNETTE-CPD-PKT', processDescription: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Low', overallStatus: 'Not Started' },
-  { materialCode: 'K3692709', skuName: 'CD Goddess Strength LIN Cream 10oz', track: 'loreal_coman', currentCm: 'BASQ', cmCode: null, processDescription: 'Batch & Fill IH @ MTL / Packout @ BASQ', priority: 'High', overallStatus: 'Not Started' },
-  { materialCode: 'K5406701', skuName: 'INTL CD GODDESS STRENGTH LIC 10oz', track: 'loreal_coman', currentCm: 'BASQ', cmCode: null, processDescription: 'Batch & Fill IH @ MTL / Packout @ BASQ', priority: 'High', overallStatus: 'Not Started' },
-  { materialCode: 'K3692804', skuName: 'Goddess Strength Hair & Scalp Oil 4oz', track: 'loreal_coman', currentCm: 'Kolmar', cmCode: null, processDescription: 'Batch IH @ MTL / Fill & Packout @ Kolmar', priority: 'High', overallStatus: 'Not Started' },
-  { materialCode: 'K5410302', skuName: 'INTL GODDESS STRENGTH Scalp Oil 4oz', track: 'loreal_coman', currentCm: 'Kolmar', cmCode: null, processDescription: 'Batch IH @ MTL / Fill & Packout @ Kolmar', priority: 'High', overallStatus: 'Not Started' },
+  { materialCode: 'K2674205', description: 'Coco Creme Shampoo 12 floz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'High', overallStatus: 'Not Started' },
+  { materialCode: 'K2674305', description: 'Coco Creme Conditioner 12 floz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'High', overallStatus: 'Not Started' },
+  { materialCode: 'K3386108', description: 'Blk Vanilla Cond Accessible 8.5oz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'High', overallStatus: 'Not Started' },
+  { materialCode: 'K3692911', description: 'Goddess Strength Conditioner 11oz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'High', overallStatus: 'Not Started' },
+  { materialCode: 'K3905223', description: 'Black Vanilla Hydrating Cond 12floz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
+  { materialCode: 'K3905507', description: 'Black Vanilla Replenish Shmp 12floz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
+  { materialCode: 'K4415110', description: 'Goddess Strength Shampoo 11oz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'High', overallStatus: 'Not Started' },
+  { materialCode: 'K5356706', description: 'Goddess Strgth Shp 8.5floz Accessbl', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
+  { materialCode: 'K5405603', description: 'INTL BV Hydrating Cond 12floz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
+  { materialCode: 'K5405800', description: 'INTL COCO CREME COND 12oz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
+  { materialCode: 'K5405900', description: 'INTL COCO CREME SHAMPOO 12oz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
+  { materialCode: 'K5406001', description: 'INTL Goddess Strength INT TRMT 11oz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
+  { materialCode: 'K5454506', description: 'Goddess Strength Dp Cond 8.5floz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Medium', overallStatus: 'Not Started' },
+  { materialCode: 'K5517706', description: 'Born to Repair Born to Repair Shamp', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Low', overallStatus: 'Not Started' },
+  { materialCode: 'K5517805', description: 'CD Born to Repair Cond 11floz', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Low', overallStatus: 'Not Started' },
+  { materialCode: 'K6423100', description: 'CD Goddess Strength Con and Sh Samp', track: 'loreal_coman', currentCm: 'Unette', manufacturingProcess: 'Batch IH @ FLO / Fill & Packout @ Unette', priority: 'Low', overallStatus: 'Not Started' },
+  { materialCode: 'K3692709', description: 'CD Goddess Strength LIN Cream 10oz', track: 'loreal_coman', currentCm: 'BASQ', manufacturingProcess: 'Batch & Fill IH @ MTL / Packout @ BASQ', priority: 'High', overallStatus: 'Not Started' },
+  { materialCode: 'K5406701', description: 'INTL CD GODDESS STRENGTH LIC 10oz', track: 'loreal_coman', currentCm: 'BASQ', manufacturingProcess: 'Batch & Fill IH @ MTL / Packout @ BASQ', priority: 'High', overallStatus: 'Not Started' },
+  { materialCode: 'K3692804', description: 'Goddess Strength Hair & Scalp Oil 4oz', track: 'loreal_coman', currentCm: 'Kolmar', manufacturingProcess: 'Batch IH @ MTL / Fill & Packout @ Kolmar', priority: 'High', overallStatus: 'Not Started' },
+  { materialCode: 'K5410302', description: 'INTL GODDESS STRENGTH Scalp Oil 4oz', track: 'loreal_coman', currentCm: 'Kolmar', manufacturingProcess: 'Batch IH @ MTL / Fill & Packout @ Kolmar', priority: 'High', overallStatus: 'Not Started' },
 
   // ─── Track 2: full_buy (5 SKUs) ───
-  { materialCode: 'K3906002', skuName: 'Hair Milk Orig LI Moisturizer 8floz', track: 'full_buy', currentCm: 'Voyant California', cmCode: null, processDescription: 'Batch Fill & Packout @ Voyant', priority: 'Medium', overallStatus: 'Active' },
-  { materialCode: 'K3906111', skuName: 'Hair Milk Refresher Spray 10 fl oz', track: 'full_buy', currentCm: 'Voyant California', cmCode: null, processDescription: 'Batch Fill & Packout @ Voyant', priority: 'Medium', overallStatus: 'Active' },
-  { materialCode: 'K4415000', skuName: 'Wash Day Delight Shampoo 16oz', track: 'full_buy', currentCm: 'BMSC', cmCode: null, processDescription: 'Batch Fill & Packout @ BMSC', priority: 'Medium', overallStatus: 'Active' },
-  { materialCode: 'K6250400', skuName: 'GS Hair Regrowth Treatment', track: 'full_buy', currentCm: 'Perrigo', cmCode: null, processDescription: 'Batch Fill & Packout @ Perrigo', priority: 'Medium', overallStatus: 'Active' },
-  { materialCode: 'K5410200', skuName: 'INTL WDD WATER-TO-FOAM SH 16OZ', track: 'full_buy', currentCm: 'BMSC', cmCode: null, processDescription: 'Batch Fill & Packout @ BMSC', priority: 'Low', overallStatus: 'Active' },
+  { materialCode: 'K3906002', description: 'Hair Milk Orig LI Moisturizer 8floz', track: 'full_buy', currentCm: 'Voyant California', manufacturingProcess: 'Batch Fill & Packout @ Voyant', priority: 'Medium', overallStatus: 'Active' },
+  { materialCode: 'K3906111', description: 'Hair Milk Refresher Spray 10 fl oz', track: 'full_buy', currentCm: 'Voyant California', manufacturingProcess: 'Batch Fill & Packout @ Voyant', priority: 'Medium', overallStatus: 'Active' },
+  { materialCode: 'K4415000', description: 'Wash Day Delight Shampoo 16oz', track: 'full_buy', currentCm: 'BMSC', manufacturingProcess: 'Batch Fill & Packout @ BMSC', priority: 'Medium', overallStatus: 'Active' },
+  { materialCode: 'K6250400', description: 'GS Hair Regrowth Treatment', track: 'full_buy', currentCm: 'Perrigo', manufacturingProcess: 'Batch Fill & Packout @ Perrigo', priority: 'Medium', overallStatus: 'Active' },
+  { materialCode: 'K5410200', description: 'INTL WDD WATER-TO-FOAM SH 16OZ', track: 'full_buy', currentCm: 'BMSC', manufacturingProcess: 'Batch Fill & Packout @ BMSC', priority: 'Low', overallStatus: 'Active' },
 
   // ─── Track 3: disco_decision (2 SKUs) ───
-  { materialCode: 'K3907212', skuName: 'Mimosa Hair Honey Shine Pomade 8 oz', track: 'disco_decision', currentCm: null, cmCode: null, processDescription: null, priority: 'High', overallStatus: 'Decision Required', discoDecision: 'Pending', lastLorealBatches: 0 },
-  { materialCode: 'K5891000', skuName: 'CD Goddess Strength Smooth and Shape Balm', track: 'disco_decision', currentCm: null, cmCode: null, processDescription: null, priority: 'High', overallStatus: 'Decision Required', discoDecision: 'Pending', lastLorealBatches: 2 },
+  { materialCode: 'K3907212', description: 'Mimosa Hair Honey Shine Pomade 8 oz', track: 'disco_decision', currentCm: null, manufacturingProcess: null, priority: 'High', overallStatus: 'Decision Required', discoDecision: 'Pending', lastLorealBatches: 0 },
+  { materialCode: 'K5891000', description: 'CD Goddess Strength Smooth and Shape Balm', track: 'disco_decision', currentCm: null, manufacturingProcess: null, priority: 'High', overallStatus: 'Decision Required', discoDecision: 'Pending', lastLorealBatches: 2 },
 ]
 
 // ─── List TransitionSkus ────────────────────────────────────
@@ -113,7 +112,7 @@ brandTransitionRoutes.get('/', async (req: Request, res: Response) => {
     if (cm) where.currentCm = cm
     if (search) {
       where.OR = [
-        { skuName: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
         { materialCode: { contains: search, mode: 'insensitive' } },
         { currentCm: { contains: search, mode: 'insensitive' } },
       ]
@@ -178,7 +177,7 @@ brandTransitionRoutes.post('/:id/notes', async (req: Request, res: Response) => 
 
     const note = await prisma.transitionNote.create({
       data: {
-        transitionSkuId: sku.id,
+        skuId: sku.id,
         noteType: data.noteType,
         noteText: data.noteText,
         createdBy: data.createdBy,
@@ -199,7 +198,7 @@ brandTransitionRoutes.get('/:id/notes', async (req: Request, res: Response) => {
     if (!sku) return res.status(404).json({ error: 'TransitionSku not found' })
 
     const notes = await prisma.transitionNote.findMany({
-      where: { transitionSkuId: sku.id },
+      where: { skuId: sku.id },
       orderBy: { createdAt: 'desc' },
     })
     res.json(notes)
@@ -218,14 +217,14 @@ brandTransitionRoutes.post('/:id/milestones', async (req: Request, res: Response
 
     // Get next sort order
     const lastMilestone = await prisma.transitionMilestone.findFirst({
-      where: { transitionSkuId: sku.id },
+      where: { skuId: sku.id },
       orderBy: { sortOrder: 'desc' },
     })
     const sortOrder = (lastMilestone?.sortOrder ?? 0) + 1
 
     const milestone = await prisma.transitionMilestone.create({
       data: {
-        transitionSkuId: sku.id,
+        skuId: sku.id,
         milestoneName: data.milestoneName,
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
         notes: data.notes ?? null,
@@ -269,7 +268,7 @@ brandTransitionRoutes.post('/:id/cm-candidates', async (req: Request, res: Respo
 
     const candidate = await prisma.cmCandidate.create({
       data: {
-        transitionSkuId: sku.id,
+        skuId: sku.id,
         ...req.body,
       },
     })
@@ -319,15 +318,14 @@ brandTransitionRoutes.post('/seed', async (_req: Request, res: Response) => {
         data: {
           orgId: org.id,
           materialCode: seed.materialCode,
-          skuName: seed.skuName,
+          description: seed.description,
           track: seed.track,
           currentCm: seed.currentCm,
-          cmCode: seed.cmCode,
-          processDescription: seed.processDescription,
+          manufacturingProcess: seed.manufacturingProcess,
           priority: seed.priority,
           overallStatus: seed.overallStatus,
-          discoDecision: seed.discoDecision ?? null,
-          lastLorealBatches: seed.lastLorealBatches ?? null,
+          discoDecision: seed.discoDecision ?? undefined,
+          lastLorealBatches: seed.lastLorealBatches ?? undefined,
         },
       })
 
@@ -340,7 +338,7 @@ brandTransitionRoutes.post('/seed', async (_req: Request, res: Response) => {
       if (milestoneNames.length > 0) {
         await prisma.transitionMilestone.createMany({
           data: milestoneNames.map((name, idx) => ({
-            transitionSkuId: sku.id,
+            skuId: sku.id,
             milestoneName: name,
             sortOrder: idx + 1,
             completed: false,
