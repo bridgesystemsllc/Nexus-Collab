@@ -15,6 +15,7 @@ type Page =
   | 'email-agent'
   | 'dept-manager'
   | 'pulse'
+  | 'people'
   | 'custom-dept'
   | 'projects'
   | 'agent-settings'
@@ -61,8 +62,24 @@ interface AppState {
   closeForm: () => void
 }
 
+// ─── Pages restored from the URL ───────────────────────────
+// The app navigates through this store rather than routes, so a refresh
+// normally lands back on the dashboard. Pages that keep their state in the
+// query string (People puts its filters there) must also be able to bring the
+// user back to themselves, or "survives a refresh" is only half true.
+//
+// Only pages that actually write `?view=` belong here; the rest behave as
+// before, with no param and no restore.
+const RESTORABLE: Page[] = ['people']
+
+function pageFromUrl(): Page {
+  if (typeof window === 'undefined') return 'dashboard'
+  const view = new URLSearchParams(window.location.search).get('view')
+  return RESTORABLE.find((p) => p === view) ?? 'dashboard'
+}
+
 export const useAppStore = create<AppState>((set) => ({
-  currentPage: 'dashboard',
+  currentPage: pageFromUrl(),
   aiPanelOpen: false,
   sidebarCollapsed: false,
   selectedCoworkId: null,

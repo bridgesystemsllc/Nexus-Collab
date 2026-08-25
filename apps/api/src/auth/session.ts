@@ -87,6 +87,18 @@ export async function upsertMemberFromMicrosoft(profile: MsProfile) {
   })
 }
 
+// ─── Last sign-in ───────────────────────────────────────────
+// The People directory sorts and filters on this, so a column nobody writes
+// reads as "everyone has never signed in" rather than as missing data.
+//
+// Deliberately not awaited by the caller and never allowed to throw: a failed
+// bookkeeping write must not cost someone their login.
+export function stampLastLogin(memberId: string): void {
+  prisma.member
+    .update({ where: { id: memberId }, data: { lastLoginAt: new Date() } })
+    .catch((err) => console.error('[auth] could not stamp lastLoginAt:', err))
+}
+
 // ─── Session wiring + login/logout routes ───────────────────
 // Identity is established by signing in with Microsoft (Entra). The OAuth
 // callback itself lives in routes/microsoftGraph.ts (it is the registered Entra
@@ -149,6 +161,7 @@ export async function setupAuth(app: Express) {
           ;(req.session as any).userId = member.id
           req.session.save((err) => {
             if (err) return res.redirect('/?ms=error&reason=session_persist_failed')
+            stampLastLogin(member.id)
             res.redirect('/')
           })
         })

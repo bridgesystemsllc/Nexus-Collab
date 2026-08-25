@@ -14,7 +14,7 @@ import {
   graphPost,
   MicrosoftNotConnectedError,
 } from '../lib/microsoftGraph'
-import { upsertMemberFromMicrosoft } from '../auth/session'
+import { upsertMemberFromMicrosoft, stampLastLogin } from '../auth/session'
 
 // OAuth state stored server-side in the session: single-use. `flow` tells the
 // shared callback whether this was a primary login (no prior member) or a
@@ -152,6 +152,7 @@ microsoftGraphRoutes.get('/callback', async (req: Request, res: Response) => {
             console.error('[microsoft] failed to persist login session:', err)
             return res.redirect(APP_REDIRECT('error', 'session_persist_failed'))
           }
+          stampLastLogin(loggedInMember.id)
           res.redirect('/')
         })
       })

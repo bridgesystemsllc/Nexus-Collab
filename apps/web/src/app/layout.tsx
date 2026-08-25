@@ -18,6 +18,7 @@ import { IntegrationsPage } from '@/app/routes/integrations'
 import { EmailAgentPage } from '@/app/routes/email-agent'
 import { DeptManagerPage } from '@/app/routes/dept-manager'
 import { PulsePage } from '@/app/routes/pulse'
+import { PeoplePage } from '@/app/routes/people'
 import { CustomDeptPage } from '@/app/routes/custom-dept'
 import { ProjectsPage } from '@/app/routes/projects'
 import { FullPageFormHost } from '@/app/formRegistry'
@@ -58,6 +59,8 @@ function PageContent() {
       return <DeptManagerPage />
     case 'pulse':
       return <PulsePage />
+    case 'people':
+      return <PeoplePage />
     case 'custom-dept':
       return <CustomDeptPage />
     case 'projects':
