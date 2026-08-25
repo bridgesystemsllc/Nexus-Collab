@@ -20,8 +20,9 @@
     "test": "pnpm -r test",
     "jobs": "pnpm --filter @nexus/api jobs",
     "worker": "pnpm --filter @nexus/api worker",
-    "build:all": "pnpm db:generate && pnpm build && pnpm build:api",
-    "typecheck": "cd apps/api && npx tsc --noEmit -p tsconfig.json"
+    "build:all": "pnpm db:generate && pnpm build:shared && pnpm build && pnpm build:api",
+    "typecheck": "cd apps/api && npx tsc --noEmit -p tsconfig.json",
+    "build:shared": "pnpm --filter @nexus/shared build"
   },
   "engines": {
     "node": ">=20.0.0"
