@@ -16,6 +16,7 @@ type Page =
   | 'dept-manager'
   | 'pulse'
   | 'people'
+  | 'settings'
   | 'custom-dept'
   | 'projects'
   | 'agent-settings'
@@ -70,7 +71,7 @@ interface AppState {
 //
 // Only pages that actually write `?view=` belong here; the rest behave as
 // before, with no param and no restore.
-const RESTORABLE: Page[] = ['people']
+const RESTORABLE: Page[] = ['people', 'settings']
 
 function pageFromUrl(): Page {
   if (typeof window === 'undefined') return 'dashboard'

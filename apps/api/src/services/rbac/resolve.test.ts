@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   can, canAll, canAny, effectivePermissions, isActive,
   canAssignRole, assignableRoles, wouldOrphanWorkspace,
+  canEditRole, ungrantablePermissions,
   type RbacSubject, type ResolvedRole, type ResolvedOverride,
 } from './resolve'
 
@@ -246,5 +247,104 @@ describe('isActive', () => {
     for (const s of ['invited', 'suspended', 'deactivated', 'nonsense']) {
       expect(isActive({ lifecycleStatus: s })).toBe(false)
     }
+  })
+})
+
+// ─── Role editing ────────────────────────────────────────────
+// Assignment and editing are the same escalation question wearing different
+// clothes. An admin who cannot grant Owner must also not be able to edit a
+// role into an Owner-equivalent and grant that instead.
+
+describe('canEditRole', () => {
+  const custom = (over: Partial<{ id: string; key: string; rank: number; isSystem: boolean }> = {}) =>
+    ({ id: 'r-custom', key: 'ops-lead', rank: 25, isSystem: false, ...over })
+
+  const admin = subject({ role: { ...ADMIN, permissions: [...ADMIN.permissions, 'roles:manage'] } })
+
+  it('allows editing a custom role below the actor', () => {
+    expect(canEditRole(admin, custom()).allowed).toBe(true)
+  })
+
+  it('refuses without roles:manage', () => {
+    const withoutManage = subject({ role: ADMIN })
+    const decision = canEditRole(withoutManage, custom())
+    expect(decision).toMatchObject({ allowed: false, code: 'FORBIDDEN' })
+  })
+
+  it('refuses to edit a built-in role', () => {
+    const decision = canEditRole(admin, custom({ isSystem: true, key: 'member' }))
+    expect(decision.allowed).toBe(false)
+    if (!decision.allowed) expect(decision.message).toContain('built-in')
+  })
+
+  it('refuses a role at the actor rank', () => {
+    expect(canEditRole(admin, custom({ rank: 10 })).allowed).toBe(false)
+  })
+
+  it('refuses a role above the actor', () => {
+    expect(canEditRole(admin, custom({ rank: 5 })).allowed).toBe(false)
+  })
+
+  it('refuses the actor’s own role even when it is custom and low-ranked', () => {
+    // Rank alone would permit this: the actor's rank is not strictly less than
+    // its own. The explicit self check is what closes it.
+    const selfRole = { id: 'r-self', key: 'self', name: 'Self', rank: 25, permissions: ['roles:manage'] }
+    const actor = subject({ role: selfRole })
+    expect(canEditRole(actor, custom({ id: 'r-self', rank: 25 })).allowed).toBe(false)
+  })
+
+  it('refuses an actor with no role at all', () => {
+    const roleless = subject({ role: null, overrides: [grant('roles:manage')] })
+    expect(canEditRole(roleless, custom()).allowed).toBe(false)
+  })
+})
+
+describe('ungrantablePermissions', () => {
+  const manager = subject({
+    role: { ...MANAGER, permissions: ['users:read', 'roles:assign', 'roles:manage'] },
+  })
+
+  it('is empty when every added permission is one the actor holds', () => {
+    expect(ungrantablePermissions(manager, ['users:read'], ['users:read', 'roles:assign'], NOW)).toEqual([])
+  })
+
+  it('names the permissions the actor cannot hand out', () => {
+    expect(
+      ungrantablePermissions(manager, [], ['billing:manage', 'users:read', 'users:deactivate'], NOW),
+    ).toEqual(['billing:manage', 'users:deactivate'])
+  })
+
+  it('permits keeping a permission the role already had but the actor lacks', () => {
+    // Otherwise renaming an over-powered role would be impossible for anyone
+    // below it, and it could never be cleaned up.
+    expect(ungrantablePermissions(manager, ['billing:manage'], ['billing:manage'], NOW)).toEqual([])
+  })
+
+  it('never objects to removing a permission', () => {
+    expect(ungrantablePermissions(manager, ['billing:manage', 'users:read'], ['users:read'], NOW)).toEqual([])
+  })
+
+  it('counts a live grant override as held', () => {
+    const covered = subject({
+      role: { ...MANAGER, permissions: ['roles:manage'] },
+      overrides: [grant('billing:manage', FUTURE)],
+    })
+    expect(ungrantablePermissions(covered, [], ['billing:manage'], NOW)).toEqual([])
+  })
+
+  it('does not count an expired grant override as held', () => {
+    const lapsed = subject({
+      role: { ...MANAGER, permissions: ['roles:manage'] },
+      overrides: [grant('billing:manage', PAST)],
+    })
+    expect(ungrantablePermissions(lapsed, [], ['billing:manage'], NOW)).toEqual(['billing:manage'])
+  })
+
+  it('does not count a denied permission as held, even when the role grants it', () => {
+    const denied = subject({
+      role: { ...ADMIN, permissions: ['users:update', 'roles:manage'] },
+      overrides: [deny('users:update')],
+    })
+    expect(ungrantablePermissions(denied, [], ['users:update'], NOW)).toEqual(['users:update'])
   })
 })
