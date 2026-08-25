@@ -49,7 +49,7 @@ import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
 import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
-import { ensureRbacSeeded } from './services/rbac/bootstrap'
+import { ensureRbacSeeded, ensureEmailsNormalised } from './services/rbac/bootstrap'
 import {
   ensureSubscription,
   isSubscriptionConfigured,
@@ -211,6 +211,12 @@ async function start() {
   // workspace with no permission catalogue is one where nobody can open the
   // People directory or Settings' admin sections. Does nothing once seeded.
   await ensureRbacSeeded(prisma)
+
+  // Case-insensitive email uniqueness has no database-level enforcement —
+  // Prisma 5 cannot express a functional unique index — so it depends on every
+  // row being stored lowercased. This converges the ones written before that
+  // rule, and refuses rather than guessing when two rows would collide.
+  await ensureEmailsNormalised(prisma)
 
   // Auth (session + /api/login,/api/logout) must be wired before the API router
   // so the session cookie is available. The Microsoft OAuth callback lives in

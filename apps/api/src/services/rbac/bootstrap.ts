@@ -69,6 +69,60 @@ export async function ensureRbacSeeded(prisma: PrismaClient): Promise<BootstrapR
 }
 
 /**
+ * Bring existing addresses onto the normalised form.
+ *
+ * `Member.email` is `@unique` and Postgres compares byte-for-byte, so case
+ * insensitivity depends entirely on every row being stored lowercased. Rows
+ * written before that rule existed are not, and until they are, the same person
+ * can hold two accounts.
+ *
+ * Refuses to act when lowercasing would collide. Two accounts differing only by
+ * case is a real situation with real data on both sides, and picking a winner
+ * automatically is not a decision a boot sequence should make.
+ */
+export async function ensureEmailsNormalised(prisma: PrismaClient): Promise<{
+  normalised: number
+  collisions: string[]
+}> {
+  try {
+    const mixed = await prisma.$queryRaw<{ id: string; email: string }[]>`
+      SELECT id, email FROM "Member" WHERE email <> lower(email)
+    `
+    if (mixed.length === 0) return { normalised: 0, collisions: [] }
+
+    const collisions: string[] = []
+    let normalised = 0
+
+    for (const row of mixed) {
+      const lower = row.email.toLowerCase()
+      const clash = await prisma.member.findFirst({
+        where: { email: lower, NOT: { id: row.id } },
+        select: { id: true },
+      })
+      if (clash) {
+        collisions.push(row.email)
+        continue
+      }
+      await prisma.member.update({ where: { id: row.id }, data: { email: lower } })
+      normalised++
+    }
+
+    if (normalised) console.log(`[email] normalised ${normalised} addresses to lowercase`)
+    if (collisions.length) {
+      console.warn(
+        `[email] ${collisions.length} address(es) could not be normalised because a lowercase ` +
+        `account already exists: ${collisions.join(', ')}. Merge them by hand — picking a winner ` +
+        `automatically would silently drop one person's history.`,
+      )
+    }
+    return { normalised, collisions }
+  } catch (err) {
+    console.error('[email] could not normalise addresses:', err)
+    return { normalised: 0, collisions: [] }
+  }
+}
+
+/**
  * Idempotent. Every row is upserted on a stable key, so re-running reconciles
  * rather than duplicating, and a permission removed from a system role here is
  * actually revoked rather than lingering from an earlier run.
