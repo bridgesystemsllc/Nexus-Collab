@@ -87,6 +87,22 @@ export function SettingsPage() {
 
       <EmailConfirmationHandler />
 
+      {/* No role at all means the permission catalogue was never seeded — every
+          guard refuses and the admin sections silently disappear. Silently is
+          the problem: an admin sees a Settings page missing half its contents
+          with nothing to explain why. */}
+      {me.isSuccess && !me.data.profile.role && (
+        <Alert tone="warning">
+          <p className="font-medium">This workspace has no roles set up yet.</p>
+          <p className="mt-0.5 leading-relaxed">
+            You have not been assigned a role, so Access &amp; permissions and the Audit log are
+            hidden and nothing here can grant them. Restarting the API repairs this automatically;
+            an administrator can also run{' '}
+            <code className="rounded bg-[var(--bg-subtle)] px-1 py-0.5">pnpm db:seed:rbac</code>.
+          </p>
+        </Alert>
+      )}
+
       <div className="flex flex-col gap-4 lg:flex-row">
         <nav className="lg:w-52 lg:shrink-0" aria-label="Settings sections">
           <ul className="flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">

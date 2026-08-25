@@ -22,7 +22,8 @@
     "worker": "pnpm --filter @nexus/api worker",
     "build:all": "pnpm db:generate && pnpm build:shared && pnpm build && pnpm build:api",
     "typecheck": "cd apps/api && npx tsc --noEmit -p tsconfig.json",
-    "build:shared": "pnpm --filter @nexus/shared build"
+    "build:shared": "pnpm --filter @nexus/shared build",
+    "db:seed:rbac": "pnpm --filter @nexus/prisma seed:rbac"
   },
   "engines": {
     "node": ">=20.0.0"
