@@ -19,6 +19,23 @@ export const OVERRIDE_EFFECTS = ['grant', 'deny'] as const
 
 // ─── Primitives ──────────────────────────────────────────────
 
+/**
+ * The one way an email address is written down.
+ *
+ * `Member.email` is `@unique`, and Postgres compares it byte-for-byte, so
+ * `Ahmad@x.com` and `ahmad@x.com` are two different accounts as far as the
+ * constraint is concerned. Case-insensitive uniqueness therefore has to come
+ * from every write path storing the same form — Prisma 5 cannot express a
+ * functional unique index, so there is no database-level fallback to catch a
+ * path that forgets.
+ *
+ * Which is why this is a named function and not a `.toLowerCase()` inlined at
+ * each call site: the ones that forget are invisible.
+ */
+export function normaliseEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
 export const emailSchema = z
   .string()
   .trim()

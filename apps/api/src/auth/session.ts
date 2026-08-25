@@ -1,6 +1,7 @@
 import session from 'express-session'
 import connectPg from 'connect-pg-simple'
 import type { Express, RequestHandler, Request, Response, NextFunction } from 'express'
+import { normaliseEmail } from '@nexus/shared'
 import { prisma } from '../index'
 import {
   isMicrosoftConfigured,
@@ -59,16 +60,30 @@ export async function upsertMemberFromMicrosoft(profile: MsProfile) {
   const sub = profile.id
   if (!sub) throw new Error('Microsoft profile missing id')
 
-  const email = profile.mail || profile.userPrincipalName || `${sub}@microsoft.user`
+  // Entra returns whatever case the address was registered in, and it is not
+  // stable — the same person can come back as Ahmad@x.com having been
+  // ahmad@x.com. Unnormalised, the lookup below misses their existing row and
+  // the create that follows hits the unique index, so signing in fails outright.
+  const email = normaliseEmail(
+    profile.mail || profile.userPrincipalName || `${sub}@microsoft.user`,
+  )
   const name = profile.displayName || email || 'Microsoft User'
 
   const bySub = await prisma.member.findUnique({ where: { clerkUserId: sub } }).catch(() => null)
   if (bySub) return bySub
 
-  const byEmail = await prisma.member.findUnique({ where: { email } }).catch(() => null)
+  // Insensitive rather than findUnique: rows written before normalisation may
+  // still carry mixed case, and adopting them is the whole point of this path.
+  const byEmail = await prisma.member
+    .findFirst({ where: { email: { equals: email, mode: 'insensitive' } } })
+    .catch(() => null)
   if (byEmail) {
-    // Adopt the placeholder/invited member record under the real identity.
-    return prisma.member.update({ where: { id: byEmail.id }, data: { clerkUserId: sub } })
+    // Adopt the placeholder/invited member record under the real identity, and
+    // take the opportunity to normalise an address written before this rule.
+    return prisma.member.update({
+      where: { id: byEmail.id },
+      data: { clerkUserId: sub, ...(byEmail.email !== email ? { email } : {}) },
+    })
   }
 
   const org = await prisma.organization.findFirst({ orderBy: { createdAt: 'asc' } })
