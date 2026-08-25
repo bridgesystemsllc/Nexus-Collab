@@ -2,6 +2,11 @@
 // truth, so a form cannot accept what the server will reject.
 export * from './validation/user'
 
+// The permission catalogue and the built-in roles, as data. Imported by the
+// seed script and by the API's boot-time bootstrap, so the two cannot disagree
+// about what a role means.
+export * from './rbac/catalogue'
+
 // ─── Shared Types for NEXUS ─────────────────────────────────
 
 export type Role = 'ADMIN' | 'OPS_MANAGER' | 'DEPT_LEAD' | 'PROJECT_LEAD' | 'MEMBER'

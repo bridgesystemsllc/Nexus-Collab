@@ -82,3 +82,17 @@ if ! npx prisma db execute --stdin --schema prisma/schema.prisma <<< 'SELECT 1 F
 fi
 
 echo "── schema in sync, session store intact ──"
+
+# ── Reference data the application cannot run without ──
+# The permission catalogue is not optional content: every guard fails closed,
+# so an empty Permission table means nobody can open the People directory or
+# Settings' admin sections. Pushing the schema creates those tables empty,
+# which is exactly how production ended up with both modules answering 403.
+#
+# Idempotent — it upserts on stable keys and does nothing when already correct.
+# The API also self-heals on boot; this runs it at merge time so the fix does
+# not wait for a restart.
+echo "── seeding roles and permissions ──"
+cd "$(dirname "$0")/.."
+pnpm --filter @nexus/shared build
+pnpm --filter @nexus/prisma seed:rbac

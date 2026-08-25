@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, RotateCcw, Search, UserPlus, Users } from 'lucide-react'
 import {
-  fetchUsers, fetchMe, fetchRoles, fetchDepartments,
+  ApiError, fetchUsers, fetchMe, fetchRoles, fetchDepartments,
   type DirectoryUser, type LifecycleStatus, type UserListParams, type InviteResponse,
 } from '../api/usersApi'
 import { StatusPill, RoleChip, relativeTime } from '../components/StatusPill'
@@ -223,7 +223,7 @@ export function UserDirectory() {
       {users.isLoading ? (
         <TableSkeleton />
       ) : users.isError ? (
-        <ErrorState onRetry={() => users.refetch()} />
+        <ErrorState error={users.error} hasRole={!!me.data?.role} onRetry={() => users.refetch()} />
       ) : (users.data?.data.length ?? 0) === 0 ? (
         hasFilters ? <ZeroResults onClear={clearFilters} /> : <EmptyState canInvite={can('users:create')} onInvite={() => setInviting(true)} />
       ) : (
@@ -373,12 +373,55 @@ const ZeroResults = ({ onClear }: { onClear: () => void }) => (
   </div>
 )
 
-const ErrorState = ({ onRetry }: { onRetry: () => void }) => (
-  <div className="rounded-xl border py-16 text-center" style={{ borderColor: 'var(--border)' }}>
-    <AlertTriangle size={22} className="mx-auto mb-2" style={{ color: 'var(--danger)' }} />
-    <p className="text-sm text-[var(--text-primary)]">Could not load the directory</p>
-    <button onClick={onRetry} className="mt-2 text-xs font-medium" style={{ color: 'var(--accent)' }}>
-      Try again
-    </button>
-  </div>
-)
+/**
+ * Distinguishes the three ways this fails, because "Could not load the
+ * directory" sent people looking for a network fault when the real answer was
+ * that the workspace had no roles at all.
+ */
+const ErrorState = ({
+  error, hasRole, onRetry,
+}: { error: unknown; hasRole: boolean; onRetry: () => void }) => {
+  const forbidden = error instanceof ApiError && error.status === 403
+
+  // A 403 while holding no role at all is not a permissions decision — it is a
+  // workspace whose permission catalogue was never seeded, and no amount of
+  // retrying will change it.
+  if (forbidden && !hasRole) {
+    return (
+      <div className="rounded-xl border py-14 text-center" style={{ borderColor: 'var(--warning)' }}>
+        <AlertTriangle size={22} className="mx-auto mb-2" style={{ color: 'var(--warning)' }} />
+        <p className="text-sm text-[var(--text-primary)]">This workspace has no roles set up yet</p>
+        <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-[var(--text-tertiary)]">
+          Nobody has been assigned a role, so every permission check refuses — including yours.
+          Restarting the API repairs this automatically; an administrator can also run{' '}
+          <code className="rounded bg-[var(--bg-subtle)] px-1 py-0.5">pnpm db:seed:rbac</code>.
+        </p>
+        <button onClick={onRetry} className="mt-3 text-xs font-medium" style={{ color: 'var(--accent)' }}>
+          Check again
+        </button>
+      </div>
+    )
+  }
+
+  if (forbidden) {
+    return (
+      <div className="rounded-xl border py-16 text-center" style={{ borderColor: 'var(--border)' }}>
+        <AlertTriangle size={22} className="mx-auto mb-2 text-[var(--text-tertiary)]" />
+        <p className="text-sm text-[var(--text-primary)]">You cannot view the directory</p>
+        <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+          Your role does not include permission to see other people.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border py-16 text-center" style={{ borderColor: 'var(--border)' }}>
+      <AlertTriangle size={22} className="mx-auto mb-2" style={{ color: 'var(--danger)' }} />
+      <p className="text-sm text-[var(--text-primary)]">Could not load the directory</p>
+      <button onClick={onRetry} className="mt-2 text-xs font-medium" style={{ color: 'var(--accent)' }}>
+        Try again
+      </button>
+    </div>
+  )
+}
