@@ -603,7 +603,7 @@ git commit -m "fix(tenancy): resolve the login org from the Entra tenant, never 
 
 **Interfaces:**
 - Consumes: Task 3's schema fields.
-- Produces: `ensureOrgTenantBackfill(prisma): Promise<BackfillResult>` and `findCrossOrgEmailCollisions(prisma): Promise<Collision[]>`.
+- Produces: `ensureOrgTenantBackfill(prisma): Promise<BackfillPlan>` and `findCrossOrgEmailCollisions(prisma): Promise<Collision[]>`.
 
 **Why:** the founding KarEve workspace has `entraTenantId = null`, so after Task 4 nobody can sign in to it. And `db push` will fail outright if two members in the same org share an address. Both must be handled before the schema lands.
 
@@ -612,7 +612,7 @@ git commit -m "fix(tenancy): resolve the login org from the Entra tenant, never 
 ```ts
 // apps/api/src/services/rbac/ensureOrgTenant.test.ts
 import { describe, it, expect, vi } from 'vitest'
-import { planBackfill } from './ensureOrgTenant'
+import { planBackfill, findCrossOrgEmailCollisions } from './ensureOrgTenant'
 
 // planBackfill is the decision; ensureOrgTenantBackfill is the I/O around it.
 // Splitting them is what makes "refuses to guess" testable without a database.
@@ -673,6 +673,9 @@ export type BackfillPlan =
   | { action: 'claim'; orgId: string; tenantId: string }
   | { action: 'noop'; reason: 'already-claimed' | 'no-tenant-configured' | 'no-orgs' }
   | { action: 'refuse'; reason: 'ambiguous' }
+  /// Distinct from noop on purpose: a failed backfill and a healthy skip must
+  /// not look the same in a log.
+  | { action: 'failed'; reason: string }
 
 /** Pure. The whole decision, testable without a database. */
 export function planBackfill(orgs: OrgRow[], configuredTenantId: string): BackfillPlan {
@@ -686,25 +689,71 @@ export function planBackfill(orgs: OrgRow[], configuredTenantId: string): Backfi
   return { action: 'claim', orgId: unclaimed[0].id, tenantId: configuredTenantId }
 }
 
+/**
+ * Never throws.
+ *
+ * Same contract as ensureRbacSeeded two calls above it in start(): this runs
+ * on the boot path, and `start()` exits the process on an unhandled rejection.
+ * A transient database error here must degrade to "the tenant claim did not
+ * happen", not to "Nexus is offline" — which is strictly worse than the
+ * problem it was trying to prevent.
+ */
 export async function ensureOrgTenantBackfill(prisma: PrismaClient): Promise<BackfillPlan> {
-  const orgs = await prisma.organization.findMany({ select: { id: true, entraTenantId: true } })
-  const plan = planBackfill(orgs, getMsConfig().tenantId)
-  if (plan.action === 'claim') {
-    await prisma.organization.update({
-      where: { id: plan.orgId },
-      data: { entraTenantId: plan.tenantId },
-    })
-    console.log(`[tenancy] claimed Entra tenant ${plan.tenantId} for org ${plan.orgId}`)
-  } else if (plan.action === 'refuse') {
-    console.warn('[tenancy] several unclaimed organizations — set entraTenantId by hand')
+  try {
+    const orgs = await prisma.organization.findMany({ select: { id: true, entraTenantId: true } })
+    const plan = planBackfill(orgs, getMsConfig().tenantId)
+
+    switch (plan.action) {
+      case 'claim':
+        await prisma.organization.update({
+          where: { id: plan.orgId },
+          data: { entraTenantId: plan.tenantId },
+        })
+        console.log(`[tenancy] claimed Entra tenant ${plan.tenantId} for org ${plan.orgId}`)
+        break
+
+      case 'refuse':
+        // Deliberately reports the count. "Several unclaimed organizations" is
+        // wrong when the answer is zero — orgs exist, all are claimed, and none
+        // matches the configured tenant, which is a different problem needing a
+        // different fix.
+        console.warn(
+          `[tenancy] cannot claim a tenant: ${orgs.filter((o) => o.entraTenantId === null).length} ` +
+          `of ${orgs.length} organizations are unclaimed and exactly one is required. ` +
+          'Set Organization.entraTenantId by hand.',
+        )
+        break
+
+      case 'noop':
+        // already-claimed and no-orgs are the healthy steady state and stay
+        // quiet. A missing tenant is not: sign-in resolves the org from the
+        // Entra tenant id, so without one nobody can sign in, and an operator
+        // who forgot the variable deserves to be told why.
+        if (plan.reason === 'no-tenant-configured') {
+          console.warn(
+            '[tenancy] no AZURE_TENANT_ID / MICROSOFT_TENANT_ID configured — ' +
+            'no organization is bound to an Entra tenant, so Microsoft sign-in cannot resolve one.',
+          )
+        }
+        break
+    }
+
+    return plan
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error('[tenancy] backfill failed:', message)
+    return { action: 'failed', reason: message }
   }
-  return plan
 }
 
 export interface Collision { orgId: string; email: string; memberIds: string[] }
 
 /**
  * Members sharing an address inside one org.
+ *
+ * An operator / pre-push check, deliberately NOT on the boot path — a
+ * full-table GROUP BY on every process start is the wrong trade for a
+ * one-shot migration guard. Nothing calling it is expected.
  *
  * `@@unique([orgId, email])` cannot be created while one exists, and `db push`
  * reports that as an opaque constraint failure. Running this first turns it
@@ -762,7 +811,7 @@ cd ~/Nexus-Collab && set -a && source .env && set +a && pnpm --filter @nexus/api
 sleep 6 && curl -s -c /tmp/jar -o /dev/null -w '%{http_code}\n' localhost:3000/api/dev-login
 curl -s -b /tmp/jar localhost:3000/api/v1/auth/me
 ```
-Expected: `302`, then a member JSON body with an `orgId`. Also expect `[tenancy] claimed Entra tenant ...` (or `no-tenant-configured` locally) in the boot log.
+Expected: `302`, then a member JSON body with an `orgId`. The boot log shows the backfill result: `[tenancy] claimed Entra tenant ...` where a tenant is configured, or `[tenancy] no AZURE_TENANT_ID / MICROSOFT_TENANT_ID configured ...` locally. Silence means `already-claimed` or `no-orgs`, both of which are healthy.
 
 - [ ] **Step 8: Commit and open the PR**
 
