@@ -87,22 +87,27 @@ export async function ensureRbacSeeded(prisma: PrismaClient): Promise<BootstrapR
 /**
  * Bring existing addresses onto the normalised form.
  *
- * `Member.email` is `@unique` and Postgres compares byte-for-byte, so case
- * insensitivity depends entirely on every row being stored lowercased. Rows
- * written before that rule existed are not, and until they are, the same person
- * can hold two accounts.
+ * `Member.email` is `@@unique([orgId, email])`, not a global unique — two
+ * different customers may legitimately have an employee at the same address,
+ * and Postgres compares byte-for-byte, so case insensitivity depends entirely
+ * on every row being stored lowercased. Rows written before that rule existed
+ * are not, and until they are, the same person can hold two accounts within
+ * one org.
  *
- * Refuses to act when lowercasing would collide. Two accounts differing only by
- * case is a real situation with real data on both sides, and picking a winner
- * automatically is not a decision a boot sequence should make.
+ * Refuses to act when lowercasing would collide WITHIN THE SAME organization.
+ * Two accounts differing only by case in one org is a real situation with
+ * real data on both sides, and picking a winner automatically is not a
+ * decision a boot sequence should make. A match in a different org is not a
+ * collision at all — it is two customers who happen to share an address —
+ * and must normalise without so much as a warning.
  */
 export async function ensureEmailsNormalised(prisma: PrismaClient): Promise<{
   normalised: number
   collisions: string[]
 }> {
   try {
-    const mixed = await prisma.$queryRaw<{ id: string; email: string }[]>`
-      SELECT id, email FROM "Member" WHERE email <> lower(email)
+    const mixed = await prisma.$queryRaw<{ id: string; orgId: string; email: string }[]>`
+      SELECT id, "orgId", email FROM "Member" WHERE email <> lower(email)
     `
     if (mixed.length === 0) return { normalised: 0, collisions: [] }
 
@@ -112,7 +117,7 @@ export async function ensureEmailsNormalised(prisma: PrismaClient): Promise<{
     for (const row of mixed) {
       const lower = row.email.toLowerCase()
       const clash = await prisma.member.findFirst({
-        where: { email: lower, NOT: { id: row.id } },
+        where: { orgId: row.orgId, email: lower, NOT: { id: row.id } },
         select: { id: true },
       })
       if (clash) {
