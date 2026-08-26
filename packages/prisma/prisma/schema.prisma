@@ -12,6 +12,12 @@ model Organization {
   id                 String               @id @default(cuid())
   name               String
   slug               String               @unique
+  /// The Entra (Azure AD) tenant this organization signs in from. This is the
+  /// org key at login — it replaces picking the oldest Organization row, which
+  /// silently put every new customer into the first workspace ever created.
+  /// Nullable because the founding workspace predates it and is backfilled by
+  /// ensureOrgTenantBackfill().
+  entraTenantId      String?              @unique
   logoUrl            String?
   color              String?
   industry           String?
@@ -77,7 +83,11 @@ model OrganizationInvite {
 model Member {
   id               String               @id @default(cuid())
   clerkUserId      String               @unique
-  email            String               @unique
+  /// Unique WITHIN an organization, not globally. Two customers may each
+  /// employ an ahmad@example.com and neither can be told the other exists.
+  /// Case-insensitivity is still carried by every write normalising through
+  /// normaliseEmail() — Prisma 5 cannot express a functional unique index.
+  email            String
   name             String
   avatar           String?
   role             String               @default("MEMBER") // ADMIN, OPS_MANAGER, DEPT_LEAD, PROJECT_LEAD, MEMBER
@@ -146,6 +156,7 @@ model Member {
 
   @@index([orgId])
   @@index([clerkUserId])
+  @@unique([orgId, email])
 }
 
 // ─── Department ─────────────────────────────────────────────
