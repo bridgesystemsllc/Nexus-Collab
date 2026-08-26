@@ -2760,7 +2760,89 @@ The `admin` role at line ~94 currently takes every permission except `billing:ma
     permissions: ALL_PERMISSION_KEYS.filter((k) => k !== 'billing:manage'),
 ```
 
-`ensureRbacSeeded` upserts the catalogue on boot, so the new permission appears without a manual step.
+- [ ] **Step 1b: Make `ensureRbacSeeded` notice a permission that was added later**
+
+**The plan previously claimed the new permission "appears without a manual step". That was wrong.** `apps/api/src/services/rbac/bootstrap.ts` short-circuits:
+
+```ts
+if (permissionCount > 0 && roleCount > 0) {
+  return { ran: false, reason: 'already-seeded', ... }
+}
+```
+
+Measured on the live database: 17 `Permission` rows, 5 `Role` rows, and only `billing:manage` in the billing group. So `billing:read` would never reach the database, and `GET /billing/entitlements` would answer **403 to everyone including the owner**.
+
+`seedRbac` is already idempotent and reconciling — its own doc comment says so ("Every row is upserted on a stable key, so re-running reconciles rather than duplicating"). Only the *marker* is wrong: it asks "is the catalogue empty?" when the question is "is the catalogue current?".
+
+Replace the count check with a key-set comparison, keeping the cheap steady-state path:
+
+```ts
+    const [existingKeys, roleCount] = await Promise.all([
+      prisma.permission.findMany({ select: { key: true } }),
+      prisma.role.count(),
+    ])
+    const known = new Set(existingKeys.map((p) => p.key))
+    const missing = ALL_PERMISSION_KEYS.filter((k) => !known.has(k))
+
+    // Current AND complete. Asking only "is it empty?" meant a permission added
+    // to the catalogue after the first boot never reached an existing
+    // workspace — every route guarding on it answered 403 to everyone,
+    // including the owner, and the only symptom was a feature that silently
+    // did not exist.
+    if (known.size > 0 && roleCount > 0 && missing.length === 0) {
+      return { ran: false, reason: 'already-seeded', permissions: known.size, roles: roleCount }
+    }
+
+    console.log(
+      known.size === 0
+        ? '[rbac] catalogue is empty — seeding roles and permissions'
+        : `[rbac] catalogue is missing ${missing.length} permission(s) (${missing.join(', ')}) — reconciling`,
+    )
+```
+
+Import `ALL_PERMISSION_KEYS` from `@nexus/shared` alongside the existing imports. The rest of the function is unchanged — the reconcile path already calls `seedRbac`, which upserts the permissions *and* re-links the system roles, so `owner` and `admin` both pick up `billing:read` on the next boot.
+
+Add a test at `apps/api/src/services/rbac/bootstrapCatalogue.test.ts` proving the drift is detected:
+
+```ts
+import { describe, it, expect, vi } from 'vitest'
+import { ALL_PERMISSION_KEYS } from '@nexus/shared'
+import { ensureRbacSeeded } from './bootstrap'
+
+// The regression this guards: adding a permission to the catalogue after a
+// workspace has been seeded once. Before this, the boot check asked "is the
+// catalogue empty?", the answer was "no", and the new permission never landed.
+
+const fakePrisma = (keys: string[]) => ({
+  permission: { findMany: vi.fn(async () => keys.map((key) => ({ key }))) },
+  role: { count: vi.fn(async () => 5) },
+}) as any
+
+describe('ensureRbacSeeded', () => {
+  it('does nothing when the catalogue is complete', async () => {
+    const result = await ensureRbacSeeded(fakePrisma([...ALL_PERMISSION_KEYS]))
+    expect(result).toMatchObject({ ran: false, reason: 'already-seeded' })
+  })
+
+  it('reconciles when a catalogue permission is missing from the database', async () => {
+    // Exactly the billing:read situation: seeded workspace, one new key.
+    const short = ALL_PERMISSION_KEYS.filter((k) => k !== 'billing:read')
+    const prisma = fakePrisma(short)
+    // seedRbac would run against the fake and throw on the first unimplemented
+    // model call; the assertion is that it got PAST the short-circuit.
+    await ensureRbacSeeded(prisma)
+    expect(prisma.role.count).toHaveBeenCalled()
+    expect(prisma.permission.findMany).toHaveBeenCalled()
+  })
+})
+```
+
+`ensureRbacSeeded` never throws, so the second test's reconcile attempt returns `{ ran: false, reason: 'failed' }` against the fake — which is itself the proof it stopped short-circuiting. Assert on that:
+
+```ts
+    const result = await ensureRbacSeeded(prisma)
+    expect(result.reason).toBe('failed')   // it tried to seed, rather than returning 'already-seeded'
+```
 
 - [ ] **Step 2: Extend the audit vocabulary**
 
