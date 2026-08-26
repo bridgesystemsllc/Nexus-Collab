@@ -50,6 +50,7 @@ import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
 import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
 import { ensureRbacSeeded, ensureEmailsNormalised } from './services/rbac/bootstrap'
+import { ensureOrgTenantBackfill } from './services/rbac/ensureOrgTenant'
 import {
   ensureSubscription,
   isSubscriptionConfigured,
@@ -217,6 +218,11 @@ async function start() {
   // row being stored lowercased. This converges the ones written before that
   // rule, and refuses rather than guessing when two rows would collide.
   await ensureEmailsNormalised(prisma)
+
+  // Sign-in keys on Organization.entraTenantId as of the tenancy change. The
+  // founding workspace predates the column, so claim it once, and refuse
+  // rather than guess if the answer is not unambiguous.
+  await ensureOrgTenantBackfill(prisma)
 
   // Auth (session + /api/login,/api/logout) must be wired before the API router
   // so the session cookie is available. The Microsoft OAuth callback lives in
