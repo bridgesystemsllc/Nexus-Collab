@@ -30,22 +30,48 @@ export interface BillingBootstrapResult {
  * The application checks this too, under a row lock. The trigger is the
  * backstop, not the error path — it cannot produce a message a user should
  * read, and it cannot audit.
+ *
+ * Contract this establishes for `seatManager` and any later phase touching
+ * seats:
+ *
+ *   - `seatManager` must acquire the `BillingSubscription` row lock FIRST,
+ *     before touching any `SeatAssignment` row — otherwise T1 (sub → seat)
+ *     and T2 (seat → deferred sub lock) can cycle and Postgres kills one with
+ *     `40P01` (deadlock_detected).
+ *   - The fix above depends on READ COMMITTED, where `count(*)` takes a fresh
+ *     snapshot after the lock is granted. Under REPEATABLE READ or
+ *     SERIALIZABLE the transaction's fixed snapshot hides the concurrent
+ *     committed insert and the oversell returns — so do not pass
+ *     `isolationLevel` to `prisma.$transaction` around seat work without
+ *     re-checking this.
  */
 const SEAT_INVARIANT_SQL = [
   `CREATE OR REPLACE FUNCTION billing_assert_seat_invariant() RETURNS TRIGGER AS $fn$
    DECLARE target_org TEXT; consumed INT; purchased INT;
    BEGIN
      target_org := COALESCE(NEW."orgId", OLD."orgId");
-     -- Lock the subscription row BEFORE counting, not after. Under READ
-     -- COMMITTED, two concurrent transactions assigning seats to different
-     -- members don't conflict on the partial unique index and don't block
-     -- each other, so both can count the other's uncommitted (invisible) row
-     -- as absent and both pass: seatsPurchased=1 with zero assignments lets
-     -- T1 assign to A, T2 assign to B, both commit, 2 assigned against 1
-     -- purchased. FOR UPDATE makes T2 block on T1's row lock and then re-read
-     -- the latest committed state once granted, so it correctly counts both.
-     -- Do not swap this order back to "count first, lock after" — that
-     -- reintroduces the oversell.
+     -- Take an advisory lock on the ORG first, before anything else. When
+     -- purchased IS NULL there is no BillingSubscription row to lock, so the
+     -- SELECT ... FOR UPDATE below acquires nothing and the early return a
+     -- few lines down runs completely unserialised: T1 assigns 3 seats to an
+     -- org with no subscription yet (nothing to lock, passes), T2 concurrently
+     -- INSERTs the subscription row with seatsPurchased=1 (counts zero
+     -- *committed* assignments — T1 hasn't committed — passes), and both
+     -- commit: 3 assigned against 1 purchased, wedging every later UPDATE.
+     -- hashtext(target_org) gives one consistently-ordered lock per org that
+     -- exists whether or not a subscription row does, so both transactions
+     -- serialise on it regardless of which one is the INSERT.
+     PERFORM pg_advisory_xact_lock(hashtext(target_org));
+     -- Lock the subscription row too (once it exists) BEFORE counting, not
+     -- after. Under READ COMMITTED, two concurrent transactions assigning
+     -- seats to different members don't conflict on the partial unique index
+     -- and don't block each other, so both can count the other's uncommitted
+     -- (invisible) row as absent and both pass: seatsPurchased=1 with zero
+     -- assignments lets T1 assign to A, T2 assign to B, both commit, 2
+     -- assigned against 1 purchased. FOR UPDATE makes T2 block on T1's row
+     -- lock and then re-read the latest committed state once granted, so it
+     -- correctly counts both. Do not swap this order back to "count first,
+     -- lock after" — that reintroduces the oversell.
      SELECT "seatsPurchased" INTO purchased FROM "BillingSubscription"
        WHERE "orgId" = target_org FOR UPDATE;
      -- No subscription means nothing to oversell. Seats assigned without one

@@ -11,6 +11,15 @@ import { PERMISSION_GROUPS, SYSTEM_ROLES, LEGACY_ROLE_TO_KEY } from '@nexus/shar
 // @nexus/shared rather than here.
 //
 // Idempotent. Every row is upserted on a stable key.
+//
+// The owner-election block below is DUPLICATED from
+// apps/api/src/services/rbac/bootstrap.ts's `seedRbac` (the boot-time path).
+// It cannot be imported instead: @nexus/api already depends on @nexus/prisma
+// (see apps/api/package.json), so importing the other direction here would
+// make the two packages depend on each other — a circular workspace
+// dependency. If you change the election logic there — including the
+// `lifecycleStatus: 'active'` filters on the candidate lookups — make the
+// identical change here. That file carries the same note pointing back here.
 
 const prisma = new PrismaClient()
 
@@ -74,23 +83,45 @@ async function main() {
   }
   if (unmapped.length) console.log(`  mapped ${unmapped.length} existing members onto roles (Member.role untouched)`)
 
+  // ── Guarantee an Owner, per organization ──
+  // The last-owner guard protects nobody if there is no owner. Scoped to each
+  // org in turn: counting owners install-wide and promoting the single
+  // globally-oldest ADMIN/OPS_MANAGER would give the whole multi-tenant
+  // install one owner — a newly onboarded organization gets none, because
+  // another customer's employee already holds the only seat, and an operator
+  // running this script to repair org B's missing owner would see "seed
+  // complete" while org B stayed stuck (org A's owner satisfied the global
+  // count) — or watch org A's employee get promoted while org B stays broken.
+  // Within an org, the longest-standing admin takes the seat; failing that,
+  // the org's oldest member, because a workspace nobody can administer cannot
+  // be recovered from inside the app.
+  //
+  // Both candidate lookups filter to active members too, matching the
+  // `owners` count. Without it, an org whose only ADMIN has been deactivated
+  // promotes that deactivated member to Owner: the org still has zero
+  // *active* owners and `can()` still grants them nothing.
   const ownerRole = byKey.get('owner')!
-  const owners = await prisma.member.count({
-    where: { roleId: ownerRole.id, lifecycleStatus: 'active' },
-  })
-  if (owners === 0) {
+  const orgs = await prisma.organization.findMany({ select: { id: true } })
+  const ownersAssigned: string[] = []
+  for (const org of orgs) {
+    const owners = await prisma.member.count({
+      where: { orgId: org.id, roleId: ownerRole.id, lifecycleStatus: 'active' },
+    })
+    if (owners > 0) continue
     const candidate =
       (await prisma.member.findFirst({
-        where: { role: { in: ['ADMIN', 'OPS_MANAGER'] } },
+        where: { orgId: org.id, role: { in: ['ADMIN', 'OPS_MANAGER'] }, lifecycleStatus: 'active' },
         orderBy: { createdAt: 'asc' },
-      })) ?? (await prisma.member.findFirst({ orderBy: { createdAt: 'asc' } }))
+      })) ?? (await prisma.member.findFirst({
+        where: { orgId: org.id, lifecycleStatus: 'active' },
+        orderBy: { createdAt: 'asc' },
+      }))
     if (candidate) {
       await prisma.member.update({ where: { id: candidate.id }, data: { roleId: ownerRole.id } })
-      console.log(`  owner → ${candidate.email} (longest-standing admin)`)
-    } else {
-      console.warn('  no members exist — no Owner assigned')
+      ownersAssigned.push(candidate.email)
     }
   }
+  if (ownersAssigned.length) console.log(`  owners → ${ownersAssigned.join(', ')} (longest-standing admin per org)`)
 
   const missing = await prisma.member.findMany({ where: { preference: null }, select: { id: true } })
   for (const m of missing) {

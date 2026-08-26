@@ -51,6 +51,7 @@ import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
 import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
 import { ensureRbacSeeded, ensureEmailsNormalised } from './services/rbac/bootstrap'
+import { billingContextErrors } from './middleware/billingContext'
 import { ensureOrgTenantBackfill } from './services/rbac/ensureOrgTenant'
 import { ensureBillingSeeded } from './services/billing/bootstrap'
 import {
@@ -162,6 +163,11 @@ api.use('/users', userRoutes)
 api.use('/me', meRoutes)
 api.use('/audit', auditRoutes)
 api.use('/billing', billingRoutes)
+// Turns a getActingOrgId() throw (no session-derived org) into the module's
+// 401 envelope instead of Express's default 500. Must be mounted immediately
+// after billingRoutes — an Express error handler only catches errors from
+// routers registered before it.
+api.use(billingContextErrors)
 api.use('/projects/tasks', taskConversationRoutes)
 api.use('/projects', projectAnalyticsRoutes)
 api.use('/projects', projectCollabRoutes)

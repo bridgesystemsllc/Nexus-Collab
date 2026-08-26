@@ -190,4 +190,73 @@ describe('the seat invariant trigger', () => {
     const assignment = await prisma.seatAssignment.create({ data: { orgId: tightOrgId, memberId: m.id } })
     await expect(prisma.seatAssignment.delete({ where: { id: assignment.id } })).resolves.toBeTruthy()
   })
+
+  it('serialises two genuinely concurrent seat assignments against a 1-seat org — exactly one wins', async () => {
+    // The headline defect this trigger work exists to close, and the one
+    // scenario every other test in this file cannot exercise: they all run
+    // one statement (or one transaction) at a time against a single Prisma
+    // connection, so the same assertions pass identically whether the trigger
+    // locks the subscription row BEFORE counting or counts first and locks
+    // after — sequential execution never lets two transactions overlap. Two
+    // separate PrismaClient instances (separate connections, separate
+    // Postgres backends) racing two interactive transactions is what actually
+    // exercises the ordering: without the lock-before-count fix (and now the
+    // org-scoped advisory lock ahead of it), both can read "0 assigned" for
+    // the other's uncommitted insert and both commit, oversold.
+    const raceOrgId = await freshOrg('concurrent-race')
+    await prisma.billingSubscription.create({
+      data: { orgId: raceOrgId, tierId, stripeCustomerId: 'cus_test_race', status: 'active',
+              billingInterval: 'monthly', seatsPurchased: 1 },
+    })
+    const m1 = await member(`race1-${Date.now()}@t.co`, raceOrgId)
+    const m2 = await member(`race2-${Date.now()}@t.co`, raceOrgId)
+
+    const clientA = new PrismaClient()
+    const clientB = new PrismaClient()
+    try {
+      // A bare `await create()` on each side races the network, not the
+      // invariant: whichever transaction's COMMIT round-trip happens to land
+      // first at the OS/driver level reaches the deferred trigger uncontested,
+      // and the "loser" — starting only after the winner has already
+      // committed — sees the winner's row as already-committed data, not as a
+      // concurrent write, at every isolation level, so the test would pass
+      // even against the old "count first, lock after" ordering. The
+      // `pg_sleep` forces both to hold an open, uncommitted INSERT at the same
+      // wall-clock moment before either commits, which is what actually
+      // exercises the advisory lock's contention.
+      //
+      // Array-form `$transaction`, not the interactive callback form: verified
+      // by hand (raw two-session psql, and array-form vs. callback-form with
+      // this exact race) that the database always does the right thing
+      // either way — exactly one session's COMMIT is rejected with
+      // seat_invariant_violated and exactly one row lands — but this Prisma
+      // version's interactive-callback `$transaction(async tx => …)` does not
+      // reliably surface a same-connection COMMIT-time deferred-constraint
+      // failure as a rejected promise when a SECOND, independent connection
+      // is what makes it fail (single-connection deferred failures, as in
+      // every other test below, propagate correctly through both forms).
+      // Array-form does surface it. Since what's under test here is the
+      // database invariant — not which Prisma transaction API best reports a
+      // commit failure — array-form is the correct tool, and matches this
+      // file's existing convention for multi-statement deferred-trigger
+      // assertions (see "permits assign-and-expand" above).
+      const race = (client: PrismaClient, memberId: string) => client.$transaction([
+        client.seatAssignment.create({ data: { orgId: raceOrgId, memberId } }),
+        client.$executeRawUnsafe('SELECT pg_sleep(0.3)'),
+      ])
+      const results = await Promise.allSettled([race(clientA, m1.id), race(clientB, m2.id)])
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled')
+      const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+      expect(fulfilled).toHaveLength(1)
+      expect(rejected).toHaveLength(1)
+      expect(String(rejected[0].reason)).toMatch(/seat_invariant_violated/)
+
+      const committed = await prisma.seatAssignment.count({ where: { orgId: raceOrgId, releasedAt: null } })
+      expect(committed).toBe(1)
+    } finally {
+      await clientA.$disconnect()
+      await clientB.$disconnect()
+    }
+  })
 })

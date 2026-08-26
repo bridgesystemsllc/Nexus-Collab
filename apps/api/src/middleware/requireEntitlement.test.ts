@@ -101,6 +101,22 @@ describe('requireWriteAccess', () => {
     await requireWriteAccess()(req, res, next)
     expect(next).toHaveBeenCalled()
   })
+
+  it('refuses when resolution throws — fails closed', async () => {
+    resolveEntitlements.mockRejectedValue(new Error('db down'))
+    const { req, res, next } = ctx()
+    await requireWriteAccess()(req, res, next)
+    expect(next).not.toHaveBeenCalled()
+    expect(res.statusCode).toBe(500)
+  })
+
+  it('refuses when nobody is signed in', async () => {
+    const { req, res, next } = ctx(null)
+    await requireWriteAccess()(req, res, next)
+    expect(next).not.toHaveBeenCalled()
+    expect(res.statusCode).toBe(401)
+    expect(resolveEntitlements).not.toHaveBeenCalled()
+  })
 })
 
 describe('requireSeatAvailable', () => {
@@ -122,5 +138,21 @@ describe('requireSeatAvailable', () => {
     // The UI turns this into "adding this user requires 1 additional seat",
     // so the numbers have to travel with the refusal.
     expect(res.body.error.seats).toEqual({ purchased: 5, consumed: 5, available: 0 })
+  })
+
+  it('refuses when resolution throws — fails closed', async () => {
+    resolveEntitlements.mockRejectedValue(new Error('db down'))
+    const { req, res, next } = ctx()
+    await requireSeatAvailable()(req, res, next)
+    expect(next).not.toHaveBeenCalled()
+    expect(res.statusCode).toBe(500)
+  })
+
+  it('refuses when nobody is signed in', async () => {
+    const { req, res, next } = ctx(null)
+    await requireSeatAvailable()(req, res, next)
+    expect(next).not.toHaveBeenCalled()
+    expect(res.statusCode).toBe(401)
+    expect(resolveEntitlements).not.toHaveBeenCalled()
   })
 })

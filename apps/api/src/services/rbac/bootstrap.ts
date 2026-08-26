@@ -63,8 +63,24 @@ export async function ensureRbacSeeded(prisma: PrismaClient): Promise<BootstrapR
     )
     // A permission added to an already-seeded workspace must not become "an
     // owner got elected" — see the comment on seedRbac. fullSeed draws that
-    // line: true only on the very first boot, when the catalogue is empty.
-    const result = await seedRbac(prisma, { fullSeed: known.size === 0 })
+    // line: true only on the very first boot, when the catalogue is empty —
+    // OR when roles are empty. The latter matters because a first seed can be
+    // interrupted between the permission loop and the role loop (dropped
+    // connection, statement timeout, container restart, pool exhaustion
+    // across ~40 round trips): permissions land, roles don't, and the process
+    // exits with `reason: 'failed'`. The NEXT boot sees a populated catalogue
+    // and roleCount === 0, so the short-circuit above is skipped — correctly —
+    // but without this clause `fullSeed` would compute to false purely because
+    // permissions already exist, silently downgrading the retry to a
+    // catalogue-drift reconcile: roles get created, but member→role mapping,
+    // owner election and the preference backfill never run. Every member is
+    // left with `roleId: null` forever, `can()` grants nothing to anyone
+    // including the intended owner, and the THIRD boot sees permissions AND
+    // roles both present and reports 'already-seeded' — locking the workspace
+    // out with no in-app repair path. roleCount === 0 treats "roles missing"
+    // as unfinished-seed, not drift, so a partial first seed gets completed
+    // rather than mistaken for a catalogue update.
+    const result = await seedRbac(prisma, { fullSeed: known.size === 0 || roleCount === 0 })
     console.log(
       `[rbac] seeded ${result.permissions} permissions, ${result.roles} roles` +
       (result.membersMapped ? `, mapped ${result.membersMapped} members` : '') +
@@ -245,6 +261,15 @@ export async function seedRbac(
     // org, the longest-standing admin takes the seat; failing that, the org's
     // oldest member, because a workspace nobody can administer cannot be
     // recovered from inside the app.
+    //
+    // DUPLICATED in packages/prisma/prisma/seedRbac.ts (the `pnpm
+    // db:seed:rbac` CLI repair path). Importing this module from there would
+    // make @nexus/prisma depend on @nexus/api while @nexus/api already
+    // depends on @nexus/prisma — a circular workspace dependency — so the
+    // loop is ported there verbatim instead of shared. If you change the
+    // election logic (or the `lifecycleStatus: 'active'` filters just above)
+    // here, make the identical change there. The CLI file carries the same
+    // note pointing back at this one.
     const ownerRole = byKey.get('owner')!
     const orgs = await prisma.organization.findMany({ select: { id: true } })
     for (const org of orgs) {
@@ -252,12 +277,18 @@ export async function seedRbac(
         where: { orgId: org.id, roleId: ownerRole.id, lifecycleStatus: 'active' },
       })
       if (owners > 0) continue
+      // Both candidate lookups must filter to active members too, matching the
+      // `owners` count above. Without it, an org whose only ADMIN has been
+      // deactivated promotes that deactivated member to Owner: the org still
+      // has zero *active* owners, `can()` still grants them nothing, and this
+      // block only runs on `fullSeed` — so a boot-time reconcile never gets a
+      // second chance to fix it.
       const candidate =
         (await prisma.member.findFirst({
-          where: { orgId: org.id, role: { in: ['ADMIN', 'OPS_MANAGER'] } },
+          where: { orgId: org.id, role: { in: ['ADMIN', 'OPS_MANAGER'] }, lifecycleStatus: 'active' },
           orderBy: { createdAt: 'asc' },
         })) ?? (await prisma.member.findFirst({
-          where: { orgId: org.id },
+          where: { orgId: org.id, lifecycleStatus: 'active' },
           orderBy: { createdAt: 'asc' },
         }))
       if (candidate) {
