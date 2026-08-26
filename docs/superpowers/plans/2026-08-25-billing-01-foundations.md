@@ -2481,11 +2481,18 @@ export async function resolveEntitlements(
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Entitlements } from '@nexus/shared'
 
+// The repo's established mocking shape (see services/emailAgent/processor.test.ts):
+// a hoisted spy, and a factory that forwards to it lazily. The indirection is
+// what lets `vi.mock` hoist above a plain static import without tripping the
+// spy's TDZ — the arrow is only *called* once a test runs, by which time the
+// const is initialised. Do not reach for a top-level `await import` here:
+// apps/api compiles as CommonJS, and top-level await is not available to it.
 const resolveEntitlements = vi.fn()
-vi.mock('../services/billing/entitlements', () => ({ resolveEntitlements }))
+vi.mock('../services/billing/entitlements', () => ({
+  resolveEntitlements: (...a: any[]) => resolveEntitlements(...a),
+}))
 
-const { requireFeature, requireSeatAvailable, requireWriteAccess } =
-  await import('./requireEntitlement')
+import { requireFeature, requireSeatAvailable, requireWriteAccess } from './requireEntitlement'
 
 const ent = (over: Partial<Entitlements> = {}): Entitlements => ({
   tier: 'growth', status: 'active', accessLevel: 'full',
