@@ -24,7 +24,7 @@ export interface BootstrapResult {
   permissions?: number
   roles?: number
   membersMapped?: number
-  ownerAssigned?: string
+  ownersAssigned?: string[]
   error?: string
 }
 
@@ -61,11 +61,14 @@ export async function ensureRbacSeeded(prisma: PrismaClient): Promise<BootstrapR
         ? '[rbac] catalogue is empty — seeding roles and permissions'
         : `[rbac] catalogue is missing ${missing.length} permission(s) (${missing.join(', ')}) — reconciling`,
     )
-    const result = await seedRbac(prisma)
+    // A permission added to an already-seeded workspace must not become "an
+    // owner got elected" — see the comment on seedRbac. fullSeed draws that
+    // line: true only on the very first boot, when the catalogue is empty.
+    const result = await seedRbac(prisma, { fullSeed: known.size === 0 })
     console.log(
       `[rbac] seeded ${result.permissions} permissions, ${result.roles} roles` +
       (result.membersMapped ? `, mapped ${result.membersMapped} members` : '') +
-      (result.ownerAssigned ? `, owner → ${result.ownerAssigned}` : ''),
+      (result.ownersAssigned?.length ? `, owners → ${result.ownersAssigned.join(', ')}` : ''),
     )
     return { ran: true, reason: 'seeded', ...result }
   } catch (err) {
@@ -139,12 +142,31 @@ export async function ensureEmailsNormalised(prisma: PrismaClient): Promise<{
  * Idempotent. Every row is upserted on a stable key, so re-running reconciles
  * rather than duplicating, and a permission removed from a system role here is
  * actually revoked rather than lingering from an earlier run.
+ *
+ * `fullSeed` separates two very different situations that both land here:
+ *
+ *   - The catalogue is empty (a brand-new install). Permissions, roles,
+ *     member→role mapping, owner election and the preference backfill all
+ *     need to run.
+ *   - The catalogue is merely missing a permission that was added after this
+ *     workspace already had people, roles and an owner in it (fullSeed:
+ *     false). Only the permission upserts and the system-role relinking may
+ *     run here. Adding a permission to the catalogue must not become "an
+ *     owner got (re-)elected" — an org that deliberately has zero active
+ *     owners right now (say, mid handover, the owner was just deactivated)
+ *     would otherwise silently gain a new one the next time any permission
+ *     changed. Member mapping and the preference backfill are first-seed
+ *     concerns for the same reason: they act on the member graph, which a
+ *     catalogue reconcile has no business touching.
  */
-export async function seedRbac(prisma: PrismaClient): Promise<{
+export async function seedRbac(
+  prisma: PrismaClient,
+  { fullSeed }: { fullSeed: boolean },
+): Promise<{
   permissions: number
   roles: number
   membersMapped: number
-  ownerAssigned?: string
+  ownersAssigned: string[]
 }> {
   let order = 0
   let permissions = 0
@@ -190,46 +212,61 @@ export async function seedRbac(prisma: PrismaClient): Promise<{
   const roles = await prisma.role.findMany()
   const byKey = new Map(roles.map((r) => [r.key, r]))
 
-  // ── Map existing members onto roles ──
-  // `roleId` only. `Member.role` is what policy.ts and the task/report routes
-  // still read, and rewriting it here would change people's access as a side
-  // effect of a bootstrap.
-  const unmapped = await prisma.member.findMany({
-    where: { roleId: null },
-    select: { id: true, role: true },
-    orderBy: { createdAt: 'asc' },
-  })
-  for (const m of unmapped) {
-    const key = LEGACY_ROLE_TO_KEY[m.role] ?? 'member'
-    await prisma.member.update({ where: { id: m.id }, data: { roleId: byKey.get(key)!.id } })
-  }
+  let membersMapped = 0
+  const ownersAssigned: string[] = []
 
-  // ── Guarantee an Owner ──
-  // The last-owner guard protects nobody if there is no owner. The longest-
-  // standing org admin takes the seat; failing that, the oldest member, because
-  // a workspace nobody can administer cannot be recovered from inside the app.
-  const ownerRole = byKey.get('owner')!
-  let ownerAssigned: string | undefined
-  const owners = await prisma.member.count({
-    where: { roleId: ownerRole.id, lifecycleStatus: 'active' },
-  })
-  if (owners === 0) {
-    const candidate =
-      (await prisma.member.findFirst({
-        where: { role: { in: ['ADMIN', 'OPS_MANAGER'] } },
-        orderBy: { createdAt: 'asc' },
-      })) ?? (await prisma.member.findFirst({ orderBy: { createdAt: 'asc' } }))
-    if (candidate) {
-      await prisma.member.update({ where: { id: candidate.id }, data: { roleId: ownerRole.id } })
-      ownerAssigned = candidate.email
+  if (fullSeed) {
+    // ── Map existing members onto roles ──
+    // `roleId` only. `Member.role` is what policy.ts and the task/report routes
+    // still read, and rewriting it here would change people's access as a side
+    // effect of a bootstrap.
+    const unmapped = await prisma.member.findMany({
+      where: { roleId: null },
+      select: { id: true, role: true },
+      orderBy: { createdAt: 'asc' },
+    })
+    for (const m of unmapped) {
+      const key = LEGACY_ROLE_TO_KEY[m.role] ?? 'member'
+      await prisma.member.update({ where: { id: m.id }, data: { roleId: byKey.get(key)!.id } })
+    }
+    membersMapped = unmapped.length
+
+    // ── Guarantee an Owner, per organization ──
+    // The last-owner guard protects nobody if there is no owner. Scoped to
+    // each org in turn: counting owners install-wide and promoting the single
+    // globally-oldest ADMIN/OPS_MANAGER would give the whole multi-tenant
+    // install one owner — a newly onboarded organization gets none, because
+    // another customer's employee already holds the only seat. Within an
+    // org, the longest-standing admin takes the seat; failing that, the org's
+    // oldest member, because a workspace nobody can administer cannot be
+    // recovered from inside the app.
+    const ownerRole = byKey.get('owner')!
+    const orgs = await prisma.organization.findMany({ select: { id: true } })
+    for (const org of orgs) {
+      const owners = await prisma.member.count({
+        where: { orgId: org.id, roleId: ownerRole.id, lifecycleStatus: 'active' },
+      })
+      if (owners > 0) continue
+      const candidate =
+        (await prisma.member.findFirst({
+          where: { orgId: org.id, role: { in: ['ADMIN', 'OPS_MANAGER'] } },
+          orderBy: { createdAt: 'asc' },
+        })) ?? (await prisma.member.findFirst({
+          where: { orgId: org.id },
+          orderBy: { createdAt: 'asc' },
+        }))
+      if (candidate) {
+        await prisma.member.update({ where: { id: candidate.id }, data: { roleId: ownerRole.id } })
+        ownersAssigned.push(candidate.email)
+      }
+    }
+
+    // ── Preferences for anyone without them ──
+    const missing = await prisma.member.findMany({ where: { preference: null }, select: { id: true } })
+    for (const m of missing) {
+      await prisma.userPreference.create({ data: { memberId: m.id } })
     }
   }
 
-  // ── Preferences for anyone without them ──
-  const missing = await prisma.member.findMany({ where: { preference: null }, select: { id: true } })
-  for (const m of missing) {
-    await prisma.userPreference.create({ data: { memberId: m.id } })
-  }
-
-  return { permissions, roles: SYSTEM_ROLES.length, membersMapped: unmapped.length, ownerAssigned }
+  return { permissions, roles: SYSTEM_ROLES.length, membersMapped, ownersAssigned }
 }
