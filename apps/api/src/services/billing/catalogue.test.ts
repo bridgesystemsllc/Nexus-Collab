@@ -25,8 +25,15 @@ beforeEach(() => invalidateCatalogue())
 
 describe('loadCatalogue', () => {
   it('returns active tiers in rank order', async () => {
-    const tiers = await loadCatalogue(fakePrisma())
+    const prisma = fakePrisma()
+    const tiers = await loadCatalogue(prisma)
     expect(tiers.map((t) => t.key)).toEqual(['starter', 'growth'])
+    // The fake's findMany ignores its arguments, so without this the real
+    // query's own correctness is asserted nowhere: dropping `where: {
+    // isActive: true }` from the Prisma call would still pass this suite.
+    expect(prisma.billingTier.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { isActive: true }, orderBy: { rank: 'asc' } }),
+    )
   })
 
   it('excludes inactive tiers — a retired plan must not be sellable', async () => {
