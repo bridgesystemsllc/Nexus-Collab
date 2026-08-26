@@ -1,5 +1,5 @@
 // packages/shared/src/billing/tiers.ts
-import type { TierSpec } from './types'
+import type { FeatureKey, TierFeatureSpec, TierSpec } from './types'
 
 // ─── The tier catalogue ──────────────────────────────────────
 // The four plans as data. This is the seed source AND what
@@ -13,8 +13,6 @@ import type { TierSpec } from './types'
 // stripePriceId* are deliberately absent: they are environment-specific, set
 // per install once the Stripe products exist, and a value committed here would
 // be a test-mode id charging a production customer.
-
-import type { FeatureKey, TierFeatureSpec } from './types'
 
 const f = (featureKey: FeatureKey, limitValue: number | null = null): TierFeatureSpec =>
   ({ featureKey, isEnabled: true, limitValue })

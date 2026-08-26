@@ -51,6 +51,7 @@ import { setupAuth, attachMember } from './auth/session'
 import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
 import { ensureRbacSeeded, ensureEmailsNormalised } from './services/rbac/bootstrap'
 import { ensureOrgTenantBackfill } from './services/rbac/ensureOrgTenant'
+import { ensureBillingSeeded } from './services/billing/bootstrap'
 import {
   ensureSubscription,
   isSubscriptionConfigured,
@@ -212,6 +213,11 @@ async function start() {
   // workspace with no permission catalogue is one where nobody can open the
   // People directory or Settings' admin sections. Does nothing once seeded.
   await ensureRbacSeeded(prisma)
+
+  // The tier catalogue and the seat invariant. Same reasoning as the RBAC
+  // bootstrap: db push cannot create a constraint trigger, and a seed script
+  // somebody has to remember to run is one that did not run in production.
+  await ensureBillingSeeded(prisma)
 
   // Case-insensitive email uniqueness has no database-level enforcement —
   // Prisma 5 cannot express a functional unique index — so it depends on every
