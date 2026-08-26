@@ -7,6 +7,10 @@ export * from './validation/user'
 // about what a role means.
 export * from './rbac/catalogue'
 
+// The tier catalogue, entitlement types and seat helpers. Imported by the
+// seed script, the API's boot-time bootstrap and the billing UI.
+export * from './billing'
+
 // ─── Shared Types for NEXUS ─────────────────────────────────
 
 export type Role = 'ADMIN' | 'OPS_MANAGER' | 'DEPT_LEAD' | 'PROJECT_LEAD' | 'MEMBER'

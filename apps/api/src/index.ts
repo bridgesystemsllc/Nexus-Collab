@@ -43,6 +43,7 @@ import { taskConversationRoutes } from './routes/taskConversations'
 import { rbacRoutes } from './routes/rbac'
 import { userRoutes } from './routes/users'
 import { auditRoutes } from './routes/audit'
+import { billingRoutes } from './routes/billing'
 import { meRoutes } from './routes/me'
 import { jobRoutes } from './routes/jobs'
 import { emailRoutes } from './routes/emails'
@@ -50,6 +51,9 @@ import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember } from './auth/session'
 import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
 import { ensureRbacSeeded, ensureEmailsNormalised } from './services/rbac/bootstrap'
+import { billingContextErrors } from './middleware/billingContext'
+import { ensureOrgTenantBackfill } from './services/rbac/ensureOrgTenant'
+import { ensureBillingSeeded } from './services/billing/bootstrap'
 import {
   ensureSubscription,
   isSubscriptionConfigured,
@@ -158,6 +162,12 @@ api.use('/users', userRoutes)
 // can change authority, and keeping them apart makes that checkable.
 api.use('/me', meRoutes)
 api.use('/audit', auditRoutes)
+api.use('/billing', billingRoutes)
+// Turns a getActingOrgId() throw (no session-derived org) into the module's
+// 401 envelope instead of Express's default 500. Must be mounted immediately
+// after billingRoutes — an Express error handler only catches errors from
+// routers registered before it.
+api.use(billingContextErrors)
 api.use('/projects/tasks', taskConversationRoutes)
 api.use('/projects', projectAnalyticsRoutes)
 api.use('/projects', projectCollabRoutes)
@@ -212,11 +222,21 @@ async function start() {
   // People directory or Settings' admin sections. Does nothing once seeded.
   await ensureRbacSeeded(prisma)
 
+  // The tier catalogue and the seat invariant. Same reasoning as the RBAC
+  // bootstrap: db push cannot create a constraint trigger, and a seed script
+  // somebody has to remember to run is one that did not run in production.
+  await ensureBillingSeeded(prisma)
+
   // Case-insensitive email uniqueness has no database-level enforcement —
   // Prisma 5 cannot express a functional unique index — so it depends on every
   // row being stored lowercased. This converges the ones written before that
   // rule, and refuses rather than guessing when two rows would collide.
   await ensureEmailsNormalised(prisma)
+
+  // Sign-in keys on Organization.entraTenantId as of the tenancy change. The
+  // founding workspace predates the column, so claim it once, and refuse
+  // rather than guess if the answer is not unambiguous.
+  await ensureOrgTenantBackfill(prisma)
 
   // Auth (session + /api/login,/api/logout) must be wired before the API router
   // so the session cookie is available. The Microsoft OAuth callback lives in
