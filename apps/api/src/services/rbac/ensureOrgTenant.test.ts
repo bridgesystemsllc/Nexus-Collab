@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
-import { planBackfill } from './ensureOrgTenant'
+import { describe, it, expect } from 'vitest'
+import type { PrismaClient } from '@prisma/client'
+import { planBackfill, findCrossOrgEmailCollisions } from './ensureOrgTenant'
 
 // planBackfill is the decision; ensureOrgTenantBackfill is the I/O around it.
 // Splitting them is what makes "refuses to guess" testable without a database.
@@ -29,5 +30,30 @@ describe('planBackfill', () => {
 
   it('does nothing when there are no orgs at all', () => {
     expect(planBackfill([], 'tenant-1')).toEqual({ action: 'noop', reason: 'no-orgs' })
+  })
+})
+
+// findCrossOrgEmailCollisions is an operator tool, not part of boot — these
+// tests only cover the mapping from the raw query row shape to `Collision`,
+// with a fake prisma so no database is involved.
+
+describe('findCrossOrgEmailCollisions', () => {
+  it('maps queryRaw rows (a collision group and a clean one) onto the Collision shape', async () => {
+    const fakePrisma = {
+      $queryRaw: async () => [
+        { orgId: 'org_a', email: 'dup@kareve.com', ids: ['mem_1', 'mem_2'] },
+        { orgId: 'org_b', email: 'solo@kareve.com', ids: ['mem_3'] },
+      ],
+    } as unknown as PrismaClient
+
+    expect(await findCrossOrgEmailCollisions(fakePrisma)).toEqual([
+      { orgId: 'org_a', email: 'dup@kareve.com', memberIds: ['mem_1', 'mem_2'] },
+      { orgId: 'org_b', email: 'solo@kareve.com', memberIds: ['mem_3'] },
+    ])
+  })
+
+  it('returns an empty array when nothing collides', async () => {
+    const fakePrisma = { $queryRaw: async () => [] } as unknown as PrismaClient
+    expect(await findCrossOrgEmailCollisions(fakePrisma)).toEqual([])
   })
 })
