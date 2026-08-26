@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { PrismaClient } from '@prisma/client'
-import { planBackfill, findCrossOrgEmailCollisions } from './ensureOrgTenant'
+import { planBackfill, findInOrgEmailCollisions } from './ensureOrgTenant'
 
 // planBackfill is the decision; ensureOrgTenantBackfill is the I/O around it.
 // Splitting them is what makes "refuses to guess" testable without a database.
@@ -33,11 +33,11 @@ describe('planBackfill', () => {
   })
 })
 
-// findCrossOrgEmailCollisions is an operator tool, not part of boot — these
+// findInOrgEmailCollisions is an operator tool, not part of boot — these
 // tests only cover the mapping from the raw query row shape to `Collision`,
 // with a fake prisma so no database is involved.
 
-describe('findCrossOrgEmailCollisions', () => {
+describe('findInOrgEmailCollisions', () => {
   it('maps queryRaw rows (a collision group and a clean one) onto the Collision shape', async () => {
     const fakePrisma = {
       $queryRaw: async () => [
@@ -46,7 +46,7 @@ describe('findCrossOrgEmailCollisions', () => {
       ],
     } as unknown as PrismaClient
 
-    expect(await findCrossOrgEmailCollisions(fakePrisma)).toEqual([
+    expect(await findInOrgEmailCollisions(fakePrisma)).toEqual([
       { orgId: 'org_a', email: 'dup@kareve.com', memberIds: ['mem_1', 'mem_2'] },
       { orgId: 'org_b', email: 'solo@kareve.com', memberIds: ['mem_3'] },
     ])
@@ -54,6 +54,6 @@ describe('findCrossOrgEmailCollisions', () => {
 
   it('returns an empty array when nothing collides', async () => {
     const fakePrisma = { $queryRaw: async () => [] } as unknown as PrismaClient
-    expect(await findCrossOrgEmailCollisions(fakePrisma)).toEqual([])
+    expect(await findInOrgEmailCollisions(fakePrisma)).toEqual([])
   })
 })

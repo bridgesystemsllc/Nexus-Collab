@@ -12,27 +12,43 @@ const prisma = new PrismaClient()
 let orgId = ''
 let tierId = ''
 
+// Every org this suite creates, including the ones each test makes for
+// itself, so afterAll can clean up precisely — never a bare deleteMany({}).
+const allOrgIds: string[] = []
+
 beforeAll(async () => {
   await ensureBillingSeeded(prisma)
   const org = await prisma.organization.create({
     data: { name: 'Seat Trigger Test Co', slug: `seat-trigger-${Date.now()}` },
   })
   orgId = org.id
+  allOrgIds.push(orgId)
   tierId = (await prisma.billingTier.findUniqueOrThrow({ where: { key: 'growth' } })).id
 })
 
 afterAll(async () => {
-  await prisma.seatAssignment.deleteMany({ where: { orgId } })
-  await prisma.billingSubscription.deleteMany({ where: { orgId } })
-  await prisma.member.deleteMany({ where: { orgId } })
-  await prisma.organization.deleteMany({ where: { id: orgId } })
+  for (const id of allOrgIds) {
+    await prisma.seatAssignment.deleteMany({ where: { orgId: id } })
+    await prisma.billingSubscription.deleteMany({ where: { orgId: id } })
+    await prisma.member.deleteMany({ where: { orgId: id } })
+  }
+  await prisma.organization.deleteMany({ where: { id: { in: allOrgIds } } })
   await prisma.$disconnect()
 })
 
-async function member(email: string) {
+async function member(email: string, forOrgId: string = orgId) {
   return prisma.member.create({
-    data: { clerkUserId: `seat-${email}-${Date.now()}`, email, name: email, orgId },
+    data: { clerkUserId: `seat-${email}-${Date.now()}`, email, name: email, orgId: forOrgId },
   })
+}
+
+/** A fresh, timestamp-slugged org, tracked for afterAll cleanup. */
+async function freshOrg(label: string) {
+  const org = await prisma.organization.create({
+    data: { name: `Seat Trigger ${label}`, slug: `seat-trigger-${label}-${Date.now()}` },
+  })
+  allOrgIds.push(org.id)
+  return org.id
 }
 
 describe('ensureBillingSeeded', () => {
@@ -99,10 +115,39 @@ describe('the seat invariant trigger', () => {
   })
 
   it('refuses a second active assignment for the same member', async () => {
-    const held = await prisma.seatAssignment.findFirstOrThrow({ where: { orgId, releasedAt: null } })
-    await expect(
-      prisma.seatAssignment.create({ data: { orgId, memberId: held.memberId } }),
-    ).rejects.toThrow()
+    // Its own org with spare purchased seats, so the seat invariant is
+    // definitively not what fires here. In the shared `orgId` suite above,
+    // seats purchased == seats assigned by this point, so a duplicate insert
+    // would ALSO violate the seat invariant — the assertion couldn't tell the
+    // partial unique index apart from the seat count check, and would pass
+    // exactly the same way if the index didn't exist at all.
+    const dupOrgId = await freshOrg('dup-member')
+    await prisma.billingSubscription.create({
+      data: { orgId: dupOrgId, tierId, stripeCustomerId: 'cus_test_dup', status: 'active',
+              billingInterval: 'monthly', seatsPurchased: 2 },
+    })
+    const held = await member(`held-${Date.now()}@t.co`, dupOrgId)
+    await prisma.seatAssignment.create({ data: { orgId: dupOrgId, memberId: held.id } })
+
+    // Prisma normalizes a Postgres 23505 into a P2002 and reformats the
+    // message from the error's DETAIL (column list), discarding the primary
+    // message that would otherwise contain the literal constraint name — so
+    // the constraint name is not recoverable from `.message` here (verified
+    // against this Prisma version), unlike the trigger's RAISE EXCEPTION
+    // text, which Prisma cannot map to a known code and passes through raw
+    // (that's why the trigger tests above can match /seat_invariant_violated/
+    // in `.message`). P2002 + this exact column pair is the specific,
+    // available signal that it was the partial unique index — not the
+    // trigger — that fired: the trigger's exception surfaces with no `.code`
+    // at all, so this positively rules it out rather than merely failing to
+    // find a name.
+    let error: unknown
+    try {
+      await prisma.seatAssignment.create({ data: { orgId: dupOrgId, memberId: held.id } })
+    } catch (err) {
+      error = err
+    }
+    expect(error).toMatchObject({ code: 'P2002', meta: { target: ['orgId', 'memberId'] } })
   })
 
   it('allows reassignment after release', async () => {
@@ -110,5 +155,39 @@ describe('the seat invariant trigger', () => {
     await prisma.seatAssignment.update({ where: { id: held.id }, data: { releasedAt: new Date() } })
     const again = await prisma.seatAssignment.create({ data: { orgId, memberId: held.memberId } })
     expect(again.releasedAt).toBeNull()
+  })
+
+  it('refuses inserting a subscription whose seat count is already exceeded', async () => {
+    // Defect 2's exact scenario: an org accumulates seat assignments with no
+    // subscription row at all (the trigger returns early when purchased IS
+    // NULL), then a subscription finally gets INSERTed under-counting what is
+    // already assigned. Without a trigger on INSERT this lands silently and
+    // wedges every later UPDATE to the row (renewals, plan changes, any
+    // webhook) behind a violation that already existed before they ran.
+    const wedgeOrgId = await freshOrg('insert-wedge')
+    const m1 = await member(`wedge1-${Date.now()}@t.co`, wedgeOrgId)
+    const m2 = await member(`wedge2-${Date.now()}@t.co`, wedgeOrgId)
+    await prisma.seatAssignment.create({ data: { orgId: wedgeOrgId, memberId: m1.id } })
+    await prisma.seatAssignment.create({ data: { orgId: wedgeOrgId, memberId: m2.id } })
+
+    await expect(
+      prisma.billingSubscription.create({
+        data: { orgId: wedgeOrgId, tierId, stripeCustomerId: 'cus_test_wedge', status: 'active',
+                billingInterval: 'monthly', seatsPurchased: 1 },
+      }),
+    ).rejects.toThrow(/seat_invariant_violated/)
+  })
+
+  it('always permits deleting a seat assignment', async () => {
+    // Deleting an assignment can only reduce consumed seats, never increase
+    // it, so it must be permitted regardless of how tight the org already is.
+    const tightOrgId = await freshOrg('delete-always-ok')
+    await prisma.billingSubscription.create({
+      data: { orgId: tightOrgId, tierId, stripeCustomerId: 'cus_test_tight', status: 'active',
+              billingInterval: 'monthly', seatsPurchased: 1 },
+    })
+    const m = await member(`tight-${Date.now()}@t.co`, tightOrgId)
+    const assignment = await prisma.seatAssignment.create({ data: { orgId: tightOrgId, memberId: m.id } })
+    await expect(prisma.seatAssignment.delete({ where: { id: assignment.id } })).resolves.toBeTruthy()
   })
 })

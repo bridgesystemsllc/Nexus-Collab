@@ -86,7 +86,7 @@ export interface Collision { orgId: string; email: string; memberIds: string[] }
  * calls this automatically — run it by hand before a `db push` that adds the
  * `[orgId, email]` constraint.
  */
-export async function findCrossOrgEmailCollisions(prisma: PrismaClient): Promise<Collision[]> {
+export async function findInOrgEmailCollisions(prisma: PrismaClient): Promise<Collision[]> {
   const rows = await prisma.$queryRaw<Array<{ orgId: string; email: string; ids: string[] }>>`
     SELECT "orgId", lower("email") AS email, array_agg("id") AS ids
     FROM "Member" GROUP BY "orgId", lower("email") HAVING count(*) > 1

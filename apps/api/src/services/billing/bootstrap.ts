@@ -36,13 +36,23 @@ const SEAT_INVARIANT_SQL = [
    DECLARE target_org TEXT; consumed INT; purchased INT;
    BEGIN
      target_org := COALESCE(NEW."orgId", OLD."orgId");
-     SELECT count(*) INTO consumed FROM "SeatAssignment"
-       WHERE "orgId" = target_org AND "releasedAt" IS NULL;
+     -- Lock the subscription row BEFORE counting, not after. Under READ
+     -- COMMITTED, two concurrent transactions assigning seats to different
+     -- members don't conflict on the partial unique index and don't block
+     -- each other, so both can count the other's uncommitted (invisible) row
+     -- as absent and both pass: seatsPurchased=1 with zero assignments lets
+     -- T1 assign to A, T2 assign to B, both commit, 2 assigned against 1
+     -- purchased. FOR UPDATE makes T2 block on T1's row lock and then re-read
+     -- the latest committed state once granted, so it correctly counts both.
+     -- Do not swap this order back to "count first, lock after" — that
+     -- reintroduces the oversell.
      SELECT "seatsPurchased" INTO purchased FROM "BillingSubscription"
-       WHERE "orgId" = target_org;
+       WHERE "orgId" = target_org FOR UPDATE;
      -- No subscription means nothing to oversell. Seats assigned without one
      -- are a separate problem and not this trigger's to refuse.
      IF purchased IS NULL THEN RETURN NULL; END IF;
+     SELECT count(*) INTO consumed FROM "SeatAssignment"
+       WHERE "orgId" = target_org AND "releasedAt" IS NULL;
      IF consumed > purchased THEN
        RAISE EXCEPTION 'seat_invariant_violated: org % holds % assigned seats against % purchased',
          target_org, consumed, purchased;
@@ -58,9 +68,19 @@ const SEAT_INVARIANT_SQL = [
      DEFERRABLE INITIALLY DEFERRED
      FOR EACH ROW EXECUTE FUNCTION billing_assert_seat_invariant();`,
 
+  // Must fire on INSERT too, not just UPDATE. Without it, an org with no
+  // subscription row accumulates unlimited seat assignments unchecked (the
+  // function returns early when purchased IS NULL), and the first INSERT of
+  // a subscription row — which is exactly when a real seat count first
+  // exists to check against — fires no trigger at all. That leaves the org
+  // permanently over its seat count, and wedged: the next legitimate UPDATE
+  // (a renewal, a plan change, any webhook touching this row) fires the
+  // UPDATE trigger, finds the pre-existing violation, and raises — so every
+  // subsequent webhook for that org fails forever. Checking on INSERT closes
+  // that hole at the one moment it can still be closed.
   `DROP TRIGGER IF EXISTS billing_seat_invariant_subscription ON "BillingSubscription";`,
   `CREATE CONSTRAINT TRIGGER billing_seat_invariant_subscription
-     AFTER UPDATE ON "BillingSubscription"
+     AFTER INSERT OR UPDATE ON "BillingSubscription"
      DEFERRABLE INITIALLY DEFERRED
      FOR EACH ROW EXECUTE FUNCTION billing_assert_seat_invariant();`,
 
@@ -76,9 +96,17 @@ export async function ensureBillingSeeded(prisma: PrismaClient): Promise<Billing
     ran: false, tiersSeeded: 0, featuresSeeded: 0, constraintsApplied: false,
   }
   try {
-    for (const statement of SEAT_INVARIANT_SQL) {
-      await prisma.$executeRawUnsafe(statement)
-    }
+    // Each $executeRawUnsafe is its own implicit transaction by default, so
+    // running these one at a time leaves a window — between the DROP and the
+    // CREATE CONSTRAINT TRIGGER — where the invariant is unenforced, and it
+    // takes the DROP's ACCESS EXCLUSIVE lock on SeatAssignment on every
+    // process start for no reason. One transaction makes the whole sequence
+    // atomic: either every statement lands or none do.
+    await prisma.$transaction(async (tx) => {
+      for (const statement of SEAT_INVARIANT_SQL) {
+        await tx.$executeRawUnsafe(statement)
+      }
+    })
     result.constraintsApplied = true
 
     for (const spec of TIER_CATALOGUE) {
