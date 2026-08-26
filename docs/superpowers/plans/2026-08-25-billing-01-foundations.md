@@ -1544,10 +1544,17 @@ const SEAT_INVARIANT_SQL = [
    DECLARE target_org TEXT; consumed INT; purchased INT;
    BEGIN
      target_org := COALESCE(NEW."orgId", OLD."orgId");
+     -- Lock the subscription row BEFORE counting. Without FOR UPDATE, two
+     -- concurrent transactions each see only their own uncommitted assignment
+     -- under READ COMMITTED, both pass the deferred check, and both commit —
+     -- the exact oversell this trigger exists to make impossible. The lock
+     -- serialises them, and FOR UPDATE re-reads the latest committed row once
+     -- granted, so the second transaction counts both and raises.
+     SELECT "seatsPurchased" INTO purchased FROM "BillingSubscription"
+       WHERE "orgId" = target_org FOR UPDATE;
+     IF purchased IS NULL THEN RETURN NULL; END IF;
      SELECT count(*) INTO consumed FROM "SeatAssignment"
        WHERE "orgId" = target_org AND "releasedAt" IS NULL;
-     SELECT "seatsPurchased" INTO purchased FROM "BillingSubscription"
-       WHERE "orgId" = target_org;
      -- No subscription means nothing to oversell. Seats assigned without one
      -- are a separate problem and not this trigger's to refuse.
      IF purchased IS NULL THEN RETURN NULL; END IF;
@@ -1568,7 +1575,7 @@ const SEAT_INVARIANT_SQL = [
 
   `DROP TRIGGER IF EXISTS billing_seat_invariant_subscription ON "BillingSubscription";`,
   `CREATE CONSTRAINT TRIGGER billing_seat_invariant_subscription
-     AFTER UPDATE ON "BillingSubscription"
+     AFTER INSERT OR UPDATE ON "BillingSubscription"
      DEFERRABLE INITIALLY DEFERRED
      FOR EACH ROW EXECUTE FUNCTION billing_assert_seat_invariant();`,
 
