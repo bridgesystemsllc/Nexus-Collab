@@ -14,7 +14,7 @@ import {
   graphPost,
   MicrosoftNotConnectedError,
 } from '../lib/microsoftGraph'
-import { upsertMemberFromMicrosoft, stampLastLogin } from '../auth/session'
+import { upsertMemberFromMicrosoft, stampLastLogin, UnknownTenantError } from '../auth/session'
 
 // OAuth state stored server-side in the session: single-use. `flow` tells the
 // shared callback whether this was a primary login (no prior member) or a
@@ -134,7 +134,19 @@ microsoftGraphRoutes.get('/callback', async (req: Request, res: Response) => {
 
     // ── Primary login: provision/resolve the member and start a session.
     if (stored!.flow === 'login') {
-      const loggedInMember = await upsertMemberFromMicrosoft(profile)
+      let loggedInMember
+      try {
+        loggedInMember = await upsertMemberFromMicrosoft(profile, tokens)
+      } catch (err) {
+        if (err instanceof UnknownTenantError) {
+          // A real identity from an organization Nexus does not know. This is
+          // the normal path for someone whose company has not been onboarded,
+          // so it gets its own reason rather than looking like a broken login.
+          console.warn(`[auth] sign-in from unregistered tenant ${err.tenantId ?? '(none)'}`)
+          return res.redirect(APP_REDIRECT('error', 'unknown_tenant'))
+        }
+        throw err
+      }
       // Signing in also connects Graph (same scopes), so Outlook/OneDrive work
       // immediately without a separate "connect" step. (DB-only; safe to do
       // before regenerating the session.)

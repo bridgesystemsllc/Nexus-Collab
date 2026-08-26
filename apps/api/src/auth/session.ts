@@ -2,12 +2,13 @@ import session from 'express-session'
 import connectPg from 'connect-pg-simple'
 import type { Express, RequestHandler, Request, Response, NextFunction } from 'express'
 import { normaliseEmail } from '@nexus/shared'
-import { prisma } from '../index'
+import { prisma } from '../lib/prisma'
 import {
   isMicrosoftConfigured,
   getRedirectUri,
   buildAuthUrl,
   createStateNonce,
+  tenantIdFromIdToken,
   type MsProfile,
 } from '../lib/microsoftGraph'
 
@@ -52,11 +53,41 @@ function getSession() {
   })
 }
 
+/// Thrown when a valid Microsoft identity belongs to a tenant no Organization
+/// claims. Distinguished from a generic failure so the callback can send the
+/// person somewhere useful rather than to a blank error page.
+export class UnknownTenantError extends Error {
+  constructor(public readonly tenantId: string | null) {
+    super('UNKNOWN_TENANT')
+    this.name = 'UnknownTenantError'
+  }
+}
+
+/**
+ * Which Organization is this person signing in to?
+ *
+ * Exactly one answer: the org registered to their Entra tenant. There is no
+ * fallback. The previous implementation answered `findFirst({ orderBy:
+ * { createdAt: 'asc' } })`, which put every user of every customer into the
+ * oldest workspace — invisible while Nexus had one customer, a cross-tenant
+ * data breach the moment it had two.
+ */
+export async function resolveOrgForLogin(
+  db: { organization: { findUnique: (a: any) => Promise<{ id: string } | null> } },
+  { tenantId }: { tenantId: string | null; email: string },
+): Promise<{ id: string } | null> {
+  if (!tenantId) return null
+  return db.organization.findUnique({ where: { entraTenantId: tenantId } })
+}
+
 // ─── Map an authenticated Microsoft identity to a NEXUS Member ──
 // Links by the stable Entra object id (stored in Member.clerkUserId). Falls
 // back to adopting an existing member that shares the email (e.g. someone who
 // was invited before they ever logged in), otherwise creates a fresh member.
-export async function upsertMemberFromMicrosoft(profile: MsProfile) {
+export async function upsertMemberFromMicrosoft(
+  profile: MsProfile,
+  tokens: { id_token?: string },
+) {
   const sub = profile.id
   if (!sub) throw new Error('Microsoft profile missing id')
 
@@ -72,10 +103,15 @@ export async function upsertMemberFromMicrosoft(profile: MsProfile) {
   const bySub = await prisma.member.findUnique({ where: { clerkUserId: sub } }).catch(() => null)
   if (bySub) return bySub
 
-  // Insensitive rather than findUnique: rows written before normalisation may
-  // still carry mixed case, and adopting them is the whole point of this path.
+  // The org must be settled BEFORE the email lookup: email is unique per org
+  // now, so an unscoped search would adopt a member belonging to a different
+  // customer who happens to share an address.
+  const tenantId = tenantIdFromIdToken(tokens.id_token)
+  const org = await resolveOrgForLogin(prisma, { tenantId, email })
+  if (!org) throw new UnknownTenantError(tenantId)
+
   const byEmail = await prisma.member
-    .findFirst({ where: { email: { equals: email, mode: 'insensitive' } } })
+    .findFirst({ where: { orgId: org.id, email: { equals: email, mode: 'insensitive' } } })
     .catch(() => null)
   if (byEmail) {
     // Adopt the placeholder/invited member record under the real identity, and
@@ -85,9 +121,6 @@ export async function upsertMemberFromMicrosoft(profile: MsProfile) {
       data: { clerkUserId: sub, ...(byEmail.email !== email ? { email } : {}) },
     })
   }
-
-  const org = await prisma.organization.findFirst({ orderBy: { createdAt: 'asc' } })
-  if (!org) throw new Error('NO_ORGANIZATION')
 
   const initials = name
     .split(/\s+/)
