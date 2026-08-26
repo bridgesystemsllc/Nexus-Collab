@@ -348,7 +348,7 @@ Test clocks for renewal / upgrade / downgrade / failure / retry / cancel. Webhoo
 ## Known Risks
 
 1. **The Replit Agent pushes to `main`.** Every branch starts with `git fetch`. A long-lived billing branch will conflict; keep PRs small and merge fast.
-2. **`pnpm --filter @nexus/api build` already fails on `main`** (ioredis dual-version types, `brandTransition.ts`, `cowork.ts`). Do not treat a red API `tsc` as caused by this work — establish the baseline failure set before Phase 1 and assert it does not grow. `pnpm --filter @nexus/web build` is the real gate.
+2. ~~`pnpm --filter @nexus/api build` already fails on `main`.~~ **Corrected 2026-08-25:** measured at `c295960`, both `tsc --noEmit` and the API build are clean — PR #101 fixed the 45 typecheck errors. The gate is zero errors with no filtering.
 3. **No E2E harness** (D9). Stated coverage gap.
 4. **Stripe keys absent** — B5, B13, B17 ship unverified against live Stripe.
 5. **The tenancy sweep is deliberately incomplete.** Billing is correctly org-scoped; the rest of Nexus is not yet. Onboarding a second organization is unsafe until the follow-on PR set from the `docs/billing.md` inventory lands. **This must be stated in the B1 PR body.**

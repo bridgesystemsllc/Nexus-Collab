@@ -33,7 +33,7 @@ pnpm --filter @nexus/api test 2>&1 | tail -20      # record the passing count
 pnpm --filter @nexus/api build 2>&1 | tail -30     # record the PRE-EXISTING failures
 ```
 
-`pnpm --filter @nexus/api build` **already fails on `main`** (ioredis dual-version types, `brandTransition.ts`, `cowork.ts`). Write the failure list down. The gate for this phase is "the set did not grow", not "it is green". `pnpm --filter @nexus/web build` must stay green.
+**Measured on this branch at `c295960` (2026-08-25):** `npx tsc --noEmit -p tsconfig.json` in `apps/api` = **0 errors**; `pnpm --filter @nexus/api build` = **0 errors**; `npx vitest run` = **572 passed / 32 files**. PR #101 ("make the pipeline green — 45 typecheck errors, all real") cleared the ioredis / `brandTransition.ts` / `cowork.ts` failures an earlier note recorded, so **the gate is zero errors with no filtering** — any error from here is ours. `pnpm --filter @nexus/web build` must also stay green.
 
 ---
 
@@ -581,8 +581,8 @@ Add `UnknownTenantError` to the existing import from `'../auth/session'` at line
 Run: `cd ~/Nexus-Collab/apps/api && npx vitest run src/auth/orgResolution.test.ts`
 Expected: PASS — 4 passed
 
-Run: `cd ~/Nexus-Collab/apps/api && npx tsc --noEmit -p tsconfig.json 2>&1 | grep -v -E 'ioredis|brandTransition|cowork'`
-Expected: no output — no new type errors beyond the recorded baseline.
+Run: `cd ~/Nexus-Collab/apps/api && npx tsc --noEmit -p tsconfig.json`
+Expected: no output. The baseline is zero errors, so anything printed here is yours.
 
 - [ ] **Step 6: Commit**
 
@@ -2925,7 +2925,7 @@ Do not begin Phase 2 until every one of these holds:
 - [ ] `pnpm --filter @nexus/api test` passes, with more tests than the recorded baseline and none newly failing.
 - [ ] `pnpm --filter @nexus/api test:integration` passes, including all six seat-trigger tests.
 - [ ] `pnpm --filter @nexus/web build` is green.
-- [ ] `npx tsc --noEmit` in `apps/api` produces no errors beyond the recorded pre-existing set (ioredis, `brandTransition.ts`, `cowork.ts`).
+- [ ] `npx tsc --noEmit` in `apps/api` produces **zero** errors.
 - [ ] The API boots and logs `[billing]` bootstrap success and the tenancy backfill result.
 - [ ] `GET /api/v1/billing/entitlements` answers with a correct locked-state object for an org with no subscription.
 - [ ] `grep -rn "findFirst" apps/api/src/auth/` returns no organization lookup.
