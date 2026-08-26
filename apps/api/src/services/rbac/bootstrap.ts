@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import {
-  PERMISSION_GROUPS, SYSTEM_ROLES, LEGACY_ROLE_TO_KEY,
+  PERMISSION_GROUPS, SYSTEM_ROLES, LEGACY_ROLE_TO_KEY, ALL_PERMISSION_KEYS,
 } from '@nexus/shared'
 
 // ─── RBAC bootstrap ──────────────────────────────────────────
@@ -38,16 +38,29 @@ export interface BootstrapResult {
 export async function ensureRbacSeeded(prisma: PrismaClient): Promise<BootstrapResult> {
   try {
     // The catalogue is the marker. Roles without permissions would be a
-    // half-finished seed, so both are checked.
-    const [permissionCount, roleCount] = await Promise.all([
-      prisma.permission.count(),
+    // half-finished seed, so both are checked — and "checked" means "is it
+    // current", not just "is it non-empty".
+    const [existingKeys, roleCount] = await Promise.all([
+      prisma.permission.findMany({ select: { key: true } }),
       prisma.role.count(),
     ])
-    if (permissionCount > 0 && roleCount > 0) {
-      return { ran: false, reason: 'already-seeded', permissions: permissionCount, roles: roleCount }
+    const known = new Set(existingKeys.map((p) => p.key))
+    const missing = ALL_PERMISSION_KEYS.filter((k) => !known.has(k))
+
+    // Current AND complete. Asking only "is it empty?" meant a permission added
+    // to the catalogue after the first boot never reached an existing
+    // workspace — every route guarding on it answered 403 to everyone,
+    // including the owner, and the only symptom was a feature that silently
+    // did not exist.
+    if (known.size > 0 && roleCount > 0 && missing.length === 0) {
+      return { ran: false, reason: 'already-seeded', permissions: known.size, roles: roleCount }
     }
 
-    console.log('[rbac] catalogue is empty — seeding roles and permissions')
+    console.log(
+      known.size === 0
+        ? '[rbac] catalogue is empty — seeding roles and permissions'
+        : `[rbac] catalogue is missing ${missing.length} permission(s) (${missing.join(', ')}) — reconciling`,
+    )
     const result = await seedRbac(prisma)
     console.log(
       `[rbac] seeded ${result.permissions} permissions, ${result.roles} roles` +

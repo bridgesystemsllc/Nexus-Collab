@@ -43,6 +43,7 @@ import { taskConversationRoutes } from './routes/taskConversations'
 import { rbacRoutes } from './routes/rbac'
 import { userRoutes } from './routes/users'
 import { auditRoutes } from './routes/audit'
+import { billingRoutes } from './routes/billing'
 import { meRoutes } from './routes/me'
 import { jobRoutes } from './routes/jobs'
 import { emailRoutes } from './routes/emails'
@@ -160,6 +161,7 @@ api.use('/users', userRoutes)
 // can change authority, and keeping them apart makes that checkable.
 api.use('/me', meRoutes)
 api.use('/audit', auditRoutes)
+api.use('/billing', billingRoutes)
 api.use('/projects/tasks', taskConversationRoutes)
 api.use('/projects', projectAnalyticsRoutes)
 api.use('/projects', projectCollabRoutes)

@@ -59,7 +59,10 @@ export const PERMISSION_GROUPS: { resource: string; items: PermissionSpec[] }[] 
   },
   {
     resource: 'billing',
-    items: [{ key: 'billing:manage', label: 'Manage billing', description: 'Subscription and payment details' }],
+    items: [
+      { key: 'billing:read', label: 'View billing', description: 'See the plan, seats, invoices and payment methods' },
+      { key: 'billing:manage', label: 'Manage billing', description: 'Change the plan, seats and payment details' },
+    ],
   },
 ]
 

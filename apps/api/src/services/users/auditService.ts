@@ -21,6 +21,12 @@ export type AuditAction =
   | 'settings.updated' | 'preferences.updated' | 'notifications.updated'
   | 'role.created' | 'role.updated' | 'role.deleted'
   | 'auth.login_failed'
+  | 'billing.tier_upgraded' | 'billing.tier_downgrade_scheduled' | 'billing.tier_change_canceled'
+  | 'billing.seats_added' | 'billing.seats_removal_scheduled'
+  | 'billing.seat_assigned' | 'billing.seat_released'
+  | 'billing.payment_method_added' | 'billing.payment_method_removed' | 'billing.payment_method_default_changed'
+  | 'billing.subscription_created' | 'billing.subscription_canceled' | 'billing.subscription_reactivated'
+  | 'billing.invoice_paid' | 'billing.invoice_failed'
 
 export interface FieldChange {
   from: unknown
@@ -32,9 +38,13 @@ export interface AppendInput {
   actorEmailSnapshot: string | null
   action: AuditAction
   entityType: 'user' | 'role' | 'settings' | 'preferences' | 'notifications' | 'invitation'
+    | 'subscription' | 'seat' | 'payment_method' | 'invoice'
   entityId: string | null
   changes?: Record<string, FieldChange> | null
   metadata?: Record<string, unknown> | null
+  /// Which organization this entry belongs to. Required for billing entries;
+  /// the user-management callers may leave it undefined.
+  orgId?: string | null
 }
 
 /**
@@ -131,6 +141,7 @@ export async function append(tx: Tx, input: AppendInput): Promise<void> {
       entityId: input.entityId,
       changes: (redactChanges(input.changes) ?? undefined) as object | undefined,
       metadata: (input.metadata ?? undefined) as object | undefined,
+      orgId: input.orgId ?? undefined,
     },
   })
 }
