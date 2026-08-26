@@ -352,14 +352,7 @@ Add to `model Organization` (after `slug`):
   entraTenantId      String?              @unique
 ```
 
-And add the billing back-relations:
-
-```prisma
-  subscription       BillingSubscription?
-  seatAssignments    SeatAssignment[]
-  paymentMethods     BillingPaymentMethod[]
-  invoices           BillingInvoice[]
-```
+**Do not add the billing back-relations here.** `BillingSubscription`, `SeatAssignment`, `BillingPaymentMethod` and `BillingInvoice` do not exist until Task 7, and `prisma validate` in Step 4 fails on a relation to a model that is not defined. Task 7 adds them alongside the models themselves.
 
 - [ ] **Step 3: Edit `model Member`**
 
@@ -383,11 +376,9 @@ Add to the `@@index` block at the end of the model:
 
 ```prisma
   @@unique([orgId, email])
-  seatAssignments  SeatAssignment[]
-  seatsAssigned    SeatAssignment[]     @relation("SeatAssigner")
 ```
 
-*(Place the two relation fields with the other relations, above the index block — Prisma requires fields before block attributes.)*
+The `SeatAssignment` back-relations on `Member` belong to Task 7 for the same reason as the `Organization` ones: the model does not exist yet.
 
 - [ ] **Step 4: Verify the schema parses and shows only the intended change**
 
@@ -1260,7 +1251,27 @@ model BillingEvent {
 }
 ```
 
-- [ ] **Step 2: Add `orgId` to `AuditLog`**
+- [ ] **Step 2: Add the back-relations Task 3 deferred**
+
+`Organization` and `Member` cannot declare these until the models above exist, which is why they land here rather than in Task 3.
+
+Add to `model Organization`:
+
+```prisma
+  subscription       BillingSubscription?
+  seatAssignments    SeatAssignment[]
+  paymentMethods     BillingPaymentMethod[]
+  invoices           BillingInvoice[]
+```
+
+Add to `model Member`, with the other relation fields and above its block attributes:
+
+```prisma
+  seatAssignments  SeatAssignment[]
+  seatsAssigned    SeatAssignment[]     @relation("SeatAssigner")
+```
+
+- [ ] **Step 3: Add `orgId` to `AuditLog`**
 
 In `model AuditLog` (line ~1426) add the field and index:
 
@@ -1275,7 +1286,7 @@ In `model AuditLog` (line ~1426) add the field and index:
   @@index([orgId, createdAt(sort: Desc)])
 ```
 
-- [ ] **Step 3: Validate and inspect the diff**
+- [ ] **Step 4: Validate and inspect the diff**
 
 Run:
 ```bash
@@ -1285,12 +1296,12 @@ cd ~/Nexus-Collab/packages/prisma && npx prisma validate && npx prisma migrate d
 ```
 Expected: **no `DROP TABLE` and no `DROP COLUMN`.** Anything destructive here is a mistake — stop and re-read the diff in full. (`DROP INDEX "Member_email_key"` from B1 is expected if B1 has merged.)
 
-- [ ] **Step 4: Push and generate**
+- [ ] **Step 5: Push and generate**
 
 Run: `cd ~/Nexus-Collab && pnpm db:push && pnpm db:generate`
 Expected: `Your database is now in sync with your Prisma schema.`
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 cd ~/Nexus-Collab
