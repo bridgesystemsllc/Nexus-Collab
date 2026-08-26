@@ -109,6 +109,9 @@ interface MsTokenResponse {
   refresh_token?: string
   expires_in: number
   scope?: string
+  /// Present because MS_SCOPES requests `openid`. Never declared before this
+  /// because nothing read it.
+  id_token?: string
 }
 
 async function tokenRequest(body: Record<string, string>): Promise<MsTokenResponse> {
@@ -122,6 +125,30 @@ async function tokenRequest(body: Record<string, string>): Promise<MsTokenRespon
     throw new Error(`Microsoft token request failed (${res.status}): ${await res.text()}`)
   }
   return (await res.json()) as MsTokenResponse
+}
+
+// ─── Tenant identity ─────────────────────────────────────────
+// The org a person belongs to is their Entra tenant, and the tenant id rides
+// in the `tid` claim of the id_token. Graph /me does not return it, so this is
+// the only place it is available without a second network call.
+//
+// This DECODES, it does not VERIFY. That is sound here and nowhere else: the
+// token came back on the TLS response to our own client-secret-authenticated
+// code exchange, so there is no untrusted party between Microsoft and this
+// line. Never call this on a token that arrived from a browser.
+export function tenantIdFromIdToken(idToken: string | undefined): string | null {
+  if (!idToken) return null
+  const parts = idToken.split('.')
+  if (parts.length !== 3) return null
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'))
+    const tid = claims?.tid
+    return typeof tid === 'string' && tid.length > 0 ? tid : null
+  } catch {
+    // A malformed token must degrade to "unknown tenant", never to a 500 in
+    // the middle of somebody's login.
+    return null
+  }
 }
 
 export function exchangeCode(code: string, redirectUri: string): Promise<MsTokenResponse> {
