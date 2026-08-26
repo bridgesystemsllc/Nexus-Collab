@@ -1676,7 +1676,7 @@ git commit -m "feat(billing): seed the tier catalogue and enforce the seat invar
 
 **Interfaces:**
 - Consumes: `BillingTier`, `BillingTierFeature`.
-- Produces: `loadCatalogue(prisma): Promise<TierRecord[]>`, `toTierSnapshot(row)`, `invalidateCatalogue()`, and `interface TierRecord`. Tasks 10–12 and route B8 consume these.
+- Produces: `loadCatalogue(prisma): Promise<TierRecord[]>`, `findTier(prisma, key)`, `invalidateCatalogue()`, and `interface TierRecord` / `interface TierFeatureRecord`. Tasks 10–12 and route B8 consume these.
 
 - [ ] **Step 1: Write the failing test**
 
