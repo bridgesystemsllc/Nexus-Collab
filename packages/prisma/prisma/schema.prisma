@@ -37,6 +37,10 @@ model Organization {
   products           Product[]
   transitionSkus     TransitionSku[]
   invites            OrganizationInvite[]
+  subscription       BillingSubscription?
+  seatAssignments    SeatAssignment[]
+  paymentMethods     BillingPaymentMethod[]
+  invoices           BillingInvoice[]
 }
 
 // ─── Session ────────────────────────────────────────────────
@@ -153,6 +157,9 @@ model Member {
   overridesGranted     UserPermissionOverride[] @relation("OverrideGrantor")
   invitationsSentNew   UserInvitation[]         @relation("InvitationSender")
   auditEntries         AuditLog[]               @relation("AuditActor")
+
+  seatAssignments  SeatAssignment[]
+  seatsAssigned    SeatAssignment[]     @relation("SeatAssigner")
 
   @@index([orgId])
   @@index([clerkUserId])
@@ -1448,10 +1455,195 @@ model AuditLog {
   changes            Json?
   /// ip, userAgent, requestId
   metadata           Json?
+  /// Which organization this entry belongs to. Nullable because entries
+  /// written before billing existed have no org, and backfilling them would
+  /// be a guess written into an append-only trail.
+  orgId              String?
   createdAt          DateTime @default(now())
 
   @@index([entityType, entityId, createdAt(sort: Desc)])
   @@index([actorId])
   @@index([action])
   @@index([createdAt(sort: Desc)])
+  @@index([orgId, createdAt(sort: Desc)])
+}
+
+// ─── Billing ─────────────────────────────────────────────────
+// Stripe is authoritative for subscription state. Everything below except the
+// tier catalogue is a MIRROR, written only by the webhook processor. A route
+// handler that writes BillingSubscription directly is a bug: it creates a
+// local truth that Stripe does not share, and the next webhook silently
+// reverts it.
+
+model BillingTier {
+  id                     String   @id @default(cuid())
+  /// starter | growth | professional | enterprise
+  key                    String   @unique
+  displayName            String
+  description            String?
+  sortOrder              Int      @default(0)
+  /// Lower is cheaper. This is what makes a change an upgrade or a downgrade.
+  /// sortOrder is presentation and must never be used for that comparison.
+  rank                   Int
+  /// Environment-specific, set per install once the Stripe products exist.
+  /// Null on a quote-driven tier, which has no self-serve price.
+  stripePriceIdMonthly   String?
+  stripePriceIdAnnual    String?
+  unitAmountMonthlyCents Int
+  unitAmountAnnualCents  Int
+  minSeats               Int
+  /// null means unlimited. Always compare through exceedsSeatCeiling().
+  maxSeats               Int?
+  isCustomQuote          Boolean  @default(false)
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  features               BillingTierFeature[]
+  subscriptions          BillingSubscription[] @relation("SubscriptionTier")
+  pendingSubscriptions   BillingSubscription[] @relation("SubscriptionPendingTier")
+
+  @@index([rank])
+}
+
+model BillingTierFeature {
+  id         String      @id @default(cuid())
+  tierId     String
+  tier       BillingTier @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  featureKey String
+  isEnabled  Boolean     @default(true)
+  /// null means "enabled, no numeric cap". Only meaningful when isEnabled.
+  limitValue Int?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@unique([tierId, featureKey])
+  @@index([featureKey])
+}
+
+model BillingSubscription {
+  id                       String       @id @default(cuid())
+  orgId                    String       @unique
+  org                      Organization @relation(fields: [orgId], references: [id])
+  tierId                   String
+  tier                     BillingTier  @relation("SubscriptionTier", fields: [tierId], references: [id])
+
+  stripeCustomerId         String
+  stripeSubscriptionId     String?      @unique
+  stripeSubscriptionItemId String?
+
+  /// trialing | active | past_due | canceled | incomplete | incomplete_expired | paused
+  status                   String
+  /// monthly | annual
+  billingInterval          String
+  seatsPurchased           Int
+
+  currentPeriodStart       DateTime?
+  currentPeriodEnd         DateTime?
+  cancelAtPeriodEnd        Boolean      @default(false)
+  trialEndsAt              DateTime?
+  canceledAt               DateTime?
+
+  /// Scheduled, not yet effective. A downgrade or seat reduction lands here
+  /// and takes effect at pendingChangeEffectiveAt. Entitlements are resolved
+  /// from tierId/seatsPurchased, never from these — that is what makes a
+  /// scheduled downgrade keep its features until the period actually ends.
+  pendingTierId            String?
+  pendingTier              BillingTier? @relation("SubscriptionPendingTier", fields: [pendingTierId], references: [id])
+  pendingSeats             Int?
+  pendingChangeEffectiveAt DateTime?
+
+  /// Set when a payment fails. Full access until it passes, read-only after.
+  gracePeriodEndsAt        DateTime?
+
+  /// High-water mark for webhook ordering. Stripe delivers out of order and
+  /// its objects carry no monotonic version, so an event created before this
+  /// is stale and must be discarded rather than applied.
+  lastStripeEventAt        DateTime?
+
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
+
+  @@index([status])
+  @@index([stripeCustomerId])
+}
+
+model SeatAssignment {
+  id                  String       @id @default(cuid())
+  orgId               String
+  org                 Organization @relation(fields: [orgId], references: [id])
+  memberId            String
+  member              Member       @relation(fields: [memberId], references: [id])
+  assignedAt          DateTime     @default(now())
+  assignedByMemberId  String?
+  assignedBy          Member?      @relation("SeatAssigner", fields: [assignedByMemberId], references: [id])
+  /// Null means the seat is currently held. Releases are soft so the trail
+  /// survives — who held which seat and when is a billing question.
+  releasedAt          DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  // The real guarantee — one ACTIVE assignment per member per org — is a
+  // partial unique index, which Prisma 5 cannot express. It is created in
+  // ensureBillingSeeded(). This index is only for lookup speed.
+  @@index([orgId, releasedAt])
+  @@index([memberId])
+}
+
+model BillingPaymentMethod {
+  id                    String       @id @default(cuid())
+  orgId                 String
+  org                   Organization @relation(fields: [orgId], references: [id])
+  stripePaymentMethodId String       @unique
+  brand                 String
+  last4                 String
+  expMonth              Int
+  expYear               Int
+  isDefault             Boolean      @default(false)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  @@index([orgId, isDefault])
+}
+
+model BillingInvoice {
+  id                   String       @id @default(cuid())
+  orgId                String
+  org                  Organization @relation(fields: [orgId], references: [id])
+  stripeInvoiceId      String       @unique
+  number               String?
+  status               String
+  amountDueCents       Int
+  amountPaidCents      Int
+  currency             String       @default("usd")
+  periodStart          DateTime?
+  periodEnd            DateTime?
+  hostedInvoiceUrl     String?
+  invoicePdfUrl        String?
+  attemptCount         Int          @default(0)
+  nextPaymentAttemptAt DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@index([orgId, createdAt(sort: Desc)])
+  @@index([status])
+}
+
+model BillingEvent {
+  id              String    @id @default(cuid())
+  /// The idempotency key. Stripe redelivers on any non-2xx, and a replayed
+  /// invoice.paid that applied twice is a double credit.
+  stripeEventId   String    @unique
+  eventType       String
+  orgId           String?
+  payload         Json
+  /// Null until it has been applied. Set means "already done, return 200".
+  processedAt     DateTime?
+  processingError String?
+  retryCount      Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([eventType, createdAt(sort: Desc)])
+  @@index([processedAt])
 }
