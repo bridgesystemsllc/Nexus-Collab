@@ -4,6 +4,7 @@ import crypto from 'crypto'
 import { normaliseEmail, LEGACY_ROLE_TO_KEY } from '@nexus/shared'
 import { prisma } from '../index'
 import { requirePermission, sendError, type RbacRequest } from '../middleware/requirePermission'
+import { getActingOrgId } from '../middleware/billingContext'
 import { can } from '../services/rbac/resolve'
 import { append } from '../services/users/auditService'
 import { updateMemberSchema } from './members.schema'
@@ -60,13 +61,13 @@ const createMemberSchema = z.object({
 memberRoutes.post('/', requirePermission('users:create'), async (req: Request, res: Response) => {
   try {
     const data = createMemberSchema.parse(req.body)
-    const org = await prisma.organization.findFirst()
-    if (!org) return res.status(400).json({ error: 'No organization found' })
+    // requirePermission guarantees a member on req, so this is the caller's org.
+    const orgId = getActingOrgId(req)
 
     const member = await prisma.member.create({
       data: {
         clerkUserId: `user_${crypto.randomUUID().slice(0, 8)}`,
-        orgId: org.id,
+        orgId,
         name: data.name,
         email: normaliseEmail(data.email),
         role: data.role,
@@ -195,8 +196,8 @@ const inviteSchema = z.object({
 memberRoutes.post('/invite', requirePermission('users:create'), async (req: Request, res: Response) => {
   try {
     const data = inviteSchema.parse(req.body)
-    const org = await prisma.organization.findFirst()
-    if (!org) return res.status(400).json({ error: 'No organization found' })
+    // requirePermission guarantees a member on req, so this is the caller's org.
+    const orgId = getActingOrgId(req)
 
     const inviter = await prisma.member.findFirst({
       where: { role: 'admin' },
@@ -210,7 +211,7 @@ memberRoutes.post('/invite', requirePermission('users:create'), async (req: Requ
 
     const invite = await prisma.organizationInvite.create({
       data: {
-        orgId: org.id,
+        orgId,
         invitedEmail: normaliseEmail(data.email),
         role: data.role || 'member',
         token,
@@ -223,7 +224,7 @@ memberRoutes.post('/invite', requirePermission('users:create'), async (req: Requ
     const member = await prisma.member.create({
       data: {
         clerkUserId: `user_${crypto.randomUUID().slice(0, 8)}`,
-        orgId: org.id,
+        orgId,
         name: data.email.split('@')[0],
         email: normaliseEmail(data.email),
         role: data.role || 'member',
