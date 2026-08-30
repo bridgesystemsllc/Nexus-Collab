@@ -1,8 +1,11 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { isMailConfigured, sendTeamEmail } from '../services/emailAgent/sendMail'
+import { isAuthenticated } from '../auth/session'
 
 export const emailRoutes: ReturnType<typeof Router> = Router()
+
+emailRoutes.use(isAuthenticated)
 
 // ─── Validation ─────────────────────────────────────────────
 // Body for a production-update email. The subject + HTML body are composed
@@ -34,8 +37,8 @@ function sanitizeError(err: unknown): string {
 
 // ─── POST /emails/production-update ──────────────────────────
 // Sends a production-update email to a list of recipients via the shared agent
-// mailbox. Any authenticated team member may send — it's an internal update,
-// not an admin-gated action.
+// mailbox. Gated by emailRoutes.use(isAuthenticated) above — any authenticated
+// team member may send; it's an internal update, not an admin-gated action.
 //
 // Responses:
 //   not configured → 200 { sent:false, configured:false }  (UI falls back to copy)

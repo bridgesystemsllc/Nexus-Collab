@@ -1,8 +1,11 @@
 import { Router, Request, Response } from 'express'
 import { ObjectStorageService, ObjectNotFoundError } from '../lib/objectStorage'
 import { UPLOAD_MAX_BYTES, validateUpload } from '../lib/uploadValidation'
+import { isAuthenticated } from '../auth/session'
 
 export const uploadRoutes: ReturnType<typeof Router> = Router()
+
+uploadRoutes.use(isAuthenticated)
 
 const objectStorage = new ObjectStorageService()
 
