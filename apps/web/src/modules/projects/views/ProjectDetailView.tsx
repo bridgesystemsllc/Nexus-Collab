@@ -21,7 +21,8 @@ import { InlineEdit } from '../components/InlineEdit'
 import { useModalBehaviour } from '../lib/useModalBehaviour'
 import { ReportsPanel } from '../components/ReportsPanel'
 import { ProgressBar, SlipBadge, formatDate, slipDays } from '../components/ProjectCard'
-import { STATUS_LABELS, toPercent, type ProjectTask } from '../types'
+import { StatusSelect } from '../components/StatusSelect'
+import { toPercent, type ProjectTask } from '../types'
 import { NO_CAPABILITIES } from '../types'
 
 // ─── Project detail ──────────────────────────────────────────
@@ -148,7 +149,11 @@ export function ProjectDetailView({
               <span className="font-mono text-xs text-[var(--text-tertiary)]">
                 {project.projectNumber ?? '—'}
               </span>
-              <span className="badge badge-info">{STATUS_LABELS[project.status] ?? project.status}</span>
+              <StatusSelect
+                projectId={projectId}
+                currentStatus={project.status}
+                canEdit={caps.editProject}
+              />
               {project.isConfidential && (
                 <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-tertiary)]">
                   <Lock size={10} /> Confidential
