@@ -12,5 +12,8 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
+    // Pins the suite's calendar-day maths to a fixed timezone so the verdict
+    // does not depend on the machine running it.
+    env: { TZ: 'UTC' },
   },
 })

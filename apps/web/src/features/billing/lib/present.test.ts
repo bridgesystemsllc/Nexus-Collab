@@ -24,6 +24,25 @@ describe('statusPresentation', () => {
   it('shows canceled as neutral, not danger, while access remains', () => {
     expect(statusPresentation('canceled', 'full').tone).toBe('neutral')
   })
+  it('shows canceled as neutral even once access is read-only', () => {
+    const p = statusPresentation('canceled', 'read_only')
+    expect(p.tone).toBe('neutral')
+    expect(p.label).toBe('Canceled')
+  })
+  it('shows paused as neutral', () => {
+    expect(statusPresentation('paused', 'full').tone).toBe('neutral')
+  })
+  it('shows incomplete as a warning', () => {
+    expect(statusPresentation('incomplete', 'full').tone).toBe('warning')
+  })
+  it('shows incomplete_expired as danger', () => {
+    expect(statusPresentation('incomplete_expired', 'full').tone).toBe('danger')
+  })
+  it('falls through an unrecognised status to a neutral pill labelled with the raw value', () => {
+    const p = statusPresentation('some_future_status', 'full')
+    expect(p.tone).toBe('neutral')
+    expect(p.label).toBe('some_future_status')
+  })
   it('describes no subscription without inventing a status', () => {
     const p = statusPresentation(null, 'locked')
     expect(p.label).toBe('No subscription')
@@ -44,5 +63,8 @@ describe('graceCopy', () => {
   })
   it('states access is already restricted once the grace period has passed', () => {
     expect(graceCopy('2026-08-28T12:00:00Z', now)).toMatch(/read-only|restricted/i)
+  })
+  it('states access is restricted when there is no grace period end date at all', () => {
+    expect(graceCopy(null, now)).toMatch(/read-only|restricted/i)
   })
 })

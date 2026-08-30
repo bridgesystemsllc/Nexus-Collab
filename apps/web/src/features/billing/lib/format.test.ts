@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatMoney, daysUntil, seatSegments } from './format'
+import { formatMoney, formatDate, daysUntil, seatSegments } from './format'
 
 // Currency and seat maths are the two places a billing UI lies to someone.
 // Both are pure here so they can be tested rather than eyeballed.
@@ -17,6 +17,11 @@ describe('formatMoney', () => {
   it('honours a non-USD currency', () => expect(formatMoney(5900, 'cad')).toContain('59.00'))
 })
 
+describe('formatDate', () => {
+  it('renders a normal date', () => expect(formatDate('2026-09-09T12:00:00Z')).toBe('Sep 9, 2026'))
+  it('renders a null date as an em dash, not blank', () => expect(formatDate(null)).toBe('—'))
+})
+
 describe('daysUntil', () => {
   const now = new Date('2026-08-30T12:00:00Z')
   it('counts whole days ahead', () => expect(daysUntil('2026-09-09T12:00:00Z', now)).toBe(10))
@@ -26,6 +31,14 @@ describe('daysUntil', () => {
     expect(daysUntil('2026-08-27T12:00:00Z', now)).toBe(0)
   })
   it('returns null for a null date rather than NaN', () => expect(daysUntil(null, now)).toBeNull())
+  it('returns null for an unparseable date rather than NaN', () => {
+    expect(daysUntil('not-a-date', now)).toBeNull()
+  })
+  it('is 1 day when the renewal falls tomorrow by the calendar, even under 24h away', () => {
+    // 20 hours out, but a different calendar day. Math.floor gives 0 here and
+    // renders "renews today" the evening before a morning charge.
+    expect(daysUntil('2026-08-31T08:00:00Z', new Date('2026-08-30T12:00:00Z'))).toBe(1)
+  })
 })
 
 describe('seatSegments', () => {
@@ -51,5 +64,11 @@ describe('seatSegments', () => {
     const s = seatSegments(0, 0)
     expect(s.fraction).toBe(0)
     expect(s.segments).toHaveLength(0)
+  })
+  it('stays segmented exactly at the segment ceiling', () => {
+    expect(seatSegments(24, 10).mode).toBe('segmented')
+  })
+  it('switches to continuous one seat past the ceiling', () => {
+    expect(seatSegments(25, 10).mode).toBe('continuous')
   })
 })

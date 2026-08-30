@@ -29,7 +29,18 @@ export function formatDate(iso: string | null): string {
 }
 
 /**
- * Whole days from `now` until `iso`, floored at zero.
+ * Calendar days from `now` until `iso`, floored at zero.
+ *
+ * Calendar-day arithmetic, not elapsed-hours arithmetic: the copy this feeds
+ * asks "how many calendar boundaries away", not "how many 24-hour blocks
+ * away". A renewal 20 hours out but tomorrow morning must read "1 day", not
+ * "0 days" — the elapsed-hours version renders "renews today" the evening
+ * before a morning charge, which is the false-calm direction and the one that
+ * generates a support ticket. Device-local on purpose: normalising to UTC
+ * would be the real bug, since a US customer's "today" and UTC's "today"
+ * diverge for roughly half of every day. `Math.round` rather than floor/ceil
+ * because DST-shifted days are 23 or 25 hours long, not exactly 24, and round
+ * absorbs that instead of letting a truncation error compound.
  *
  * Never negative: "renews in -3 days" is the kind of thing that ships and then
  * gets screenshotted. A date in the past is 0 — the caller decides what to say
@@ -37,9 +48,11 @@ export function formatDate(iso: string | null): string {
  */
 export function daysUntil(iso: string | null, now: Date = new Date()): number | null {
   if (!iso) return null
-  const ms = new Date(iso).getTime() - now.getTime()
-  if (Number.isNaN(ms)) return null
-  return Math.max(0, Math.floor(ms / 86_400_000))
+  const target = new Date(iso)
+  if (Number.isNaN(target.getTime())) return null
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const diff = startOfDay(target).getTime() - startOfDay(now).getTime()
+  return Math.max(0, Math.round(diff / 86_400_000))
 }
 
 /// Above this many seats a per-seat bar stops being readable and starts being
