@@ -1,0 +1,93 @@
+/* ─── Billing module ─────────────────────────────────────────
+   Scoped overrides only. The global --accent stays #2F80ED because every
+   other screen in Nexus depends on it; billing gets Electric Indigo, the
+   accent the design system assigns to ERP and operations contexts.
+
+   Nexus is a light-only application — there is no data-theme or
+   prefers-color-scheme anywhere in apps/web — so this module is designed for
+   light and does not introduce a competing dark surface for one tab.
+   ────────────────────────────────────────────────────────── */
+.billing-module {
+  --accent: #7C3AED;
+  --accent-hover: #6D28D9;
+  --accent-light: #F3EEFE;
+  --accent-subtle: rgba(124, 58, 237, 0.08);
+  --accent-glow: rgba(124, 58, 237, 0.20);
+}
+
+/* Every figure on this screen. Tabular figures stop digits from jittering as
+   a value counts up or refetches — the difference between a number animating
+   and a number twitching. */
+.billing-module .numeric {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  letter-spacing: -0.02em;
+}
+
+.billing-module .billing-card {
+  background: var(--bg-surface, #fff);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-normal), border-color var(--transition-normal),
+              transform var(--transition-normal);
+}
+.billing-module .billing-card--interactive:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+/* Staggered entrance. --i is set per card; 60ms apart is enough to read as
+   sequence without anyone waiting on it. */
+@keyframes billingFadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.billing-module .fade-up {
+  opacity: 0;
+  animation: billingFadeUp 380ms var(--ease-spring) forwards;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+
+/* The live dot: only an active, paying subscription earns it. */
+@keyframes billingPulse {
+  0%, 100% { opacity: 1;   transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.85); }
+}
+.billing-module .live-dot { animation: billingPulse 2s var(--ease-smooth) infinite; }
+
+/* Seat bar. Filled cells carry a faint accent glow; the first empty cell
+   pulses once on mount to point at the headroom. */
+.billing-module .seat-cell {
+  height: 8px; border-radius: 2px; flex: 1 1 0;
+  background: var(--border-default);
+  transition: background var(--transition-normal), box-shadow var(--transition-normal);
+}
+.billing-module .seat-cell--filled {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+@keyframes billingHeadroom {
+  0%, 70%, 100% { background: var(--border-default); }
+  85%           { background: var(--accent-subtle); }
+}
+.billing-module .seat-cell--headroom { animation: billingHeadroom 2.4s var(--ease-smooth) 1; }
+
+.billing-module .seat-fill {
+  height: 8px; border-radius: 4px; background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  transition: width 700ms var(--ease-spring);
+}
+
+/* Anyone who has asked the OS to stop moving things gets a static screen —
+   final values, no entrance, no pulse. Not a reduced version; none. */
+@media (prefers-reduced-motion: reduce) {
+  .billing-module .fade-up { opacity: 1; animation: none; }
+  .billing-module .live-dot,
+  .billing-module .seat-cell--headroom { animation: none; }
+  .billing-module .seat-fill { transition: none; }
+  .billing-module .billing-card--interactive:hover { transform: none; }
+  .billing-module .skeleton { animation: none; }
+}
