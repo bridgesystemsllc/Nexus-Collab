@@ -33,6 +33,7 @@ import {
 } from './openOrderData'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { ProductionEmailModal } from './ProductionEmailModal'
+import { OverlayPortal } from '@/components/shared/OverlayPortal'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 
 /** Attachment module scope for open-order POs and their line items. */
@@ -528,8 +529,9 @@ export function OpenOrderDrawer({
   const orderedNow = lines.reduce((s, l) => s + (Number(l.qtyOrdered) || 0), 0) || order.qtyOrdered
 
   return (
+    <OverlayPortal>
     <>
-      <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="fixed inset-0 z-[100] flex justify-end" onClick={onClose}>
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
         <div
           className="relative w-full max-w-lg h-full bg-[var(--bg-surface)] border-l border-[var(--border-default)] shadow-2xl overflow-y-auto"
@@ -790,6 +792,7 @@ export function OpenOrderDrawer({
       {/* CM production-update email — reuses the existing modal via the shape adapter */}
       <ProductionEmailModal item={toProductionShape(order)} open={emailOpen} onClose={() => setEmailOpen(false)} />
     </>
+    </OverlayPortal>
   )
 }
 

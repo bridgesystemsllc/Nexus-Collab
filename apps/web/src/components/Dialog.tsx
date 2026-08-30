@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
+import { OverlayPortal } from '@/components/shared/OverlayPortal'
 
 interface DialogProps {
   open: boolean
@@ -30,9 +31,10 @@ export function Dialog({ open, onClose, title, subtitle, children, wide }: Dialo
   if (!open) return null
 
   return (
+    <OverlayPortal>
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       onClick={(e) => { if (e.target === overlayRef.current) onClose() }}
     >
       {/* Backdrop */}
@@ -76,5 +78,6 @@ export function Dialog({ open, onClose, title, subtitle, children, wide }: Dialo
         </div>
       </div>
     </div>
+    </OverlayPortal>
   )
 }
