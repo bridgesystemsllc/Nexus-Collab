@@ -1050,15 +1050,21 @@ import { createFakeProvider } from './fakeProvider'
 
 let cached: BillingProvider | null = null
 
-/** Every method throws. Constructing it does not. */
+/** Every method fails. Constructing it does not. */
 function unconfiguredProvider(): BillingProvider {
-  const fail = (): never => { throw new BillingUnconfiguredError() }
+  // Two shapes, deliberately. The async methods must REJECT, not throw
+  // synchronously: a caller doing `p.ensureCustomer(...).catch(h)` without an
+  // await would otherwise get an uncaught synchronous throw that never reaches
+  // its handler, and `.rejects.toThrow()` would not match. Only verifyWebhook
+  // is synchronous, so only it throws.
+  const fail = async (): Promise<never> => { throw new BillingUnconfiguredError() }
+  const failSync = (): never => { throw new BillingUnconfiguredError() }
   return {
     ensureCustomer: fail, createSetupIntent: fail, listPaymentMethods: fail,
     setDefaultPaymentMethod: fail, detachPaymentMethod: fail,
     createSubscription: fail, previewChange: fail, applyChange: fail,
     cancelAtPeriodEnd: fail, reactivate: fail, listInvoices: fail,
-    verifyWebhook: fail,
+    verifyWebhook: failSync,
   } as unknown as BillingProvider
 }
 
