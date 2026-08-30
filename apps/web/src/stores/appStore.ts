@@ -16,6 +16,7 @@ type Page =
   | 'dept-manager'
   | 'pulse'
   | 'people'
+  | 'billing'
   | 'settings'
   | 'custom-dept'
   | 'projects'

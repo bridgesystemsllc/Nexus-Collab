@@ -19,6 +19,7 @@ import { EmailAgentPage } from '@/app/routes/email-agent'
 import { DeptManagerPage } from '@/app/routes/dept-manager'
 import { PulsePage } from '@/app/routes/pulse'
 import { PeoplePage } from '@/app/routes/people'
+import { BillingPage } from '@/app/routes/billing'
 import { SettingsPage } from '@/app/routes/settings'
 import { CustomDeptPage } from '@/app/routes/custom-dept'
 import { ProjectsPage } from '@/app/routes/projects'
@@ -62,6 +63,8 @@ function PageContent() {
       return <PulsePage />
     case 'people':
       return <PeoplePage />
+    case 'billing':
+      return <BillingPage />
     case 'settings':
       return <SettingsPage />
     case 'custom-dept':
