@@ -131,6 +131,16 @@ export interface RoleDetail extends RoleRef {
   }[]
 }
 
+export interface PermissionGroup {
+  resource: string
+  permissions: {
+    key: string
+    action: string
+    label: string
+    description: string | null
+  }[]
+}
+
 export interface UserListParams {
   q?: string
   status?: LifecycleStatus
@@ -147,6 +157,8 @@ export interface UserListParams {
 export const fetchMe = () => get<{ data: Me }>('/rbac/me').then((r) => r.data)
 export const fetchRoles = () => get<{ data: RoleSummary[] }>('/rbac/roles').then((r) => r.data)
 export const fetchRole = (id: string) => get<{ data: RoleDetail }>(`/rbac/roles/${id}`).then((r) => r.data)
+export const fetchPermissionCatalogue = () =>
+  get<{ data: PermissionGroup[] }>('/rbac/permissions').then((r) => r.data)
 
 export const fetchUsers = (params: UserListParams) =>
   get<Paged<DirectoryUser>>('/users', params as Record<string, unknown>)

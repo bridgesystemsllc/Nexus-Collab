@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertTriangle, ArrowLeft, LogOut, Shield, ShieldOff, UserCog,
+  AlertTriangle, ArrowLeft, LogOut, Plus, Shield, ShieldOff, Trash2, UserCog,
 } from 'lucide-react'
 import { useModalBehaviour } from '@/modules/projects/lib/useModalBehaviour'
 import {
   ApiError, fetchUser, fetchMe, changeUserRole, changeUserStatus, forceLogout,
+  fetchPermissionCatalogue, removeOverride, setOverride,
   type AuditRow, type EffectivePermission, type DirectoryUser,
 } from '../api/usersApi'
 import { StatusPill, RoleChip, relativeTime } from '../components/StatusPill'
@@ -129,7 +130,14 @@ export function UserProfile({ userId, onBack }: { userId: string; onBack: () => 
       </div>
 
       {tab === 'overview' && <Overview user={user} />}
-      {tab === 'permissions' && <Permissions permissions={effectivePermissions} roleName={user.role?.name ?? null} />}
+      {tab === 'permissions' && (
+        <Permissions
+          userId={user.id}
+          permissions={effectivePermissions}
+          roleName={user.role?.name ?? null}
+          canManage={!isSelf && can('roles:manage')}
+        />
+      )}
       {tab === 'activity' && <Activity rows={recentActivity} />}
 
       {dialog === 'role' && (
@@ -183,7 +191,49 @@ function Overview({ user }: { user: DirectoryUser }) {
   )
 }
 
-function Permissions({ permissions, roleName }: { permissions: EffectivePermission[]; roleName: string | null }) {
+function Permissions({
+  userId,
+  permissions,
+  roleName,
+  canManage,
+}: {
+  userId: string
+  permissions: EffectivePermission[]
+  roleName: string | null
+  canManage: boolean
+}) {
+  const qc = useQueryClient()
+  const [permissionKey, setPermissionKey] = useState('')
+  const [effect, setEffect] = useState<'grant' | 'deny'>('grant')
+  const [reason, setReason] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  const catalogue = useQuery({
+    queryKey: ['rbac', 'permissions'],
+    queryFn: fetchPermissionCatalogue,
+    enabled: canManage,
+  })
+
+  const save = useMutation({
+    mutationFn: () => setOverride(userId, { permissionKey, effect, reason }),
+    onSuccess: async () => {
+      setPermissionKey('')
+      setReason('')
+      setError(null)
+      await qc.invalidateQueries({ queryKey: ['users', 'detail', userId] })
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not update this permission.'),
+  })
+
+  const remove = useMutation({
+    mutationFn: (key: string) => removeOverride(userId, key),
+    onSuccess: async () => {
+      setError(null)
+      await qc.invalidateQueries({ queryKey: ['users', 'detail', userId] })
+    },
+    onError: (err) => setError(err instanceof ApiError ? err.message : 'Could not remove this override.'),
+  })
+
   const byResource = new Map<string, EffectivePermission[]>()
   for (const p of permissions) {
     const resource = p.key.split(':')[0] ?? 'other'
@@ -213,19 +263,32 @@ function Permissions({ permissions, roleName }: { permissions: EffectivePermissi
                   {items.map((p) => (
                     <li key={p.key} className="flex items-center justify-between gap-3 border-b py-1" style={{ borderColor: 'var(--border)' }}>
                       <span className="font-mono text-[11px] text-[var(--text-primary)]">{p.key}</span>
-                      {/* Where it came from, and why — the override reason on
-                          hover is the whole point of storing one. */}
-                      <span
-                        className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px]"
-                        title={p.source === 'override' ? p.reason ?? 'Granted directly' : `From the ${roleName ?? 'role'}`}
-                        style={
-                          p.source === 'override'
-                            ? { color: 'var(--warning)', background: 'rgba(199,119,0,0.10)' }
-                            : { color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.04)' }
-                        }
-                      >
-                        {p.source === 'override' ? 'override' : 'from role'}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {/* Where it came from, and why — the override reason on
+                            hover is the whole point of storing one. */}
+                        <span
+                          className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px]"
+                          title={p.source === 'override' ? p.reason ?? 'Granted directly' : `From the ${roleName ?? 'role'}`}
+                          style={
+                            p.source === 'override'
+                              ? { color: 'var(--warning)', background: 'rgba(199,119,0,0.10)' }
+                              : { color: 'var(--text-tertiary)', background: 'rgba(0,0,0,0.04)' }
+                          }
+                        >
+                          {p.source === 'override' ? 'override' : 'from role'}
+                        </span>
+                        {canManage && p.source === 'override' && (
+                          <button
+                            type="button"
+                            onClick={() => remove.mutate(p.key)}
+                            disabled={remove.isPending}
+                            aria-label={`Remove ${p.key} override`}
+                            className="rounded p-1 text-[var(--text-tertiary)] hover:text-[var(--danger)] disabled:opacity-50"
+                          >
+                            <Trash2 size={11} />
+                          </button>
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -233,6 +296,67 @@ function Permissions({ permissions, roleName }: { permissions: EffectivePermissi
             ))}
           </div>
         </>
+      )}
+
+      {canManage && (
+        <div className="mt-5 rounded-lg border p-3" style={{ borderColor: 'var(--border)', background: 'var(--bg-subtle)' }}>
+          <div className="mb-3 flex items-center gap-1.5">
+            <Plus size={13} style={{ color: 'var(--accent)' }} />
+            <p className="text-xs font-medium text-[var(--text-primary)]">Add or update an override</p>
+          </div>
+
+          {catalogue.isError ? (
+            <p className="text-xs text-[var(--danger)]">Could not load the permission catalogue.</p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_120px]">
+              <select
+                value={permissionKey}
+                onChange={(event) => setPermissionKey(event.target.value)}
+                className="rounded-lg border bg-[var(--bg-surface)] px-2.5 py-2 text-xs text-[var(--text-primary)]"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                <option value="">Choose a permission</option>
+                {(catalogue.data ?? []).map((group) => (
+                  <optgroup key={group.resource} label={group.resource}>
+                    {group.permissions.map((permission) => (
+                      <option key={permission.key} value={permission.key}>
+                        {permission.label} ({permission.key})
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <select
+                value={effect}
+                onChange={(event) => setEffect(event.target.value as 'grant' | 'deny')}
+                className="rounded-lg border bg-[var(--bg-surface)] px-2.5 py-2 text-xs text-[var(--text-primary)]"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                <option value="grant">Grant</option>
+                <option value="deny">Deny</option>
+              </select>
+              <input
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                placeholder="Reason for this change"
+                className="rounded-lg border bg-[var(--bg-surface)] px-2.5 py-2 text-xs text-[var(--text-primary)] sm:col-span-2"
+                style={{ borderColor: 'var(--border)' }}
+              />
+              {error && <p className="text-xs text-[var(--danger)] sm:col-span-2">{error}</p>}
+              <div className="sm:col-span-2">
+                <button
+                  type="button"
+                  onClick={() => save.mutate()}
+                  disabled={!permissionKey || reason.trim().length < 3 || save.isPending}
+                  className="rounded-lg px-3 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  style={{ background: 'var(--accent)' }}
+                >
+                  {save.isPending ? 'Saving…' : 'Save permission override'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </section>
   )
