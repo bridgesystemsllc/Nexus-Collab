@@ -1,8 +1,15 @@
 import { Router, Request, Response } from 'express'
 import { prisma } from '../index'
 import { ObjectStorageService } from '../lib/objectStorage'
+import { isAuthenticated } from '../auth/session'
+import { getActingOrgId } from '../middleware/billingContext'
 
 export const documentRoutes: ReturnType<typeof Router> = Router()
+
+// Documents are scoped to the caller's org (see getActingOrgId below), which
+// requires a signed-in member. This router was previously reachable with no
+// session at all — that was the bug, not a feature.
+documentRoutes.use(isAuthenticated)
 
 const objectStorage = new ObjectStorageService()
 
@@ -54,8 +61,9 @@ documentRoutes.post('/upload', async (req: Request, res: Response) => {
     const { name, storageUrl, objectPath, type, mimeType, size } = req.body
     if (!name) return res.status(400).json({ error: 'File name is required' })
 
-    const org = await prisma.organization.findFirst()
-    if (!org) return res.status(400).json({ error: 'No organization found' })
+    // The router requires a session (see documentRoutes.use(isAuthenticated)
+    // above), so the acting member's org is always available here.
+    const orgId = getActingOrgId(req)
     const uploader = await resolveActingMember(req.body.actorId || req.body.uploadedById)
 
     let docStorageKey: string = req.body.storageKey || `doc-link-${Date.now()}`
@@ -79,7 +87,7 @@ documentRoutes.post('/upload', async (req: Request, res: Response) => {
         storageKey: docStorageKey,
         storageUrl: docStorageUrl,
         type: type || 'OTHER',
-        orgId: org.id,
+        orgId,
         uploadedById: uploader?.id ?? '',
       },
     })

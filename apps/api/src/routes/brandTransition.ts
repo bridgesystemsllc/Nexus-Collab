@@ -1,8 +1,15 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../index'
+import { isAuthenticated } from '../auth/session'
+import { getActingOrgId } from '../middleware/billingContext'
 
 export const brandTransitionRoutes: ReturnType<typeof Router> = Router()
+
+// Transition SKUs are scoped to the caller's org (see getActingOrgId below),
+// which requires a signed-in member. This router was previously reachable
+// with no session at all — that was the bug, not a feature.
+brandTransitionRoutes.use(isAuthenticated)
 
 // ─── Validation ─────────────────────────────────────────────
 const createNoteSchema = z.object({
@@ -100,12 +107,13 @@ const SEED_SKUS: SkuSeed[] = [
 // ─── List TransitionSkus ────────────────────────────────────
 brandTransitionRoutes.get('/', async (req: Request, res: Response) => {
   try {
-    const org = await prisma.organization.findFirst()
-    if (!org) return res.status(400).json({ error: 'No organization found' })
+    // The router requires a session (see brandTransitionRoutes.use(isAuthenticated)
+    // above), so the acting member's org is always available here.
+    const orgId = getActingOrgId(req)
 
     const { track, status, priority, cm, search } = req.query as Record<string, string>
 
-    const where: any = { orgId: org.id }
+    const where: any = { orgId }
     if (track) where.track = track
     if (status) where.overallStatus = status
     if (priority) where.priority = priority
@@ -296,10 +304,9 @@ brandTransitionRoutes.patch('/cm-candidates/:candidateId', async (req: Request, 
 })
 
 // ─── Seed all 28 SKUs + default milestones ──────────────────
-brandTransitionRoutes.post('/seed', async (_req: Request, res: Response) => {
+brandTransitionRoutes.post('/seed', async (req: Request, res: Response) => {
   try {
-    const org = await prisma.organization.findFirst()
-    if (!org) return res.status(400).json({ error: 'No organization found' })
+    const orgId = getActingOrgId(req)
 
     let created = 0
     let skipped = 0
@@ -307,7 +314,7 @@ brandTransitionRoutes.post('/seed', async (_req: Request, res: Response) => {
     for (const seed of SEED_SKUS) {
       // Check if already seeded
       const existing = await prisma.transitionSku.findFirst({
-        where: { materialCode: seed.materialCode, orgId: org.id },
+        where: { materialCode: seed.materialCode, orgId },
       })
       if (existing) {
         skipped++
@@ -316,7 +323,7 @@ brandTransitionRoutes.post('/seed', async (_req: Request, res: Response) => {
 
       const sku = await prisma.transitionSku.create({
         data: {
-          orgId: org.id,
+          orgId,
           materialCode: seed.materialCode,
           description: seed.description,
           track: seed.track,

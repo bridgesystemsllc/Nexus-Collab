@@ -2,8 +2,15 @@ import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../index'
 import { decryptJson } from '../lib/encryption'
+import { isAuthenticated } from '../auth/session'
+import { getActingOrgId } from '../middleware/billingContext'
 
 export const productRoutes: ReturnType<typeof Router> = Router()
+
+// Every product read/write is scoped to the caller's org (see getActingOrgId
+// below), which requires a signed-in member. This router was previously
+// reachable with no session at all — that was the bug, not a feature.
+productRoutes.use(isAuthenticated)
 
 // ─── Validation ─────────────────────────────────────────────
 const createProductSchema = z.object({
@@ -27,12 +34,13 @@ const createProductSchema = z.object({
 // ─── List products ──────────────────────────────────────────
 productRoutes.get('/', async (req: Request, res: Response) => {
   try {
-    const org = await prisma.organization.findFirst()
-    if (!org) return res.status(400).json({ error: 'No organization found' })
+    // The router requires a session (see productRoutes.use(isAuthenticated)
+    // above), so the acting member's org is always available here.
+    const orgId = getActingOrgId(req)
 
     const { search, brand, status, category } = req.query as Record<string, string>
 
-    const where: any = { orgId: org.id }
+    const where: any = { orgId }
     if (brand) where.brand = brand
     if (status) where.status = status
     if (category) where.category = category
@@ -71,11 +79,10 @@ productRoutes.get('/:id', async (req: Request, res: Response) => {
 productRoutes.post('/', async (req: Request, res: Response) => {
   try {
     const data = createProductSchema.parse(req.body)
-    const org = await prisma.organization.findFirst()
-    if (!org) return res.status(400).json({ error: 'No organization found' })
+    const orgId = getActingOrgId(req)
 
     const product = await prisma.product.create({
-      data: { ...data, orgId: org.id },
+      data: { ...data, orgId },
     })
     res.status(201).json(product)
   } catch (error: any) {
@@ -115,10 +122,9 @@ productRoutes.delete('/:id', async (req: Request, res: Response) => {
 })
 
 // ─── Sync from KarEve ───────────────────────────────────────
-productRoutes.post('/sync-kareve', async (_req: Request, res: Response) => {
+productRoutes.post('/sync-kareve', async (req: Request, res: Response) => {
   try {
-    const org = await prisma.organization.findFirst()
-    if (!org) return res.status(400).json({ error: 'No organization found' })
+    const orgId = getActingOrgId(req)
 
     const integration = await prisma.integration.findFirst({
       where: { type: 'ERP_KAREVE_SYNC', status: 'CONNECTED' },
@@ -209,7 +215,7 @@ productRoutes.post('/sync-kareve', async (_req: Request, res: Response) => {
         ingredients: kp.ingredients || null,
         manufacturer: kp.manufacturer || null,
         variants: kp.variants || null,
-        orgId: org.id,
+        orgId,
       }
 
       const kareveId = String(kp.id)
