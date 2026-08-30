@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { App } from './app/layout'
 import { AuthGate } from './components/auth/AuthGate'
 import './styles/design-system.css'
+import './features/billing/styles/billing.css'
 
 // Apply light theme (warm Notion-inspired design)
 document.documentElement.setAttribute('data-theme', 'light')
