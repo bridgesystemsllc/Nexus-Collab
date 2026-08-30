@@ -84,3 +84,19 @@ export function seatSegments(purchased: number, consumed: number): SeatBar {
     fraction,
   }
 }
+
+/**
+ * The seat bar's accessible name — the entire representation of the figure
+ * for anyone not reading the bar visually.
+ *
+ * Clamps the same way `seatSegments` does, rather than echoing the raw
+ * arguments, so the label always agrees with what the bar actually draws. An
+ * oversold `consumed: 12` against `purchased: 10` reads as a full bar, so the
+ * label must say "10 of 10", not "12 of 10" — the latter is a number the bar
+ * itself never shows.
+ */
+export function seatBarLabel(purchased: number, consumed: number): string {
+  const safePurchased = Math.max(0, purchased)
+  const safeConsumed = Math.min(Math.max(0, consumed), safePurchased)
+  return `${safeConsumed} of ${safePurchased} seats in use`
+}

@@ -34,16 +34,21 @@ export function DunningBanner({ gracePeriodEndsAt }: { gracePeriodEndsAt: string
           {/* Disabled on purpose — the Payment Methods tab does not exist yet.
               A button that looks live and leads nowhere reads as a broken
               product; an honest disabled one reads as an unfinished one, which
-              is the truth. */}
+              is the truth. Browsers suppress pointer events (and so
+              hover-triggered tooltips) on disabled controls, and screen
+              readers do not reliably announce `title` on one either, so the
+              explanation lives as visible text below the button instead. */}
           <button
             type="button"
             disabled
-            title="Payment methods arrive in a later release"
-            className="mt-2.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white"
-            style={{ background: 'var(--danger)', cursor: 'not-allowed', opacity: 0.5 }}
+            className="mt-2.5 rounded-lg px-3 py-1.5 text-xs font-medium"
+            style={{ background: 'var(--bg-hover)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }}
           >
             Update payment method
           </button>
+          <p className="mt-1.5" style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+            Payment methods arrive in a later release
+          </p>
         </div>
       </div>
     </div>

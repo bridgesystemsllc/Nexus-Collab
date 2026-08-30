@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatMoney, formatDate, daysUntil, seatSegments } from './format'
+import { formatMoney, formatDate, daysUntil, seatSegments, seatBarLabel } from './format'
 
 // Currency and seat maths are the two places a billing UI lies to someone.
 // Both are pure here so they can be tested rather than eyeballed.
@@ -70,5 +70,19 @@ describe('seatSegments', () => {
   })
   it('switches to continuous one seat past the ceiling', () => {
     expect(seatSegments(25, 10).mode).toBe('continuous')
+  })
+})
+
+describe('seatBarLabel', () => {
+  it('describes a normal in-range usage', () => {
+    expect(seatBarLabel(15, 12)).toBe('12 of 15 seats in use')
+  })
+  it('handles the zero-seat case without dividing by zero', () => {
+    expect(seatBarLabel(0, 0)).toBe('0 of 0 seats in use')
+  })
+  it('describes the clamped values for an oversold state, not the raw ones', () => {
+    // seatSegments(10, 12) draws a full bar of 10 filled cells — the label
+    // must agree with what is drawn, not repeat the impossible raw count.
+    expect(seatBarLabel(10, 12)).toBe('10 of 10 seats in use')
   })
 })

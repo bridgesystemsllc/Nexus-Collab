@@ -9,7 +9,7 @@ const TONE_COLORS: Record<Tone, { fg: string; bg: string }> = {
   warning: { fg: 'var(--warning)', bg: 'var(--warning-light)' },
   danger:  { fg: 'var(--danger)',  bg: 'var(--danger-light)' },
   accent:  { fg: 'var(--accent)',  bg: 'var(--accent-light)' },
-  neutral: { fg: 'var(--text-secondary)', bg: 'var(--bg-subtle)' },
+  neutral: { fg: 'var(--text-secondary)', bg: 'var(--bg-hover)' },
 }
 
 /**

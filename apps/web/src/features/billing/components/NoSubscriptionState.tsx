@@ -32,16 +32,22 @@ export function NoSubscriptionState() {
         Nexus is running without a billing plan. Features that require a subscription are
         unavailable until one is chosen.
       </p>
-      {/* Disabled on purpose — the Plans tab does not exist yet. */}
+      {/* Disabled on purpose — the Plans tab does not exist yet. Browsers
+          suppress pointer events (and so hover-triggered tooltips) on disabled
+          controls, and screen readers do not reliably announce `title` on one
+          either, so the explanation lives as visible text below the button
+          rather than in a tooltip that can never fire. */}
       <button
         type="button"
         disabled
-        title="Plans arrive in the next release"
-        className="mt-5 rounded-lg px-4 py-2 text-sm font-medium text-white"
-        style={{ background: 'var(--accent)', cursor: 'not-allowed', opacity: 0.5 }}
+        className="mt-5 rounded-lg px-4 py-2 text-sm font-medium"
+        style={{ background: 'var(--bg-hover)', color: 'var(--text-tertiary)', cursor: 'not-allowed' }}
       >
         Choose a plan
       </button>
+      <p className="mt-2" style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
+        Plans arrive in the next release
+      </p>
     </div>
   )
 }

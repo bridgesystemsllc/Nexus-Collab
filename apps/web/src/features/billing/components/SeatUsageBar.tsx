@@ -1,4 +1,4 @@
-import { seatSegments } from '../lib/format'
+import { seatSegments, seatBarLabel } from '../lib/format'
 
 /**
  * The seat-usage bar under a KPI cell.
@@ -15,7 +15,7 @@ export function SeatUsageBar({ purchased, consumed }: { purchased: number; consu
   // assert "here is your usage", which is false for zero seats.
   if (purchased === 0) return null
 
-  const label = `${consumed} of ${purchased} seats in use`
+  const label = seatBarLabel(purchased, consumed)
 
   if (mode === 'continuous') {
     return (
@@ -23,7 +23,7 @@ export function SeatUsageBar({ purchased, consumed }: { purchased: number; consu
         role="img"
         aria-label={label}
         className="w-full rounded-full"
-        style={{ background: 'var(--border)', height: '8px' }}
+        style={{ background: 'var(--border-default)', height: '8px' }}
       >
         <div className="seat-fill" aria-hidden style={{ width: `${fraction * 100}%` }} />
       </div>

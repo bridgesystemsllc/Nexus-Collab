@@ -1,4 +1,4 @@
-import { CountUp } from './CountUp'
+import { CountUp } from '@/modules/projects/components/CountUp'
 
 /**
  * A single billing-card figure — the seat count, the MRR, the next invoice.
@@ -25,7 +25,7 @@ export function KpiCell({
         {label}
       </div>
       <div className="mt-1" style={{ fontSize: '28px', fontWeight: 600, color: 'var(--text-primary)' }}>
-        {typeof value === 'number' ? <CountUp value={value} /> : <span className="numeric">{value}</span>}
+        {typeof value === 'number' ? <CountUp value={value} className="numeric" /> : <span className="numeric">{value}</span>}
       </div>
       {sublabel && (
         <div className="mt-0.5" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
