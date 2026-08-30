@@ -7,6 +7,8 @@ import { COMPONENT_TYPE_COLORS, FEASIBILITY_STATUS_COLORS, getWorstCompatibility
 import { AddToCowork } from '@/components/shared/AddToCowork'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { PushToErpButton } from '@/components/shared/PushToErpButton'
+import { OverlayPortal } from '@/components/shared/OverlayPortal'
+import { brandLabel } from '@/components/ops/brandLabel'
 
 // Legacy feasibility statuses not present in FEASIBILITY_STATUS_COLORS.
 const LEGACY_STATUS_COLORS: Record<string, string> = {
@@ -27,6 +29,7 @@ function DeleteConfirmDialog({
   onCancel: () => void
 }) {
   return (
+    <OverlayPortal>
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
       <div className="relative z-10 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl shadow-2xl w-full max-w-md p-6">
@@ -46,6 +49,7 @@ function DeleteConfirmDialog({
         </div>
       </div>
     </div>
+    </OverlayPortal>
   )
 }
 
@@ -92,6 +96,12 @@ export function ComponentsTab({
           : d.product
             ? [{ productName: d.product, assignmentStatus: 'Active' }]
             : []
+      const brands =
+        Array.isArray(d.brands) && d.brands.length > 0
+          ? d.brands.map((brand: string) => brandLabel(brand))
+          : d.brand
+            ? [brandLabel(d.brand)]
+            : []
       return {
         id: item.id,
         moduleId: item.moduleId,
@@ -100,6 +110,7 @@ export function ComponentsTab({
         vendors,
         risks,
         productAssignments,
+        brands,
       }
     })
   }, [items])
@@ -178,6 +189,7 @@ export function ComponentsTab({
                 <th>Component</th>
                 <th>Part #</th>
                 <th>Type</th>
+                <th>Brands</th>
                 <th>Vendor</th>
                 <th>Status</th>
                 <th>On Hand</th>
@@ -203,6 +215,22 @@ export function ComponentsTab({
                     <td className="font-medium text-[var(--text-primary)]">{comp.name || '—'}</td>
                     <td><span className="text-[12px] font-mono text-[var(--accent-secondary)]">{comp.partNumber || '—'}</span></td>
                     <td><span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: `${typeColor}18`, color: typeColor }}>{comp.type || '—'}</span></td>
+                    <td>
+                      {(comp.brands || []).length > 0 ? (
+                        <div className="flex max-w-[220px] flex-wrap gap-1">
+                          {(comp.brands || []).map((brand) => (
+                            <span
+                              key={brand}
+                              className="rounded-full bg-[var(--accent-subtle)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent)]"
+                            >
+                              {brand}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[var(--text-tertiary)]">—</span>
+                      )}
+                    </td>
                     <td className="text-[13px] text-[var(--text-secondary)]">{primaryVendor?.vendorName || '—'}</td>
                     <td><span className="badge text-[11px]" style={{ background: `${statusColor}18`, color: statusColor }}>{comp.status || 'Concept'}</span></td>
                     <td
@@ -274,6 +302,18 @@ export function ComponentsTab({
                   <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5 truncate">
                     {comp.partNumber || '—'} · {primaryVendor?.vendorName || 'No vendor'} · {bestCost ? `$${bestCost.toFixed(2)}` : '—'}
                   </p>
+                  {(comp.brands || []).length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {(comp.brands || []).map((brand) => (
+                        <span
+                          key={brand}
+                          className="rounded-full bg-[var(--accent-subtle)] px-2 py-0.5 text-[10px] font-medium text-[var(--accent)]"
+                        >
+                          {brand}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                   <AddToCowork item={{ name: comp.name || 'Untitled Component', type: 'Component', id: comp.id, description: `Component — ${comp.type || '—'}${comp.partNumber ? ` · ${comp.partNumber}` : ''}` }} variant="icon" />
