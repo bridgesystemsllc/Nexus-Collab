@@ -1,0 +1,17 @@
+{
+  "name": "Nexus Collab",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "api",
+      "command": "DATABASE_URL=\"postgresql://nexus:nexus@localhost:5432/nexus\" SESSION_SECRET=\"nexus-dev-session-secret-not-for-production\" NODE_ENV=development PORT=3000 FRONTEND_URL=\"http://localhost:5000\" pnpm --filter @nexus/api dev"
+    },
+    {
+      "name": "web",
+      "command": "pnpm --filter @nexus/web dev"
+    }
+  ],
+  "ports": [3000, 5000]
+}
