@@ -27,11 +27,16 @@ export type ChangeKind =
   | { kind: 'cancel' }
 
 /// Immediate, prorated, charged now. Every "customer pays more" path.
-const UPGRADE: ChangePlan = { timing: 'immediate', prorate: true, chargeNow: true }
+///
+/// Frozen: these are module-level singletons returned by reference to every
+/// caller. Without Object.freeze, `plan.chargeNow = false` on one caller's copy
+/// would silently rewrite the money rule for every other caller that gets this
+/// same object afterward — a bug with no stack trace pointing at the mutator.
+const UPGRADE: ChangePlan = Object.freeze({ timing: 'immediate', prorate: true, chargeNow: true })
 /// Scheduled for period end. No proration, no refund. Every "customer pays less" path.
-const DEFERRED: ChangePlan = { timing: 'period_end', prorate: false, chargeNow: false }
+const DEFERRED: ChangePlan = Object.freeze({ timing: 'period_end', prorate: false, chargeNow: false })
 /// Nothing actually changed. Applied immediately because there is nothing to apply.
-const NOOP: ChangePlan = { timing: 'immediate', prorate: false, chargeNow: false }
+const NOOP: ChangePlan = Object.freeze({ timing: 'immediate', prorate: false, chargeNow: false })
 
 export function planFor(change: ChangeKind): ChangePlan {
   switch (change.kind) {

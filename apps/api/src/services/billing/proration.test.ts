@@ -78,6 +78,15 @@ describe('planFor — cancellation', () => {
   })
 })
 
+describe('planFor — returned plans are immutable', () => {
+  it('cannot be mutated by a caller', () => {
+    // These are shared module-level constants returned by reference. A write
+    // must throw (strict mode + Object.freeze), not silently corrupt the
+    // constant for every subsequent caller with the same outcome.
+    expect(() => { (planFor({ kind: 'cancel' }) as any).chargeNow = true }).toThrow()
+  })
+})
+
 describe('planFor — invariants that must hold for every input', () => {
   const ALL: Parameters<typeof planFor>[0][] = [
     { kind: 'tier', fromRank: 10, toRank: 20 },

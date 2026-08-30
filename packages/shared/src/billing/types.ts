@@ -43,9 +43,9 @@ export interface PreviewResult {
 }
 
 export interface ChangePlan {
-  timing: 'immediate' | 'period_end'
-  prorate: boolean
-  chargeNow: boolean
+  readonly timing: 'immediate' | 'period_end'
+  readonly prorate: boolean
+  readonly chargeNow: boolean
 }
 
 export interface TierFeatureSpec {
