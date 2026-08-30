@@ -48,7 +48,7 @@ import { meRoutes } from './routes/me'
 import { jobRoutes } from './routes/jobs'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
-import { setupAuth, attachMember } from './auth/session'
+import { setupAuth, attachMember, isAuthenticated } from './auth/session'
 import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
 import { ensureRbacSeeded, ensureEmailsNormalised } from './services/rbac/bootstrap'
 import { billingContextErrors } from './middleware/billingContext'
@@ -110,9 +110,39 @@ app.get('/health', (_req, res) => {
 
 // ─── API Routes ─────────────────────────────────────────────
 const api = express.Router()
-// Resolve the acting Member (if logged in) for every API request.
+// Resolve the acting Member (if logged in) for every API request, gated or
+// not — the allowlisted routes below still need req.member when a session
+// happens to be present (e.g. the Microsoft /me and /connect routes).
 api.use(attachMember)
+
+// ─── Public allowlist ──────────────────────────────────────
+// Everything in this block is reachable with NO session, on purpose. Each
+// entry is a deliberate exception — see the reasoning on its own line — and
+// nothing else should be added here without the same kind of justification.
 api.use('/auth', authRoutes)
+// The Entra OAuth callback (GET /integrations/microsoft/callback) is the
+// registered redirect URI — Microsoft hits it with no Nexus session, so the
+// whole router must stay open. Its other routes (/me, /connect) each check
+// req.member themselves and 401 without a session, so this does not actually
+// expose per-user Microsoft data.
+api.use('/integrations/microsoft', microsoftGraphRoutes)
+// The Formulations password prompt itself. If this were gated, nobody could
+// ever unlock the module in the first place. /status and /unlock are the
+// only two routes here and neither leaks formulation content.
+api.use('/formulations-gate', formulationsGateRoutes)
+// Scheduled background jobs, driven by an external cron. Bearer-token auth of
+// its own (JOBS_TRIGGER_SECRET) — it must work without a user session, and it
+// is not part of the authenticated app surface.
+api.use('/jobs', jobRoutes)
+
+// ─── Everything below requires a session ───────────────────
+// The API authenticates by default. Anything mounted above this line is a
+// deliberate, individually-justified exception; anything mounted below it
+// gets a 401 with no session. When adding a new router, put it below this
+// line unless it has a documented reason — matching one of the comments
+// above — to be public.
+api.use(isAuthenticated)
+
 api.use('/departments', departmentRoutes)
 api.use('/tasks', taskRoutes)
 // Collab ↔ project bridge. Mounted on both bases: /collabs is what the spec
@@ -123,12 +153,15 @@ api.use('/cowork', collabProjectRoutes)
 api.use('/cowork', coworkRoutes)
 api.use('/documents', documentRoutes)
 api.use('/everything', everythingRoutes)
-// Per-user Microsoft Graph routes must be mounted BEFORE the org-level
-// integrations router so the specific /microsoft paths take precedence.
-api.use('/integrations/microsoft', microsoftGraphRoutes)
+// Org-level integrations. The per-user Microsoft routes are mounted in the
+// public allowlist above (and before this one, so /microsoft still takes
+// precedence over this base's own paths).
 api.use('/integrations', integrationRoutes)
 api.use('/ai', aiRoutes)
 api.use('/pulse', pulseRoutes)
+// OnboardingGuard (the only consumer of /onboarding/status) renders inside
+// AuthGate, so it is only ever called with a session already established —
+// gating it costs nothing and stops it leaking an org id to anonymous callers.
 api.use('/onboarding', onboardingRoutes)
 api.use('/briefs', briefRoutes)
 api.use('/cms', cmRoutes)
@@ -139,9 +172,8 @@ api.use('/products', productRoutes)
 api.use('/brand-transition', brandTransitionRoutes)
 api.use('/tasks', taskAttachmentRoutes)
 api.use('/tech-transfer-stages', techTransferStageRoutes)
-// Formulations are password-gated per session when FORMULATIONS_PASSWORD_HASH
-// is set; the gate routes themselves stay open so the UI can prompt.
-api.use('/formulations-gate', formulationsGateRoutes)
+// The gate-unlock routes themselves live in the public allowlist above; a
+// session is required to even reach the unlock check for these two.
 api.use('/formulation-detail', requireFormulationsUnlock, formulationDetailRoutes)
 api.use('/sharepoint', requireFormulationsUnlock, sharepointRoutes)
 api.use('/uploads', uploadRoutes)
@@ -176,10 +208,6 @@ api.use('/projects', projectReportRoutes)
 api.use('/projects', projectCheckinRoutes)
 api.use('/projects', projectTimelineRoutes)
 api.use('/projects', projectRoutes)
-// Scheduled background jobs, driven by an external cron. Bearer-token auth of
-// its own — it must work without a user session, and it is not part of the
-// authenticated app surface.
-api.use('/jobs', jobRoutes)
 // Internal team production-update emails (any authenticated member).
 api.use('/emails', emailRoutes)
 
