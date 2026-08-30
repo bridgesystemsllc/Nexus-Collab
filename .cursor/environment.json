@@ -13,5 +13,8 @@
       "command": "pnpm --filter @nexus/web dev"
     }
   ],
-  "ports": [3000, 5000]
+  "ports": [
+    { "name": "api", "port": 3000 },
+    { "name": "web", "port": 5000 }
+  ]
 }
