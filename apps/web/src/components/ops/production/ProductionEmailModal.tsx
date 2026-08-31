@@ -4,6 +4,7 @@ import { useMembers, useDepartments, useSendProductionEmail } from '@/hooks/useD
 import type { ProductionEmailRecipient } from '@/hooks/useData'
 import { Toast } from '@/components/shared/Toast'
 import type { ToastData } from '@/components/shared/Toast'
+import { OverlayPortal } from '@/components/shared/OverlayPortal'
 import { buildProductionUpdateEmail } from './productionEmail'
 import type { ProductionOrder } from './productionData'
 
@@ -138,7 +139,8 @@ export function ProductionEmailModal({ item, open, onClose }: ProductionEmailMod
   const sending = sendEmail.isPending
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <OverlayPortal>
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div
         className="relative z-10 flex flex-col bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-2xl shadow-2xl w-full max-w-3xl"
@@ -299,6 +301,7 @@ export function ProductionEmailModal({ item, open, onClose }: ProductionEmailMod
 
       <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
+    </OverlayPortal>
   )
 }
 

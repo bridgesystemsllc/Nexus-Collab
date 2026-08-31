@@ -90,17 +90,25 @@ export type EmailConflict =
   | { kind: 'invited'; invitationId: string }
 
 /**
- * Which of the three duplicate cases applies.
+ * Which of the three duplicate cases applies, WITHIN the given org.
  *
- * Advisory only. The database's `lower(email)` unique index is the authority,
- * because a read-then-write check races two simultaneous invites — this exists
- * so the common case gets a useful answer instead of a constraint violation.
+ * Advisory only. The real authority is the `@@unique([orgId, email])`
+ * constraint on Member, because a read-then-write check races two
+ * simultaneous invites — this exists so the common case gets a useful answer
+ * instead of a constraint violation. There is no global `lower(email)`
+ * index: email is only unique per organization, by design (§ Member.email
+ * doc comment) — two customers may each employ the same address.
+ *
+ * `orgId` scopes both queries deliberately. Without it, one org's admin can
+ * revoke another org's live invitation (inviteUser acts on whatever this
+ * returns) or receive another org's deactivated employee's name and member
+ * id in a DUPLICATE_EMAIL payload.
  */
-export async function classifyEmail(prisma: PrismaClient, email: string): Promise<EmailConflict> {
+export async function classifyEmail(prisma: PrismaClient, email: string, orgId: string): Promise<EmailConflict> {
   const normalised = email.trim().toLowerCase()
 
   const existing = await prisma.member.findFirst({
-    where: { email: { equals: normalised, mode: 'insensitive' } },
+    where: { orgId, email: { equals: normalised, mode: 'insensitive' } },
     select: { id: true, name: true, lifecycleStatus: true },
   })
   if (existing) {
@@ -111,6 +119,7 @@ export async function classifyEmail(prisma: PrismaClient, email: string): Promis
 
   const pending = await prisma.userInvitation.findFirst({
     where: {
+      orgId,
       email: { equals: normalised, mode: 'insensitive' },
       acceptedAt: null,
       revokedAt: null,
@@ -147,7 +156,7 @@ export async function inviteUser(
     orgId: string
   },
 ): Promise<InviteResult> {
-  const conflict = await classifyEmail(prisma, input.email)
+  const conflict = await classifyEmail(prisma, input.email, input.orgId)
 
   if (conflict.kind === 'active') {
     throw new ServiceError('DUPLICATE_EMAIL', 'A user with this email already exists.', {

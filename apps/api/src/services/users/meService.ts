@@ -325,7 +325,7 @@ export async function requestEmailChange(
 
   const current = await prisma.member.findUnique({
     where: { id: memberId },
-    select: { email: true },
+    select: { email: true, orgId: true },
   })
   if (!current) throw new ServiceError('NOT_FOUND', 'Your account could not be found.')
   if (current.email.toLowerCase() === normalised) {
@@ -334,8 +334,13 @@ export async function requestEmailChange(
     })
   }
 
+  // Scoped to the caller's own org: email is unique per organization
+  // (@@unique([orgId, email])), not globally, so an address held by someone
+  // in a different org is not "taken" from this member's point of view.
+  // Unscoped, this was fail-closed rather than a leak — it refused an
+  // address nobody in the caller's org actually holds — but still wrong.
   const taken = await prisma.member.findFirst({
-    where: { email: { equals: normalised, mode: 'insensitive' }, NOT: { id: memberId } },
+    where: { orgId: current.orgId, email: { equals: normalised, mode: 'insensitive' }, NOT: { id: memberId } },
     select: { id: true },
   })
 
@@ -383,6 +388,7 @@ export async function verifyEmailChange(
       select: {
         email: true, pendingEmail: true,
         pendingEmailTokenHash: true, pendingEmailExpiresAt: true,
+        orgId: true,
       },
     })
     if (!member?.pendingEmail || !member.pendingEmailTokenHash) {
@@ -396,9 +402,15 @@ export async function verifyEmailChange(
     }
 
     // Re-checked inside the transaction: the address may have been taken in
-    // the day between requesting and confirming.
+    // the day between requesting and confirming. Scoped to the caller's own
+    // org, same reasoning as requestEmailChange (7dc19cf): email is unique
+    // per organization (@@unique([orgId, email])), not globally, so a row in
+    // a different org is not "taken" from this member's point of view. An
+    // unscoped check here would defeat the org-scoped check at request time —
+    // wrongly blocking a confirmation on a member of an organization the
+    // caller cannot even see.
     const taken = await tx.member.findFirst({
-      where: { email: { equals: member.pendingEmail, mode: 'insensitive' }, NOT: { id: memberId } },
+      where: { orgId: member.orgId, email: { equals: member.pendingEmail, mode: 'insensitive' }, NOT: { id: memberId } },
       select: { id: true },
     })
     if (taken) {
