@@ -325,7 +325,7 @@ export async function requestEmailChange(
 
   const current = await prisma.member.findUnique({
     where: { id: memberId },
-    select: { email: true },
+    select: { email: true, orgId: true },
   })
   if (!current) throw new ServiceError('NOT_FOUND', 'Your account could not be found.')
   if (current.email.toLowerCase() === normalised) {
@@ -334,8 +334,13 @@ export async function requestEmailChange(
     })
   }
 
+  // Scoped to the caller's own org: email is unique per organization
+  // (@@unique([orgId, email])), not globally, so an address held by someone
+  // in a different org is not "taken" from this member's point of view.
+  // Unscoped, this was fail-closed rather than a leak — it refused an
+  // address nobody in the caller's org actually holds — but still wrong.
   const taken = await prisma.member.findFirst({
-    where: { email: { equals: normalised, mode: 'insensitive' }, NOT: { id: memberId } },
+    where: { orgId: current.orgId, email: { equals: normalised, mode: 'insensitive' }, NOT: { id: memberId } },
     select: { id: true },
   })
 

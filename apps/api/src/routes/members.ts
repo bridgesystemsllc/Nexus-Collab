@@ -243,9 +243,12 @@ memberRoutes.post('/invite', requirePermission('users:create'), async (req: Requ
 })
 
 // ─── List all pending invites ──────────────────────────────
-memberRoutes.get('/invites', requirePermission('users:read'), async (_req: Request, res: Response) => {
+memberRoutes.get('/invites', requirePermission('users:read'), async (req: Request, res: Response) => {
   try {
+    // requirePermission guarantees a member on req, so this is the caller's org.
+    const orgId = getActingOrgId(req)
     const invites = await prisma.organizationInvite.findMany({
+      where: { orgId },
       orderBy: { createdAt: 'desc' },
       // `invitedBy` is the foreign key column; `inviter` is the relation.
       include: { inviter: { select: { name: true, email: true } } },
