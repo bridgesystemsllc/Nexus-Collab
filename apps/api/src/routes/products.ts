@@ -66,7 +66,11 @@ productRoutes.get('/', async (req: Request, res: Response) => {
 // ─── Get single product ─────────────────────────────────────
 productRoutes.get('/:id', async (req: Request, res: Response) => {
   try {
-    const product = await prisma.product.findUnique({ where: { id: req.params.id as string } })
+    const orgId = getActingOrgId(req)
+    // findFirst (not findUnique) so a real id belonging to another org comes
+    // back as "no match" — the same 404 a genuinely missing id gets, rather
+    // than a 403 that confirms the id exists elsewhere.
+    const product = await prisma.product.findFirst({ where: { id: req.params.id as string, orgId } })
     if (!product) return res.status(404).json({ error: 'Product not found' })
     res.json(product)
   } catch (error) {
@@ -96,9 +100,17 @@ productRoutes.post('/', async (req: Request, res: Response) => {
 // ─── Update product ─────────────────────────────────────────
 productRoutes.patch('/:id', async (req: Request, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
+    // `update({where:{id}})` would happily write a row in another org if the
+    // id merely exists. Verify ownership first, then update by id — and
+    // never let the body's own `orgId` (if any) move the row to another org.
+    const { orgId: _ignoredOrgId, ...data } = req.body ?? {}
+    const existing = await prisma.product.findFirst({ where: { id: req.params.id as string, orgId } })
+    if (!existing) return res.status(404).json({ error: 'Product not found' })
+
     const product = await prisma.product.update({
-      where: { id: req.params.id as string },
-      data: req.body,
+      where: { id: existing.id },
+      data,
     })
     res.json(product)
   } catch (error: any) {
@@ -112,7 +124,12 @@ productRoutes.patch('/:id', async (req: Request, res: Response) => {
 // ─── Delete product ─────────────────────────────────────────
 productRoutes.delete('/:id', async (req: Request, res: Response) => {
   try {
-    await prisma.product.delete({ where: { id: req.params.id as string } })
+    const orgId = getActingOrgId(req)
+    // deleteMany + a count check rather than delete-by-id: the where clause
+    // carries orgId, so a member can never delete a row that isn't theirs by
+    // guessing its id, and a mismatch reads as the same 404 as a missing row.
+    const result = await prisma.product.deleteMany({ where: { id: req.params.id as string, orgId } })
+    if (result.count === 0) return res.status(404).json({ error: 'Product not found' })
     res.status(204).send()
   } catch (error: any) {
     if (error?.code === 'P2025') return res.status(404).json({ error: 'Product not found' })
@@ -126,8 +143,10 @@ productRoutes.post('/sync-kareve', async (req: Request, res: Response) => {
   try {
     const orgId = getActingOrgId(req)
 
+    // Unscoped, this would pick up ANY org's connected integration — including
+    // its decrypted API key — and pull that org's catalogue into the caller's.
     const integration = await prisma.integration.findFirst({
-      where: { type: 'ERP_KAREVE_SYNC', status: 'CONNECTED' },
+      where: { type: 'ERP_KAREVE_SYNC', status: 'CONNECTED', orgId },
     })
     if (!integration) {
       return res.status(400).json({ error: 'KarEve integration not connected. Configure it in Integrations settings.' })
@@ -219,21 +238,40 @@ productRoutes.post('/sync-kareve', async (req: Request, res: Response) => {
       }
 
       const kareveId = String(kp.id)
-      const existing = await prisma.product.findUnique({ where: { kareveId } })
+      // `kareveId` is `@unique` GLOBALLY, not per-org (a schema gap — see
+      // @@unique([orgId, kareveId]) tracked for PR A2). Scoping the lookup by
+      // orgId stops the update below from reassigning another org's row to
+      // this one; it does not by itself stop two orgs' catalogues from
+      // colliding on the same kareveId, which is what the migration fixes.
+      const existing = await prisma.product.findFirst({ where: { kareveId, orgId } })
 
       if (existing) {
         const changed = Object.entries(productData).some(
           ([key, val]) => key !== 'orgId' && (existing as any)[key] !== val
         )
         if (changed) {
-          await prisma.product.update({ where: { kareveId }, data: productData })
+          // Update by row id, not by the globally-unique kareveId, now that
+          // the lookup above has proven this row is the caller's.
+          await prisma.product.update({ where: { id: existing.id }, data: productData })
           updated++
         } else {
           unchanged++
         }
       } else {
-        await prisma.product.create({ data: { ...productData, kareveId } })
-        created++
+        try {
+          await prisma.product.create({ data: { ...productData, kareveId } })
+          created++
+        } catch (createError: any) {
+          // Global uniqueness means this kareveId may already belong to a
+          // different org (see the schema note above). Until that's a
+          // per-org constraint, treat the collision as "not ours to create"
+          // rather than letting one bad SKU 500 the whole sync.
+          if (createError?.code === 'P2002') {
+            unchanged++
+          } else {
+            throw createError
+          }
+        }
       }
     }
 

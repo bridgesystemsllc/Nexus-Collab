@@ -13,24 +13,18 @@ documentRoutes.use(isAuthenticated)
 
 const objectStorage = new ObjectStorageService()
 
-async function resolveActingMember(identifier?: string | null) {
-  if (identifier) {
-    const member = await prisma.member.findFirst({
-      where: { OR: [{ id: identifier }, { clerkUserId: identifier }] },
-      select: { id: true },
-    })
-    if (member) return member
-  }
-  return prisma.member.findFirst({ select: { id: true } })
-}
-
 // ─── List documents with filters ────────────────────────────
 documentRoutes.get('/', async (req: Request, res: Response) => {
   try {
+    // The router requires a session (see documentRoutes.use(isAuthenticated)
+    // above), so the acting member's org is always available here.
+    const orgId = getActingOrgId(req)
+
     const { type, dept, project, search, page = '1', limit = '50' } = req.query
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string)
 
-    const where: any = {}
+    // A row must belong to the caller's org to be listed at all.
+    const where: any = { orgId }
     if (type) where.type = type
     if (search) where.name = { contains: search as string, mode: 'insensitive' }
 
@@ -64,7 +58,12 @@ documentRoutes.post('/upload', async (req: Request, res: Response) => {
     // The router requires a session (see documentRoutes.use(isAuthenticated)
     // above), so the acting member's org is always available here.
     const orgId = getActingOrgId(req)
-    const uploader = await resolveActingMember(req.body.actorId || req.body.uploadedById)
+    // Attribute the upload to the genuinely logged-in member (the same rule
+    // cowork.ts's upload handler follows) — never a client-supplied actorId,
+    // which would let one org's member post a document credited to another
+    // org's employee.
+    const uploader = (req as any).member
+    if (!uploader) return res.status(401).json({ error: 'Unauthorized' })
 
     let docStorageKey: string = req.body.storageKey || `doc-link-${Date.now()}`
     let docStorageUrl: string | null = storageUrl || null
@@ -101,7 +100,11 @@ documentRoutes.post('/upload', async (req: Request, res: Response) => {
 // ─── Get document metadata ──────────────────────────────────
 documentRoutes.get('/:id', async (req: Request, res: Response) => {
   try {
-    const doc = await prisma.document.findUnique({ where: { id: req.params.id as string } })
+    const orgId = getActingOrgId(req)
+    // findFirst (not findUnique) so a real id belonging to another org comes
+    // back as "no match" — identical to a genuinely missing id. That is what
+    // makes the 404 uninformative to a member probing ids that aren't theirs.
+    const doc = await prisma.document.findFirst({ where: { id: req.params.id as string, orgId } })
     if (!doc) return res.status(404).json({ error: 'Document not found' })
     res.json(doc)
   } catch (error) {
@@ -113,7 +116,13 @@ documentRoutes.get('/:id', async (req: Request, res: Response) => {
 // ─── Delete document ────────────────────────────────────────
 documentRoutes.delete('/:id', async (req: Request, res: Response) => {
   try {
-    await prisma.document.delete({ where: { id: req.params.id as string } })
+    const orgId = getActingOrgId(req)
+    // deleteMany + a count check rather than delete-by-id: it lets the where
+    // clause carry orgId, so a member can never delete a row that isn't
+    // theirs by guessing its id, and a mismatch reads as the same 404 as a
+    // missing row.
+    const result = await prisma.document.deleteMany({ where: { id: req.params.id as string, orgId } })
+    if (result.count === 0) return res.status(404).json({ error: 'Document not found' })
     res.json({ success: true })
   } catch (error) {
     console.error('[documents] DELETE /:id error:', error)

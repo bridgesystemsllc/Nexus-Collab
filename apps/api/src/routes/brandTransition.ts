@@ -145,8 +145,12 @@ brandTransitionRoutes.get('/', async (req: Request, res: Response) => {
 // ─── Get single SKU ─────────────────────────────────────────
 brandTransitionRoutes.get('/:id', async (req: Request, res: Response) => {
   try {
-    const sku = await prisma.transitionSku.findUnique({
-      where: { id: req.params.id as string },
+    const orgId = getActingOrgId(req)
+    // findFirst (not findUnique) so a real id belonging to another org comes
+    // back as "no match" — the same 404 a genuinely missing id gets, rather
+    // than a 403 that confirms the id exists elsewhere.
+    const sku = await prisma.transitionSku.findFirst({
+      where: { id: req.params.id as string, orgId },
       include: {
         transitionNotes: { orderBy: { createdAt: 'desc' } },
         milestones: { orderBy: { sortOrder: 'asc' } },
@@ -164,9 +168,16 @@ brandTransitionRoutes.get('/:id', async (req: Request, res: Response) => {
 // ─── Update SKU ─────────────────────────────────────────────
 brandTransitionRoutes.patch('/:id', async (req: Request, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
+    // Verify ownership before writing — `update({where:{id}})` would happily
+    // touch a row in another org if the id merely exists.
+    const { orgId: _ignoredOrgId, ...data } = req.body ?? {}
+    const existing = await prisma.transitionSku.findFirst({ where: { id: req.params.id as string, orgId } })
+    if (!existing) return res.status(404).json({ error: 'TransitionSku not found' })
+
     const sku = await prisma.transitionSku.update({
-      where: { id: req.params.id as string },
-      data: req.body,
+      where: { id: existing.id },
+      data,
     })
     res.json(sku)
   } catch (error: any) {
@@ -179,8 +190,11 @@ brandTransitionRoutes.patch('/:id', async (req: Request, res: Response) => {
 // ─── Create note ────────────────────────────────────────────
 brandTransitionRoutes.post('/:id/notes', async (req: Request, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
     const data = createNoteSchema.parse(req.body)
-    const sku = await prisma.transitionSku.findUnique({ where: { id: req.params.id as string } })
+    // TransitionNote has no orgId of its own — ownership is proven through
+    // the parent SKU, not trusted from the child's own row.
+    const sku = await prisma.transitionSku.findFirst({ where: { id: req.params.id as string, orgId } })
     if (!sku) return res.status(404).json({ error: 'TransitionSku not found' })
 
     const note = await prisma.transitionNote.create({
@@ -202,7 +216,8 @@ brandTransitionRoutes.post('/:id/notes', async (req: Request, res: Response) => 
 // ─── List notes for SKU ─────────────────────────────────────
 brandTransitionRoutes.get('/:id/notes', async (req: Request, res: Response) => {
   try {
-    const sku = await prisma.transitionSku.findUnique({ where: { id: req.params.id as string } })
+    const orgId = getActingOrgId(req)
+    const sku = await prisma.transitionSku.findFirst({ where: { id: req.params.id as string, orgId } })
     if (!sku) return res.status(404).json({ error: 'TransitionSku not found' })
 
     const notes = await prisma.transitionNote.findMany({
@@ -219,8 +234,11 @@ brandTransitionRoutes.get('/:id/notes', async (req: Request, res: Response) => {
 // ─── Create milestone ───────────────────────────────────────
 brandTransitionRoutes.post('/:id/milestones', async (req: Request, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
     const data = createMilestoneSchema.parse(req.body)
-    const sku = await prisma.transitionSku.findUnique({ where: { id: req.params.id as string } })
+    // TransitionMilestone has no orgId of its own — ownership is proven
+    // through the parent SKU, not trusted from the child's own row.
+    const sku = await prisma.transitionSku.findFirst({ where: { id: req.params.id as string, orgId } })
     if (!sku) return res.status(404).json({ error: 'TransitionSku not found' })
 
     // Get next sort order
@@ -250,13 +268,21 @@ brandTransitionRoutes.post('/:id/milestones', async (req: Request, res: Response
 // ─── Update milestone ───────────────────────────────────────
 brandTransitionRoutes.patch('/milestones/:milestoneId', async (req: Request, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
     const data = updateMilestoneSchema.parse(req.body)
     const updateData: any = { ...data }
     if (data.completedDate) updateData.completedDate = new Date(data.completedDate)
     if (data.dueDate) updateData.dueDate = new Date(data.dueDate)
 
+    // TransitionMilestone has no orgId of its own — reached only through its
+    // parent SKU's relation, never trusted from the milestone id alone.
+    const existing = await prisma.transitionMilestone.findFirst({
+      where: { id: req.params.milestoneId as string, sku: { orgId } },
+    })
+    if (!existing) return res.status(404).json({ error: 'Milestone not found' })
+
     const milestone = await prisma.transitionMilestone.update({
-      where: { id: req.params.milestoneId as string },
+      where: { id: existing.id },
       data: updateData,
     })
     res.json(milestone)
@@ -271,7 +297,10 @@ brandTransitionRoutes.patch('/milestones/:milestoneId', async (req: Request, res
 // ─── Create CM candidate ────────────────────────────────────
 brandTransitionRoutes.post('/:id/cm-candidates', async (req: Request, res: Response) => {
   try {
-    const sku = await prisma.transitionSku.findUnique({ where: { id: req.params.id as string } })
+    const orgId = getActingOrgId(req)
+    // CmCandidate has no orgId of its own — ownership is proven through the
+    // parent SKU, not trusted from the child's own row.
+    const sku = await prisma.transitionSku.findFirst({ where: { id: req.params.id as string, orgId } })
     if (!sku) return res.status(404).json({ error: 'TransitionSku not found' })
 
     const candidate = await prisma.cmCandidate.create({
@@ -291,8 +320,16 @@ brandTransitionRoutes.post('/:id/cm-candidates', async (req: Request, res: Respo
 // ─── Update CM candidate ────────────────────────────────────
 brandTransitionRoutes.patch('/cm-candidates/:candidateId', async (req: Request, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
+    // CmCandidate has no orgId of its own — reached only through its parent
+    // SKU's relation, never trusted from the candidate id alone.
+    const existing = await prisma.cmCandidate.findFirst({
+      where: { id: req.params.candidateId as string, sku: { orgId } },
+    })
+    if (!existing) return res.status(404).json({ error: 'CM candidate not found' })
+
     const candidate = await prisma.cmCandidate.update({
-      where: { id: req.params.candidateId as string },
+      where: { id: existing.id },
       data: req.body,
     })
     res.json(candidate)

@@ -199,12 +199,12 @@ memberRoutes.post('/invite', requirePermission('users:create'), async (req: Requ
     // requirePermission guarantees a member on req, so this is the caller's org.
     const orgId = getActingOrgId(req)
 
-    const inviter = await prisma.member.findFirst({
-      where: { role: 'admin' },
-    }) || await prisma.member.findFirst()
-    // `invitedBy` is required, and an invite nobody sent has no one to chase
-    // when it is queried later.
-    if (!inviter) return res.status(400).json({ error: 'No member to attribute the invite to' })
+    // The inviter is the caller, full stop — not a role lookup, and never a
+    // global "first admin" that can resolve to a member in a different org.
+    // requirePermission (mounted on this route) already attaches the acting
+    // member, so it's on the request.
+    const inviter = (req as any).member
+    if (!inviter) return res.status(401).json({ error: 'Unauthorized' })
 
     const token = crypto.randomUUID()
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
