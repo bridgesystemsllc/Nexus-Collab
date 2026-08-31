@@ -61,8 +61,11 @@ function accessFor(sub: SubscriptionSnapshot, now: Date): AccessLevel {
       return 'full'
 
     case 'past_due':
-      // Seven days of full access after a failed payment, then read-only.
-      // Never deletion — the spec is explicit that lockout loses no data.
+      // Full access until gracePeriodEndsAt, then read-only. Never deletion —
+      // the spec is explicit that lockout loses no data. The window itself is
+      // stamped by the webhook processor (invoice.payment_failed), currently
+      // 14 days — this function only reads the timestamp, so it stays correct
+      // regardless of what that duration is.
       return sub.gracePeriodEndsAt && now <= sub.gracePeriodEndsAt ? 'full' : 'read_only'
 
     case 'canceled':

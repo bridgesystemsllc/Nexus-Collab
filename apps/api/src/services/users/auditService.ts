@@ -27,6 +27,11 @@ export type AuditAction =
   | 'billing.payment_method_added' | 'billing.payment_method_removed' | 'billing.payment_method_default_changed'
   | 'billing.subscription_created' | 'billing.subscription_canceled' | 'billing.subscription_reactivated'
   | 'billing.invoice_paid' | 'billing.invoice_failed'
+  // Webhook-only additions (billing-02): none of the actions above name a
+  // plain Stripe-driven sync, an informational preview, or a trial-ending
+  // notice, and inventing a false fit (e.g. filing a routine renewal sync
+  // under `tier_upgraded`) would misrepresent the trail.
+  | 'billing.subscription_synced' | 'billing.invoice_upcoming' | 'billing.trial_will_end'
 
 export interface FieldChange {
   from: unknown

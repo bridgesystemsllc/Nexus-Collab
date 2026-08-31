@@ -3,6 +3,11 @@ import type { Prisma, PrismaClient } from '@prisma/client'
 import type { Tx } from '../users/auditService'
 import type { ProviderEvent } from './provider'
 import { invalidateEntitlements } from './entitlementCache'
+import {
+  handleSubscriptionCreated, handleSubscriptionUpdated, handleSubscriptionDeleted,
+  handleInvoicePaid, handleInvoicePaymentFailed, handleInvoiceUpcoming,
+  handlePaymentMethodAttached, handlePaymentMethodDetached, handleTrialWillEnd,
+} from './webhookHandlers'
 
 // ─── Webhook processing: idempotency + ordering ──────────────
 // The only writer of the subscription mirror (BillingSubscription,
@@ -10,12 +15,12 @@ import { invalidateEntitlements } from './entitlementCache'
 // route, the provider — only gets it a verified ProviderEvent; everything
 // below decides whether, and how, that event is allowed to change anything.
 //
-// This file does NOT implement the per-event-type handlers yet (see
-// `eventHandlers` below) — that is a separate task. What it builds is the
-// machinery every handler will run inside: exactly-once recording via the
-// BillingEvent unique constraint, retry bookkeeping, the out-of-order guard,
-// and transactional apply-or-rollback. A handler that gets this machinery
-// wrong is a bug; a handler that never has to think about it is the point.
+// The per-event-type handlers themselves live in webhookHandlers.ts, kept
+// separate from the machinery below on purpose: exactly-once recording via
+// the BillingEvent unique constraint, retry bookkeeping, the out-of-order
+// guard, and transactional apply-or-rollback are the same for every event
+// type, so they live once here. A handler that gets this machinery wrong is
+// a bug; a handler that never has to think about it is the point.
 
 export type ProcessOutcome =
   | { status: 'processed'; eventId: string }
@@ -27,46 +32,56 @@ export type ProcessOutcome =
 /// The minimal view of BillingSubscription the ordering guard and a handler
 /// need. Typed locally (rather than importing the Prisma model type) so a
 /// fake prisma in tests can satisfy it without pulling in `@prisma/client`'s
-/// generated shape.
-interface LinkedSubscription {
+/// generated shape. Exported so webhookHandlers.ts can type against it
+/// without importing from `@prisma/client` either.
+export interface LinkedSubscription {
   id: string
   orgId: string
   lastStripeEventAt: Date | null
 }
 
-interface HandlerContext {
+export interface HandlerContext {
   orgId: string | null
-  /// Null when the event's customer doesn't map to a known subscription yet
-  /// (e.g. a brand-new customer whose subscription.created hasn't landed).
+  /// Null when the event's Stripe customer id doesn't match any
+  /// BillingSubscription row — Stripe knows about a customer we don't (a
+  /// subscription created outside our own checkout route, e.g. directly in
+  /// the Stripe dashboard, or a row somehow missing). Every handler in
+  /// webhookHandlers.ts treats this as a hard failure (throws, so
+  /// processEvent returns `failed` and Stripe retries) rather than a
+  /// tolerated gap — silently no-oping here would drop a real billing event.
   subscription: LinkedSubscription | null
 }
 
-type EventHandler = (tx: Tx, event: ProviderEvent, ctx: HandlerContext) => Promise<void>
+export type EventHandler = (tx: Tx, event: ProviderEvent, ctx: HandlerContext) => Promise<void>
 
 /// The stub every table entry points to for now. Recognised as "no real
 /// handler" by reference equality in `processEvent`, so a redeployment that
 /// forgets to swap one in still returns `unhandled` rather than silently
 /// no-oping while claiming `processed`.
 async function unhandledHandler(): Promise<void> {
-  // Intentionally empty. The next task replaces individual table entries
-  // below with real implementations; until then every recognised event type
-  // is accepted (BillingEvent recorded, 200 returned) but changes nothing.
+  // Intentionally empty. Every event type this table names (see
+  // `eventHandlers` below) now has a real implementation in
+  // webhookHandlers.ts; this stub only still matters for a Stripe event type
+  // this table has never named — those are accepted (BillingEvent recorded,
+  // 200 returned) but change nothing, rather than failing and retrying
+  // forever for a type nobody has decided how to handle.
 }
 
-/// Event types spec §3.3 names. Every entry is the stub today — populating
-/// the table now (rather than leaving it empty and matching nothing) gives
-/// the next task one line to change per event type instead of new dispatch
-/// logic to write.
+/// Event types spec §3.3 names, dispatched to their real implementations in
+/// webhookHandlers.ts. `unhandledHandler` stays imported and checked for
+/// below (rather than deleted) so a type this table drops back to stubbing —
+/// or a type nobody has wired up yet — still returns `unhandled` instead of
+/// silently claiming `processed`.
 export const eventHandlers: Record<string, EventHandler> = {
-  'customer.subscription.created': unhandledHandler,
-  'customer.subscription.updated': unhandledHandler,
-  'customer.subscription.deleted': unhandledHandler,
-  'invoice.paid': unhandledHandler,
-  'invoice.payment_failed': unhandledHandler,
-  'invoice.upcoming': unhandledHandler,
-  'payment_method.attached': unhandledHandler,
-  'payment_method.detached': unhandledHandler,
-  'customer.subscription.trial_will_end': unhandledHandler,
+  'customer.subscription.created': handleSubscriptionCreated,
+  'customer.subscription.updated': handleSubscriptionUpdated,
+  'customer.subscription.deleted': handleSubscriptionDeleted,
+  'invoice.paid': handleInvoicePaid,
+  'invoice.payment_failed': handleInvoicePaymentFailed,
+  'invoice.upcoming': handleInvoiceUpcoming,
+  'payment_method.attached': handlePaymentMethodAttached,
+  'payment_method.detached': handlePaymentMethodDetached,
+  'customer.subscription.trial_will_end': handleTrialWillEnd,
 }
 
 /// Stripe's convention: every object type this table cares about (a
