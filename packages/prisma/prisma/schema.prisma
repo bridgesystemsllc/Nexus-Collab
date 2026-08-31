@@ -1647,3 +1647,212 @@ model BillingEvent {
   @@index([eventType, createdAt(sort: Desc)])
   @@index([processedAt])
 }
+
+// ─── Open Order Report ───────────────────────────────────────
+// Every open PO line, its shortage tree, and the collaboration history that
+// used to live in one Excel comment cell.
+//
+// These are dedicated models rather than DepartmentModule/ModuleItem rows —
+// the exception the Projects module also takes. A self-referencing tree,
+// server-side filtering across fifteen fields and threaded soft-deleted
+// comments do not survive being an untyped `data Json` blob: every filter
+// becomes a JSON path query and every tree walk moves into the application.
+//
+// Status events reuse AuditLog and emails reuse Attachment rather than getting
+// bespoke tables; both already carry the exact shape, the soft delete and the
+// indexes this feature needs.
+
+model OorReportRun {
+  id                String    @id @default(cuid())
+  orgId             String
+  brandId           String?
+  /// customer_open_order | open_order_shortage
+  reportType        String
+  reportLabel       String
+  asOfDate          DateTime?
+  sourceFilename    String
+  /// sha256 of the uploaded bytes — the idempotency key for re-imports.
+  sourceFileHash    String
+  sourceAdapter     String    @default("excel")
+  importedById      String?
+  importedAt        DateTime  @default(now())
+  rowCount          Int       @default(0)
+  parseWarningCount Int       @default(0)
+  /// ParseWarning[] — every dirty cell, for the Import Review panel.
+  parseWarnings     Json      @default("[]")
+  /// importing | ready | failed
+  status            String    @default("importing")
+  notes             String?
+  lines             OorLine[]
+
+  @@unique([orgId, sourceFileHash])
+  @@index([orgId, importedAt(sort: Desc)])
+}
+
+model OorLine {
+  id                   String             @id @default(cuid())
+  orgId                String
+  brandId              String?
+  reportRunId          String?
+  reportRun            OorReportRun?      @relation(fields: [reportRunId], references: [id])
+  customerPoNumber     String?
+  /// The suffix after '>' — AMZ, Retail, CMLEX LOI. It identifies the channel,
+  /// so it is split out rather than normalised away.
+  channelTag           String?
+  salesOrderNumber     String?
+  itemNumber           String?
+  custPartNumber       String?
+  description          String?
+  qtyOrdered           Decimal?           @db.Decimal(18, 4)
+  /// The source text when the cell held something that is not one number.
+  qtyOrderedRaw        String?
+  qtyRemaining         Decimal?           @db.Decimal(18, 4)
+  unitPrice            Decimal?           @db.Decimal(18, 4)
+  /// What the file said, kept even when it is wrong.
+  valueSource          Decimal?           @db.Decimal(18, 4)
+  /// qtyRemaining x unitPrice. The source column goes stale after a line is
+  /// revised, so this is the number the app trusts.
+  valueComputed        Decimal?           @db.Decimal(18, 4)
+  valueMismatch        Boolean            @default(false)
+  orderDate            DateTime?
+  shipDate             DateTime?
+  origRequiredDate     DateTime?
+  requiredDeliveryDate DateTime?
+  workOrderNumber      String?
+  jobNumber            String?
+  /// CONTRACT_MFG | INTERNAL | MISC | PASS_THROUGH
+  fulfillmentType      String             @default("INTERNAL")
+  cmCode               String?
+  /// ACT | FIRM | CLOSED
+  jobStatus            String?
+  lineStatus           String             @default("OPEN")
+  /// derived | manual — a manual status is never overwritten by an import.
+  statusSource         String             @default("derived")
+  statusOverrideReason String?
+  riskLevel            String             @default("on_track")
+  ownerId              String?
+  isOpen               Boolean            @default(true)
+  closedAt             DateTime?
+  externalIds          Json               @default("{}")
+  rawRow               Json               @default("{}")
+  parseWarnings        Json               @default("[]")
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  createdById          String?
+  updatedById          String?
+  nodes                OorShortageNode[]
+  comments             OorComment[]
+  notes                OorNote[]
+  meetingUpdates       OorMeetingUpdate[]
+
+  @@unique([orgId, brandId, customerPoNumber, salesOrderNumber, itemNumber])
+  @@index([orgId, brandId, isOpen, requiredDeliveryDate])
+  @@index([orgId, fulfillmentType, jobStatus])
+  @@index([orgId, lineStatus])
+  @@index([reportRunId])
+}
+
+model OorShortageNode {
+  id               String            @id @default(cuid())
+  oorLineId        String
+  oorLine          OorLine           @relation(fields: [oorLineId], references: [id], onDelete: Cascade)
+  parentNodeId     String?
+  parentNode       OorShortageNode?  @relation("NodeChildren", fields: [parentNodeId], references: [id], onDelete: Cascade)
+  children         OorShortageNode[] @relation("NodeChildren")
+  /// 1 = job material (bulk or component), 2 = raw material under a bulk
+  level            Int
+  jobNumber        String?
+  partNumber       String?
+  description      String?
+  /// BULK | COMPONENT | RAW_MATERIAL | OTHER
+  materialClass    String            @default("OTHER")
+  componentType    String?
+  qtyNeeded        Decimal?          @db.Decimal(18, 4)
+  uom              String?
+  qtyOnHand        Decimal?          @db.Decimal(18, 4)
+  onHandLocation   String?
+  /// The CP? flag — a hard external blocker, not a text column.
+  customerProvided Boolean           @default(false)
+  /// Manufacturing instructions, line breaks preserved verbatim.
+  mfgComment       String?
+  shortageReason   String            @default("NONE")
+  etaDate          DateTime?
+  /// confirmed | estimated | unknown
+  etaConfidence    String            @default("unknown")
+  nodeStatus       String            @default("OPEN")
+  /// Source row order, so an export can reproduce the file.
+  sortIndex        Int               @default(0)
+  rawRow           Json              @default("{}")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  createdById      String?
+  updatedById      String?
+  comments         OorComment[]
+
+  @@index([oorLineId, level, sortIndex])
+  @@index([parentNodeId])
+}
+
+model OorComment {
+  id             String           @id @default(cuid())
+  oorLineId      String
+  oorLine        OorLine          @relation(fields: [oorLineId], references: [id], onDelete: Cascade)
+  shortageNodeId String?
+  shortageNode   OorShortageNode? @relation(fields: [shortageNodeId], references: [id], onDelete: Cascade)
+  body           String
+  /// The date from a legacy "08.18.2026 - " prefix, when there was one.
+  entryDate      DateTime?
+  authorId       String?
+  /// The house convention: AD, AC. Preserved so imported history stays attributable.
+  authorInitials String?
+  /// app | imported_legacy | email | meeting
+  source         String           @default("app")
+  isPinned       Boolean          @default(false)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  editedAt       DateTime?
+  /// Soft delete only. Comments are an audit trail.
+  deletedAt      DateTime?
+
+  @@index([oorLineId, createdAt(sort: Desc)])
+  @@index([shortageNodeId])
+}
+
+model OorNote {
+  id        String    @id @default(cuid())
+  oorLineId String
+  oorLine   OorLine   @relation(fields: [oorLineId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  category  String?
+  isPinned  Boolean   @default(false)
+  authorId  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([oorLineId, createdAt(sort: Desc)])
+}
+
+model OorMeetingUpdate {
+  id           String    @id @default(cuid())
+  oorLineId    String
+  oorLine      OorLine   @relation(fields: [oorLineId], references: [id], onDelete: Cascade)
+  meetingDate  DateTime
+  meetingTitle String?
+  attendees    Json      @default("[]")
+  decision     String?
+  nextAction   String?
+  ownerId      String?
+  dueDate      DateTime?
+  /// open | done | carried_over
+  status       String    @default("open")
+  body         String?
+  authorId     String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+
+  @@index([oorLineId, meetingDate(sort: Desc)])
+  @@index([status, dueDate])
+}

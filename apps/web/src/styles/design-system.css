@@ -440,3 +440,78 @@ select {
   .projects-module button:active,
   .projects-module a[role='button']:active { transform: none; }
 }
+
+/* ─── Open Order Report ──────────────────────────────────────
+   The grid is the operator's working surface for hours at a time, so the
+   motion here is deliberately small: a chevron that turns, a row that lifts,
+   a skeleton that breathes. Every one of them is off under
+   prefers-reduced-motion, where the interface should simply be still. */
+
+:root {
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.oor-chevron {
+  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.oor-row {
+  transition: background 120ms ease;
+}
+.oor-row:hover {
+  background: var(--bg-surface);
+}
+
+.oor-tree-row:hover {
+  background: var(--bg-hover);
+}
+
+/* The tree unrolls rather than appearing, so the eye can follow where it came
+   from. Capped high enough for a long bulk with many raw materials. */
+.oor-tree-panel {
+  animation: oor-unroll 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  overflow: hidden;
+}
+@keyframes oor-unroll {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 3000px; }
+}
+
+.oor-stat-card:hover:not(:disabled) {
+  border-color: var(--accent-secondary);
+  transform: translateY(-1px);
+}
+.oor-stat-card {
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.oor-skeleton {
+  background: linear-gradient(90deg, var(--bg-hover) 25%, var(--bg-surface) 50%, var(--bg-hover) 75%);
+  background-size: 200% 100%;
+  animation: oor-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes oor-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+.oor-grid-scroll:focus-visible,
+.oor-row:focus-visible {
+  outline: 2px solid var(--accent-secondary);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oor-chevron,
+  .oor-row,
+  .oor-stat-card {
+    transition: none;
+  }
+  .oor-tree-panel {
+    animation: none;
+  }
+  .oor-skeleton {
+    animation: none;
+    background: var(--bg-hover);
+  }
+}

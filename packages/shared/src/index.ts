@@ -11,6 +11,8 @@ export * from './rbac/catalogue'
 // seed script, the API's boot-time bootstrap and the billing UI.
 export * from './billing'
 
+export * from './oor/status'
+
 // ─── Shared Types for NEXUS ─────────────────────────────────
 
 export type Role = 'ADMIN' | 'OPS_MANAGER' | 'DEPT_LEAD' | 'PROJECT_LEAD' | 'MEMBER'
@@ -20,6 +22,7 @@ export type DeptType = 'BUILTIN_RD' | 'BUILTIN_OPS' | 'CUSTOM'
 export type ModuleType =
   | 'BRIEFS' | 'CM_PRODUCTIVITY' | 'TECH_TRANSFERS' | 'FORMULATIONS'
   | 'SKU_PIPELINE' | 'INVENTORY_HEALTH' | 'PRODUCTION_TRACKING'
+  | 'OPEN_ORDER_REPORT'
   | 'CUSTOM_TABLE' | 'CUSTOM_KANBAN' | 'CUSTOM_LIST'
 
 export type TaskStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'IN_REVIEW' | 'BLOCKED' | 'COMPLETE'

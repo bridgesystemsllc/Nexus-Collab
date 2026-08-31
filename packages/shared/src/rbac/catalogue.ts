@@ -64,6 +64,18 @@ export const PERMISSION_GROUPS: { resource: string; items: PermissionSpec[] }[] 
       { key: 'billing:manage', label: 'Manage billing', description: 'Change the plan, seats and payment details' },
     ],
   },
+  {
+    resource: 'oor',
+    items: [
+      { key: 'oor:read', label: 'View open order report', description: 'See open PO lines, their shortage trees, and the collaboration history' },
+      { key: 'oor:edit_status', label: 'Override line status', description: 'Set a line status by hand, with a reason recorded in the audit trail' },
+      { key: 'oor:edit_tree', label: 'Edit shortage tree', description: 'Update on-hand quantities, ETAs, shortage reasons and manufacturing comments' },
+      { key: 'oor:comment', label: 'Comment on lines', description: 'Add comments, notes, meeting updates and emails to a line' },
+      { key: 'oor:import', label: 'Import reports', description: 'Upload an open order or shortage report file' },
+      { key: 'oor:export', label: 'Export reports', description: 'Download the report as Excel' },
+      { key: 'oor:admin', label: 'Administer OOR', description: 'Delete imports and edit content authored by others' },
+    ],
+  },
 ]
 
 export const ALL_PERMISSION_KEYS: string[] = PERMISSION_GROUPS.flatMap((g) => g.items.map((i) => i.key))
@@ -111,6 +123,7 @@ export const SYSTEM_ROLES: RoleSpec[] = [
       'settings:read',
       'projects:read', 'projects:create', 'projects:update',
       'departments:read',
+      'oor:read', 'oor:edit_status', 'oor:edit_tree', 'oor:comment', 'oor:import', 'oor:export',
     ],
   },
   {
@@ -122,6 +135,7 @@ export const SYSTEM_ROLES: RoleSpec[] = [
     permissions: [
       'users:read', 'roles:read', 'settings:read',
       'projects:read', 'projects:create', 'projects:update', 'departments:read',
+      'oor:read', 'oor:comment', 'oor:export',
     ],
   },
   {
@@ -130,7 +144,7 @@ export const SYSTEM_ROLES: RoleSpec[] = [
     description: 'Read-only, limited to the projects they are invited to.',
     rank: 40,
     legacyRole: 'MEMBER',
-    permissions: ['projects:read', 'departments:read'],
+    permissions: ['projects:read', 'departments:read', 'oor:read'],
   },
 ]
 

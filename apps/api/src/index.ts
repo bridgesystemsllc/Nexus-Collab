@@ -32,6 +32,7 @@ import { formulationsGateRoutes, requireFormulationsUnlock } from './routes/form
 import { sharepointRoutes } from './routes/sharepoint'
 import { uploadRoutes } from './routes/uploads'
 import { inventoryImportRoutes } from './routes/inventoryImport'
+import { oorRoutes } from './routes/oor'
 import { projectRoutes } from './routes/projects'
 import { projectTaskRoutes } from './routes/projectTasks'
 import { projectTimelineRoutes } from './routes/projectTimeline'
@@ -50,6 +51,7 @@ import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember, isAuthenticated } from './auth/session'
 import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
+import { ensureOorModule } from './services/oor/bootstrap'
 import { ensureRbacSeeded, ensureEmailsNormalised } from './services/rbac/bootstrap'
 import { billingContextErrors } from './middleware/billingContext'
 import { ensureOrgTenantBackfill } from './services/rbac/ensureOrgTenant'
@@ -179,6 +181,7 @@ api.use('/sharepoint', requireFormulationsUnlock, sharepointRoutes)
 api.use('/uploads', uploadRoutes)
 // Supplier inventory feeds (Geodis 3PL stock imports).
 api.use('/inventory-import', inventoryImportRoutes)
+api.use('/operations/oor', oorRoutes)
 // Projects & Initiatives. The task router mounts on the same base so its
 // /tasks/* paths sit alongside /projects/:id/*; it is registered first because
 // its specific paths (/tasks/my, /tasks/bulk) must win over /:id.
@@ -244,6 +247,7 @@ async function start() {
   // Self-heal the department structure (Finance hub + retired stubs) on boot so
   // a deployed instance reflects the latest structure without a manual migration.
   await ensureDepartmentStructure(prisma)
+  await ensureOorModule(prisma)
 
   // Same reasoning, higher stakes: every permission check fails closed, so a
   // workspace with no permission catalogue is one where nobody can open the
