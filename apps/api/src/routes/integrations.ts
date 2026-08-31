@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express'
+import { Router, Request, Response, NextFunction } from 'express'
 import crypto from 'crypto'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma'
@@ -293,13 +293,20 @@ integrationRoutes.patch('/:id', async (req: Request, res: Response) => {
 })
 
 // ─── Test integration by ID ─────────────────────────────────
-integrationRoutes.post('/:id/test', async (req: Request, res: Response) => {
+integrationRoutes.post('/:id/test', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const orgId = getActingOrgId(req)
     const { id } = req.params
 
-    // Skip if this looks like a type-based route
-    if (id.includes('_') && !id.startsWith('c')) {
+    // This URL shape is shared with the legacy type-based test route. Resolve
+    // real persisted IDs here; uppercase connector type names continue to the
+    // later handler.
+    const connector = await prisma.integration.findFirst({
+      where: { id, orgId },
+      select: { id: true },
+    })
+    if (!connector) {
+      if (/^[A-Z][A-Z0-9_]*$/.test(id)) return next()
       return res.status(404).json({ error: 'Integration not found' })
     }
 
@@ -710,7 +717,6 @@ integrationRoutes.get('/:type/routing', async (req: Request, res: Response) => {
     if (req.params.type !== 'ERP_KAREVE_SYNC') {
       return res.status(404).json({ error: 'Routing is only available for ERP_KAREVE_SYNC' })
     }
-    const orgId = getActingOrgId(req)
     const integration = await prisma.integration.findFirst({
       where: { type: req.params.type as string, orgId },
     })
@@ -829,7 +835,6 @@ integrationRoutes.get('/:type/outbound', async (req: Request, res: Response) => 
     if (req.params.type !== 'ERP_KAREVE_SYNC') {
       return res.status(404).json({ error: 'Outbound is only available for ERP_KAREVE_SYNC' })
     }
-    const orgId = getActingOrgId(req)
     const integration = await prisma.integration.findFirst({
       where: { type: req.params.type as string, orgId },
     })
