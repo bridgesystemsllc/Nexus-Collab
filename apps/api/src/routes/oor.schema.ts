@@ -143,3 +143,75 @@ export const patchNodeSchema = z.object({
 export const importQuerySchema = z.object({
   brandId: z.string().min(1, 'An import must name the brand it belongs to.'),
 })
+
+// ─── Collaboration ───────────────────────────────────────────
+
+/** How long an author may edit their own comment before it sets. */
+export const COMMENT_EDIT_WINDOW_MS = 15 * 60 * 1000
+
+export const createCommentSchema = z.object({
+  body: z.string().trim().min(1).max(10_000),
+  shortageNodeId: z.string().optional(),
+  entryDate: z.coerce.date().optional(),
+  isPinned: z.boolean().optional(),
+})
+
+export const patchCommentSchema = z.object({
+  body: z.string().trim().min(1).max(10_000).optional(),
+  isPinned: z.boolean().optional(),
+  deleted: z.boolean().optional(),
+})
+
+export const createNoteSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  body: z.string().trim().min(1).max(20_000),
+  category: z.string().trim().max(60).optional(),
+  isPinned: z.boolean().optional(),
+})
+
+export const patchNoteSchema = createNoteSchema.partial().extend({ deleted: z.boolean().optional() })
+
+export const createMeetingUpdateSchema = z.object({
+  meetingDate: z.coerce.date(),
+  meetingTitle: z.string().trim().max(200).optional(),
+  attendees: z.array(z.string().trim().min(1)).default([]),
+  decision: z.string().trim().max(4000).optional(),
+  nextAction: z.string().trim().max(4000).optional(),
+  ownerId: z.string().nullable().optional(),
+  dueDate: z.coerce.date().nullable().optional(),
+  body: z.string().trim().max(20_000).optional(),
+})
+
+export const patchMeetingUpdateSchema = createMeetingUpdateSchema
+  .partial()
+  .extend({ status: z.enum(['open', 'done', 'carried_over']).optional(), deleted: z.boolean().optional() })
+
+/** An email arrives pasted, uploaded as .eml, or pulled from the mailbox. */
+export const createEmailSchema = z.object({
+  raw: z.string().trim().min(1).optional(),
+  messageId: z.string().trim().optional(),
+  subject: z.string().trim().optional(),
+  fromAddress: z.string().trim().optional(),
+  toAddresses: z.array(z.string()).optional(),
+  ccAddresses: z.array(z.string()).optional(),
+  sentAt: z.coerce.date().optional(),
+  bodyText: z.string().optional(),
+  source: z.enum(['paste', 'eml_upload', 'graph', 'gmail']).default('paste'),
+})
+
+export const activityQuerySchema = z.object({
+  kind: z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined
+      const list = Array.isArray(v) ? v : v.split(',')
+      return list.map((s) => s.trim()).filter(Boolean)
+    })
+    .refine(
+      (list) => list === undefined || list.every((k) => ['comment', 'note', 'meeting', 'email', 'status'].includes(k)),
+      { message: 'Expected one of: comment, note, meeting, email, status' },
+    ),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(50),
+})
