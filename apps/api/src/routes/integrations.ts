@@ -484,20 +484,20 @@ integrationRoutes.get('/:type/routing', async (req: Request, res: Response) => {
   }
 })
 
-// PATCH routing — ADMIN / OPS_MANAGER only (with a dev escape hatch).
+// PATCH routing — ADMIN / OPS_MANAGER only.
 integrationRoutes.patch('/:type/routing', async (req: Request, res: Response) => {
   try {
     if (req.params.type !== 'ERP_KAREVE_SYNC') {
       return res.status(404).json({ error: 'Routing is only available for ERP_KAREVE_SYNC' })
     }
 
-    // Role gate: allow ADMIN / OPS_MANAGER. If no member resolved (e.g. local
-    // dev with no session), allow only when NODE_ENV !== 'production'.
+    // Role gate: allow ADMIN / OPS_MANAGER only. This route sits behind
+    // isAuthenticated, so `member` should always be resolved here; local
+    // development authenticates via /api/dev-login, not a bypass in this check.
     const member = (req as any).member as { role?: string } | undefined
     const role = member?.role
     const privileged = role === 'ADMIN' || role === 'OPS_MANAGER'
-    const devUnauthenticated = !member && process.env.NODE_ENV !== 'production'
-    if (!privileged && !devUnauthenticated) {
+    if (!privileged) {
       return res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
     }
 
@@ -605,20 +605,20 @@ integrationRoutes.get('/:type/outbound', async (req: Request, res: Response) => 
   }
 })
 
-// PATCH outbound — ADMIN / OPS_MANAGER only (with a dev escape hatch).
+// PATCH outbound — ADMIN / OPS_MANAGER only.
 integrationRoutes.patch('/:type/outbound', async (req: Request, res: Response) => {
   try {
     if (req.params.type !== 'ERP_KAREVE_SYNC') {
       return res.status(404).json({ error: 'Outbound is only available for ERP_KAREVE_SYNC' })
     }
 
-    // Role gate: allow ADMIN / OPS_MANAGER. If no member resolved (e.g. local
-    // dev with no session), allow only when NODE_ENV !== 'production'.
+    // Role gate: allow ADMIN / OPS_MANAGER only. This route sits behind
+    // isAuthenticated, so `member` should always be resolved here; local
+    // development authenticates via /api/dev-login, not a bypass in this check.
     const member = (req as any).member as { role?: string } | undefined
     const role = member?.role
     const privileged = role === 'ADMIN' || role === 'OPS_MANAGER'
-    const devUnauthenticated = !member && process.env.NODE_ENV !== 'production'
-    if (!privileged && !devUnauthenticated) {
+    if (!privileged) {
       return res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
     }
 
@@ -659,7 +659,7 @@ integrationRoutes.patch('/:type/outbound', async (req: Request, res: Response) =
   }
 })
 
-// POST push — ADMIN / OPS_MANAGER only (with a dev escape hatch). Pushes the
+// POST push — ADMIN / OPS_MANAGER only. Pushes the
 // enabled outbound feeds (or the explicitly-requested feeds) to the ERP and
 // records a SyncLog noting the OUTBOUND direction.
 integrationRoutes.post('/:type/push', async (req: Request, res: Response) => {
@@ -672,8 +672,7 @@ integrationRoutes.post('/:type/push', async (req: Request, res: Response) => {
     const member = (req as any).member as { role?: string } | undefined
     const role = member?.role
     const privileged = role === 'ADMIN' || role === 'OPS_MANAGER'
-    const devUnauthenticated = !member && process.env.NODE_ENV !== 'production'
-    if (!privileged && !devUnauthenticated) {
+    if (!privileged) {
       return res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
     }
 

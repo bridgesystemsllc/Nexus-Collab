@@ -50,6 +50,7 @@ import { jobRoutes } from './routes/jobs'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember, isAuthenticated } from './auth/session'
+import { isLocalDevelopment } from './lib/devOnly'
 import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
 import { ensureOorModule } from './services/oor/bootstrap'
 import { ensureRbacSeeded, ensureEmailsNormalised } from './services/rbac/bootstrap'
@@ -244,6 +245,19 @@ io.on('connection', (socket) => {
 const PORT = parseInt(process.env.PORT || '3000', 10)
 
 async function start() {
+  // A deployment with no encryption key would otherwise discover that the
+  // first time someone connects Outlook — at which point encryption.ts's
+  // getKey() falls back to a key published in this repository and silently
+  // encrypts Microsoft OAuth tokens and ERP credentials with it. Refuse to
+  // start instead. Local development is unaffected: isLocalDevelopment() is
+  // true there, so this check is skipped.
+  if (!isLocalDevelopment() && !process.env.TOKEN_ENCRYPTION_KEY) {
+    console.error(
+      '[NEXUS] TOKEN_ENCRYPTION_KEY environment variable is required outside local development. Refusing to start.',
+    )
+    process.exit(1)
+  }
+
   // Self-heal the department structure (Finance hub + retired stubs) on boot so
   // a deployed instance reflects the latest structure without a manual migration.
   await ensureDepartmentStructure(prisma)
