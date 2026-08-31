@@ -99,18 +99,18 @@ function secondsToDate(seconds: number | null | undefined): Date | null {
 
 // ─── Subscription status ─────────────────────────────────────
 
-/// Stripe models 8 subscription statuses; `SubscriptionStatus` (packages/shared)
-/// models 7 — everything Stripe has EXCEPT `unpaid`. `unpaid` is what a
-/// `collection_method: 'send_invoice'` subscription becomes after its
-/// retry/dunning deadline passes without payment, still short of
-/// cancellation. Of the statuses our union does model, `past_due` is the
-/// closest: both mean "payment is owed and collection has failed so far, but
-/// the subscription has not yet been terminated," and both should drive the
-/// same grace-period/entitlement behaviour. Mapping it there rather than
-/// widening `SubscriptionStatus` keeps the union — and every switch statement
-/// written against it elsewhere in the module — exhaustive without a new,
-/// rarely-hit case to remember. Flagged here and in the PR report rather than
-/// silently absorbed, since it is a real (if narrow) loss of information.
+/// Stripe's `unpaid` — dunning exhausted, Stripe has stopped collecting,
+/// short of cancellation — is now modelled directly (`SubscriptionStatus`
+/// widened in packages/shared). Earlier this collapsed into `past_due`; that
+/// was only safe today because dunning has already run by the time it fires,
+/// so `gracePeriodEndsAt` is stale/past and `resolve.ts` happens to yield
+/// `read_only` anyway. That correctness was borrowed from a timestamp the
+/// (not-yet-built) webhook processor controls — if it ever stamps a fresh
+/// grace window on a `past_due` transition, an `unpaid` event mapped to
+/// `past_due` would grant a subscription Stripe has abandoned a fresh week of
+/// full access. Mapping it 1:1 and giving `resolve.ts` its own unconditional
+/// `read_only` case (never grace-period-gated) removes that borrowed
+/// correctness entirely.
 const STRIPE_STATUS_MAP: Record<string, SubscriptionStatus> = {
   trialing: 'trialing',
   active: 'active',
@@ -119,15 +119,17 @@ const STRIPE_STATUS_MAP: Record<string, SubscriptionStatus> = {
   incomplete: 'incomplete',
   incomplete_expired: 'incomplete_expired',
   paused: 'paused',
-  unpaid: 'past_due', // see comment above — closest of the 7 we model
+  unpaid: 'unpaid',
 }
 
 function mapStatus(status: string): SubscriptionStatus {
   // A status Stripe adds in the future (or any value this map doesn't
-  // recognise) falls back to `past_due` for the same reason `unpaid` does:
-  // the safe direction for an unrecognised billing state is "treat as
-  // payment trouble," never "treat as paid and active."
-  return STRIPE_STATUS_MAP[status] ?? 'past_due'
+  // recognise) falls back to `paused` — not `past_due`. `past_due` can still
+  // resolve to FULL access when a grace timestamp happens to be live, so it
+  // is not actually the fail-closed choice it looks like; `paused` is
+  // unconditionally `read_only` in resolve.ts, which is the genuinely safe
+  // direction for a billing state this module has never seen.
+  return STRIPE_STATUS_MAP[status] ?? 'paused'
 }
 
 /// Stripe's `recurring.interval` is `day | week | month | year`; our
@@ -217,9 +219,24 @@ export function toProviderEvent(evt: StripeEventShape): ProviderEvent {
   }
 }
 
-export function toPreviewResult(upcomingInvoice: StripeUpcomingInvoiceShape, plan: ChangePlan): PreviewResult {
+export function toPreviewResult(
+  upcomingInvoice: StripeUpcomingInvoiceShape,
+  plan: ChangePlan,
+  /// The instant this preview was computed against, unix seconds — the same
+  /// value the caller must pass as `subscription_details.proration_date` in
+  /// the `createPreview` request that produced `upcomingInvoice`. Per
+  /// Stripe's own documentation on the preview endpoint: "consider only
+  /// proration line items where period[start] is equal to the
+  /// subscription_details.proration_date value passed in the request."
+  /// Without this filter, `lines.data` can carry UNBILLED proration line
+  /// items left over from an earlier change this period (e.g. seats added on
+  /// the 5th, still pending) alongside the ones this change produces —
+  /// summing every `proration: true` line regardless of when it dates from
+  /// overstates immediateChargeCents by exactly that earlier amount.
+  prorationDate: number,
+): PreviewResult {
   const lines = upcomingInvoice.lines.data
-  const prorationLines = lines.filter((l) => l.proration)
+  const prorationLines = lines.filter((l) => l.proration && l.period.start === prorationDate)
   const recurringLines = lines.filter((l) => !l.proration)
 
   // Split, not netted: a $30 upgrade charge and a $12 unused-time credit on

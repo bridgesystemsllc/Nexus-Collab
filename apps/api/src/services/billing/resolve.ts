@@ -74,6 +74,13 @@ function accessFor(sub: SubscriptionSnapshot, now: Date): AccessLevel {
     case 'paused':
       return 'read_only'
 
+    case 'unpaid':
+      // Stripe has exhausted dunning and stopped collecting — unlike
+      // `past_due`, there is no live grace timestamp that can extend this to
+      // `full`. Unconditionally read_only, never re-evaluated against a
+      // grace period the way `past_due` is above.
+      return 'read_only'
+
     case 'incomplete':
     case 'incomplete_expired':
       // Edge case 3: the upgrade's payment has not succeeded. Granting the new

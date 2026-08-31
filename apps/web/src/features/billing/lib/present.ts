@@ -39,6 +39,10 @@ export function statusPresentation(
         ? { label: 'Cancels at period end', tone: 'neutral', live: false }
         : { label: 'Canceled', tone: 'neutral', live: false }
     case 'paused':             return { label: 'Paused', tone: 'neutral', live: false }
+    // Dunning exhausted — Stripe has stopped collecting entirely, distinct
+    // from past_due (still retrying). Always the harder-red state; unlike
+    // past_due there is no "inside the grace period" reading of this status.
+    case 'unpaid':              return { label: 'Payment overdue', tone: 'danger', live: false }
     case 'incomplete':         return { label: 'Awaiting payment', tone: 'warning', live: false }
     case 'incomplete_expired': return { label: 'Setup expired', tone: 'danger', live: false }
     default:                   return { label: status, tone: 'neutral', live: false }

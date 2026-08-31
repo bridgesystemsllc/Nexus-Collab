@@ -114,24 +114,29 @@ describe('toProviderSubscription', () => {
     const modeled: Record<string, string> = {
       trialing: 'trialing', active: 'active', past_due: 'past_due', canceled: 'canceled',
       incomplete: 'incomplete', incomplete_expired: 'incomplete_expired', paused: 'paused',
+      unpaid: 'unpaid',
     }
     for (const [stripeStatus, ours] of Object.entries(modeled)) {
       expect(toProviderSubscription(subscriptionFixture({ status: stripeStatus }), FIXED_UPDATED_AT).status).toBe(ours)
     }
   })
 
-  it('maps Stripe\'s unpaid status — which our union does not model — to past_due', () => {
-    // See the STRIPE_STATUS_MAP comment in stripeMappers.ts: `unpaid` and
-    // `past_due` both mean "payment owed, collection failing, not yet
-    // terminated," so this is the closest of the 7 statuses we model —
-    // deliberately, not a silent type-widening.
+  it('maps Stripe\'s unpaid status 1:1 — SubscriptionStatus now models it directly', () => {
+    // Widened in packages/shared (review C1 follow-up / I3): unpaid used to
+    // collapse into past_due, which only read as correct because dunning had
+    // already run by the time it fires. Modelled directly so resolve.ts can
+    // give it its own unconditional read_only, never grace-period-gated.
     const result = toProviderSubscription(subscriptionFixture({ status: 'unpaid' }), FIXED_UPDATED_AT)
-    expect(result.status).toBe('past_due')
+    expect(result.status).toBe('unpaid')
   })
 
-  it('maps an unrecognised/future status defensively to past_due, never active', () => {
+  it('maps an unrecognised/future status defensively to paused, never active or past_due', () => {
+    // paused, not past_due: past_due can still resolve to FULL access when a
+    // grace timestamp is live, so it is not actually the fail-closed choice
+    // for a status this module has never seen. paused is unconditionally
+    // read_only in resolve.ts.
     const result = toProviderSubscription(subscriptionFixture({ status: 'some_future_status' }), FIXED_UPDATED_AT)
-    expect(result.status).toBe('past_due')
+    expect(result.status).toBe('paused')
   })
 
   it('maps a subscription with no items to a null itemId and zero quantity, not a throw', () => {
@@ -238,31 +243,43 @@ describe('toPreviewResult', () => {
   const upgradePlan = { timing: 'immediate' as const, prorate: true, chargeNow: true }
   const deferredPlan = { timing: 'period_end' as const, prorate: false, chargeNow: false }
 
+  // The instant this preview is computed against — what the caller would
+  // pass as subscription_details.proration_date on the real request. Both
+  // of THIS change's proration lines share this period.start; a third,
+  // earlier-dated proration line (added below in its own test) models an
+  // unbilled proration left over from a prior change this period.
+  const PRORATION_DATE = 1735689600
+
+  // Realistic ordering: a next payment attempt happens AT OR AFTER the
+  // period it is attempting to collect for, never before it.
+  const PERIOD_END = 1738368000
+  const NEXT_PAYMENT_ATTEMPT = 1738371600 // period_end + 1 hour
+
   function upcomingInvoiceFixture(overrides: Partial<StripeUpcomingInvoiceShape> = {}): StripeUpcomingInvoiceShape {
     return {
       currency: 'usd',
       tax: 472,
-      period_end: 1738368000,
-      next_payment_attempt: 1735776000,
+      period_end: PERIOD_END,
+      next_payment_attempt: NEXT_PAYMENT_ATTEMPT,
       lines: {
         data: [
           {
             description: 'Unused time on Growth (5 seats)',
             amount: -2500,
             proration: true,
-            period: { start: 1735689600, end: 1738368000 },
+            period: { start: PRORATION_DATE, end: PERIOD_END },
           },
           {
             description: 'Remaining time on Growth (8 seats)',
             amount: 4000,
             proration: true,
-            period: { start: 1735689600, end: 1738368000 },
+            period: { start: PRORATION_DATE, end: PERIOD_END },
           },
           {
             description: '8 × Growth seat',
             amount: 47200,
             proration: false,
-            period: { start: 1738368000, end: 1741046400 },
+            period: { start: PERIOD_END, end: 1741046400 },
           },
         ],
       },
@@ -271,7 +288,7 @@ describe('toPreviewResult', () => {
   }
 
   it('keeps tax as its own line, never folded into the total', () => {
-    const result = toPreviewResult(upcomingInvoiceFixture(), upgradePlan)
+    const result = toPreviewResult(upcomingInvoiceFixture(), upgradePlan, PRORATION_DATE)
     expect(result.taxCents).toBe(472)
     // taxCents is not baked into nextInvoiceCents or newRecurringTotalCents.
     expect(result.nextInvoiceCents).toBe(47200)
@@ -279,7 +296,7 @@ describe('toPreviewResult', () => {
   })
 
   it('splits a proration credit and charge into non-negative aggregates, never a negative charge', () => {
-    const result = toPreviewResult(upcomingInvoiceFixture(), upgradePlan)
+    const result = toPreviewResult(upcomingInvoiceFixture(), upgradePlan, PRORATION_DATE)
     expect(result.immediateChargeCents).toBe(4000)
     expect(result.creditAppliedCents).toBe(2500)
     expect(result.immediateChargeCents).toBeGreaterThanOrEqual(0)
@@ -287,32 +304,91 @@ describe('toPreviewResult', () => {
   })
 
   it('carries the proration line items through with description and period', () => {
-    const result = toPreviewResult(upcomingInvoiceFixture(), upgradePlan)
+    const result = toPreviewResult(upcomingInvoiceFixture(), upgradePlan, PRORATION_DATE)
     expect(result.proratedLineItems).toHaveLength(2)
     expect(result.proratedLineItems[0]).toEqual({
       description: 'Unused time on Growth (5 seats)',
       amountCents: -2500,
-      period: { start: new Date(1735689600 * 1000).toISOString(), end: new Date(1738368000 * 1000).toISOString() },
+      period: { start: new Date(PRORATION_DATE * 1000).toISOString(), end: new Date(PERIOD_END * 1000).toISOString() },
     })
   })
 
+  it('excludes an earlier, still-unbilled proration line from a prior change this period', () => {
+    // Review C2/C3, Failure A: seats added on the 5th leave a pending
+    // +$30 proration line; upgrading again on the 7th must preview (and
+    // later charge) only the 7th's own proration, not both summed —
+    // Stripe's own doc on this endpoint says to consider only lines whose
+    // period.start equals the proration_date passed in the request.
+    const EARLIER_CHANGE_DATE = PRORATION_DATE - 172_800 // two days earlier
+    const result = toPreviewResult(
+      upcomingInvoiceFixture({
+        lines: {
+          data: [
+            {
+              description: '3 additional seat(s) (pending from an earlier change)',
+              amount: 3000,
+              proration: true,
+              period: { start: EARLIER_CHANGE_DATE, end: PERIOD_END },
+            },
+            {
+              description: 'Remaining time on Growth (8 seats)',
+              amount: 4000,
+              proration: true,
+              period: { start: PRORATION_DATE, end: PERIOD_END },
+            },
+            {
+              description: '8 × Growth seat',
+              amount: 47200,
+              proration: false,
+              period: { start: PERIOD_END, end: 1741046400 },
+            },
+          ],
+        },
+      }),
+      upgradePlan,
+      PRORATION_DATE,
+    )
+    // Only the line dated exactly at PRORATION_DATE counts — the earlier
+    // pending +$30 line is excluded from both the aggregate and the list.
+    expect(result.immediateChargeCents).toBe(4000)
+    expect(result.proratedLineItems).toHaveLength(1)
+    expect(result.proratedLineItems[0].description).toBe('Remaining time on Growth (8 seats)')
+  })
+
   it('reports effectiveImmediately from the plan, not the invoice', () => {
-    expect(toPreviewResult(upcomingInvoiceFixture(), upgradePlan).effectiveImmediately).toBe(true)
-    expect(toPreviewResult(upcomingInvoiceFixture(), deferredPlan).effectiveImmediately).toBe(false)
+    expect(toPreviewResult(upcomingInvoiceFixture(), upgradePlan, PRORATION_DATE).effectiveImmediately).toBe(true)
+    expect(toPreviewResult(upcomingInvoiceFixture(), deferredPlan, PRORATION_DATE).effectiveImmediately).toBe(false)
   })
 
   it('maps a zero-amount preview (a no-op change) without any proration lines', () => {
     const result = toPreviewResult(
       upcomingInvoiceFixture({
         tax: 0,
-        lines: { data: [{ description: null, amount: 0, proration: false, period: { start: 1735689600, end: 1738368000 } }] },
+        lines: { data: [{ description: null, amount: 0, proration: false, period: { start: PRORATION_DATE, end: PERIOD_END } }] },
       }),
       deferredPlan,
+      PRORATION_DATE,
     )
     expect(result.immediateChargeCents).toBe(0)
     expect(result.creditAppliedCents).toBe(0)
     expect(result.taxCents).toBe(0)
     expect(result.proratedLineItems).toEqual([])
+  })
+
+  describe('nextInvoiceDate precedence', () => {
+    it('uses next_payment_attempt when present', () => {
+      const result = toPreviewResult(upcomingInvoiceFixture(), upgradePlan, PRORATION_DATE)
+      expect(result.nextInvoiceDate).toBe(new Date(NEXT_PAYMENT_ATTEMPT * 1000).toISOString())
+    })
+
+    it('falls back to period_end when next_payment_attempt is absent', () => {
+      const result = toPreviewResult(
+        upcomingInvoiceFixture({ next_payment_attempt: null }),
+        upgradePlan,
+        PRORATION_DATE,
+      )
+      expect(result.nextInvoiceDate).toBe(new Date(PERIOD_END * 1000).toISOString())
+    })
   })
 })
 

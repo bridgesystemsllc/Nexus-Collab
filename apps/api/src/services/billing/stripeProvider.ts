@@ -44,7 +44,7 @@ function isStripeErrorLike(err: unknown): err is StripeErrorLike {
 /// Network blips and Stripe-side contention should be retried; a declined
 /// card or a bad request never should, because retrying it repeats the same
 /// failure while looking, to Stripe, like a second attempt to charge someone.
-function mapStripeError(err: unknown): BillingProviderError {
+export function mapStripeError(err: unknown): BillingProviderError {
   if (!isStripeErrorLike(err)) {
     // Not a Stripe SDK error at all (e.g. a thrown string, a bug elsewhere).
     // Treat as non-retryable — retrying an error we don't understand risks
@@ -60,6 +60,23 @@ function mapStripeError(err: unknown): BillingProviderError {
   // checked before the type-based rule below.
   if (code === 'lock_timeout') return new BillingProviderError(message, code, true)
 
+  // Every subscription/change/preview call sets `automatic_tax: { enabled:
+  // true } }`; Stripe refuses that outright when it cannot resolve a tax
+  // location for the customer. Given its own code and a message that names
+  // the actual fix (rather than passed through generically), so a route
+  // never has to guess whether this was a card decline — both would
+  // otherwise report retryable: false from the generic path below and be
+  // indistinguishable at that layer.
+  if (code === 'customer_tax_location_invalid') {
+    return new BillingProviderError(
+      'Stripe could not determine a tax location for this customer. automatic_tax requires a customer ' +
+        'address (at minimum country + postal code) — pass one via ensureCustomer before creating or ' +
+        'changing a subscription.',
+      'customer_tax_location_invalid',
+      false,
+    )
+  }
+
   const retryable =
     type === 'StripeConnectionError' || // network failure reaching Stripe
     type === 'StripeRateLimitError' || // too many requests, back off and retry
@@ -73,11 +90,25 @@ function mapStripeError(err: unknown): BillingProviderError {
 
 export function createStripeProvider(): BillingProvider {
   return {
-    async ensureCustomer({ orgId, name, email, idempotencyKey }) {
+    async ensureCustomer({ orgId, name, email, idempotencyKey, address }) {
       const stripe = getStripeClient()
       try {
         const customer = await stripe.customers.create(
-          { name, email, metadata: { orgId } },
+          {
+            name, email, metadata: { orgId },
+            // Without an address, automatic_tax (on by default for every
+            // subscription/change/preview) has no location to compute tax
+            // against and Stripe refuses the request — see the
+            // customer_tax_location_invalid branch in mapStripeError.
+            ...(address
+              ? {
+                  address: {
+                    line1: address.line1, line2: address.line2, city: address.city,
+                    state: address.state, postal_code: address.postalCode, country: address.country,
+                  },
+                }
+              : {}),
+          },
           { idempotencyKey },
         )
         return { customerId: customer.id }
@@ -167,15 +198,24 @@ export function createStripeProvider(): BillingProvider {
         // Read-only: an invoice preview has no side effects to guard with an
         // idempotency key, so `i.idempotencyKey` (required on the shared
         // `ChangeInput` shape because `applyChange` needs it) is unused here.
+        //
+        // `proration_date` IS used, and matters: per Stripe's own docs on
+        // this endpoint, prorations are only calculated exactly the same on
+        // the real update if the real update passes the same
+        // `subscription_details.proration_date` used to preview it. Passing
+        // `i.prorationDate` here — the same value the caller will pass to
+        // `applyChange` — is what makes the previewed number and the charged
+        // number the same number.
         const preview = await stripe.invoices.createPreview({
           subscription: i.subscriptionId,
           subscription_details: {
             items: [{ id: i.itemId, price: i.priceId, quantity: i.quantity }],
             proration_behavior: prorationBehavior(i.plan),
+            proration_date: i.prorationDate,
           },
           automatic_tax: { enabled: true },
         })
-        return toPreviewResult(preview, i.plan)
+        return toPreviewResult(preview, i.plan, i.prorationDate)
       } catch (err) {
         throw mapStripeError(err)
       }
@@ -190,7 +230,23 @@ export function createStripeProvider(): BillingProvider {
             {
               items: [{ id: i.itemId, price: i.priceId, quantity: i.quantity }],
               proration_behavior: prorationBehavior(i.plan),
+              // The same instant `previewChange` computed the customer's
+              // number against — passing it here is what Stripe's own docs
+              // say is required for the charged amount to match the
+              // previewed one exactly, rather than re-prorating against
+              // "now" (which has moved on, however slightly, since preview).
+              proration_date: i.prorationDate,
               automatic_tax: { enabled: true },
+              // subscriptions.update defaults to payment_behavior:
+              // 'allow_incomplete' — with always_invoice and a declined
+              // card, the item swap COMMITS anyway and the subscription
+              // lands in past_due, which resolve.ts grants full access to
+              // for the entire grace window. error_if_incomplete makes
+              // Stripe fail the whole update instead of landing a paid-for
+              // tier on an invoice nobody paid. Only forced when this change
+              // actually charges — a non-charging immediate change (the
+              // unchanged-tier/seats/interval no-op) has nothing to fail on.
+              ...(i.plan.chargeNow ? { payment_behavior: 'error_if_incomplete' as const } : {}),
             },
             { idempotencyKey: i.idempotencyKey },
           )
@@ -213,23 +269,76 @@ export function createStripeProvider(): BillingProvider {
               { idempotencyKey: i.idempotencyKey },
             )
 
-        const currentPhase = schedule.phases[0]
+        // Located via Stripe's own `current_phase` pointer, never
+        // `phases[0]`: once a schedule has advanced past its first phase,
+        // `phases[0]` is a COMPLETED phase. Writing [<completed>, <new>]
+        // below would discard whatever is actually live right now and
+        // back-date the new phase to start from a phase that already ended.
+        // `current_phase` is only null for a schedule that hasn't started
+        // yet, which `from_subscription` never produces — phases[0] is the
+        // reasonable fallback for that edge rather than throwing.
+        const currentPhaseMeta = schedule.current_phase
+        const currentPhaseIndex = currentPhaseMeta
+          ? schedule.phases.findIndex((p) => p.start_date === currentPhaseMeta.start_date)
+          : 0
+        const currentPhase = schedule.phases[currentPhaseIndex === -1 ? 0 : currentPhaseIndex]
+
+        // Reuses existing discounts/coupons by id rather than re-describing
+        // them — Stripe's own recommendation for carrying a discount forward
+        // unchanged.
+        const currentPhaseDiscounts = currentPhase.discounts
+          .map((d) => {
+            const discountId = typeof d.discount === 'string' ? d.discount : d.discount?.id
+            const couponId = typeof d.coupon === 'string' ? d.coupon : d.coupon?.id
+            return discountId ? { discount: discountId } : couponId ? { coupon: couponId } : undefined
+          })
+          .filter((d): d is NonNullable<typeof d> => d !== undefined)
+
         await stripe.subscriptionSchedules.update(
           schedule.id,
           {
             end_behavior: 'release',
+            // Reuses the same decision proration.ts already made — a
+            // period_end plan always resolves to 'none' here — rather than
+            // hardcoding it a second time. This top-level field's documented
+            // default is create_prorations; omitting it is exactly how C1
+            // happened: Stripe prorated the still-billing current phase the
+            // instant it saw ANY change to the schedule, even though the
+            // change was meant to apply only at period end.
+            proration_behavior: prorationBehavior(i.plan),
             default_settings: { automatic_tax: { enabled: true } },
             phases: [
               {
+                // The CURRENT phase, carried forward field-for-field. A
+                // `phases` update replaces the WHOLE array — any field of
+                // the live phase this object doesn't set is DROPPED from
+                // it, and Stripe reads that as a real billing change to a
+                // phase still being invoiced, prorating it immediately. This
+                // covers the fields a subscription on this account actually
+                // sets (items, discounts, trial, collection method, default
+                // payment method, billing cycle anchor); a schedule using
+                // Connect transfer/application-fee data, manual
+                // add_invoice_items, or per-phase metadata needs a wider
+                // copy than this gives it.
                 start_date: currentPhase.start_date,
                 end_date: currentPhase.end_date,
                 items: currentPhase.items.map((item) => ({
                   price: typeof item.price === 'string' ? item.price : item.price.id,
                   quantity: item.quantity ?? undefined,
                 })),
+                discounts: currentPhaseDiscounts,
+                trial_end: currentPhase.trial_end ?? undefined,
+                collection_method: currentPhase.collection_method ?? undefined,
+                default_payment_method:
+                  typeof currentPhase.default_payment_method === 'string'
+                    ? currentPhase.default_payment_method
+                    : (currentPhase.default_payment_method?.id ?? undefined),
+                billing_cycle_anchor: currentPhase.billing_cycle_anchor ?? undefined,
                 automatic_tax: { enabled: true },
               },
               {
+                // The new, trailing phase. No start_date of its own: Stripe
+                // chains it immediately after the current phase above ends.
                 items: [{ price: i.priceId, quantity: i.quantity }],
                 automatic_tax: { enabled: true },
               },

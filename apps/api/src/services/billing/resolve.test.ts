@@ -80,6 +80,17 @@ describe('resolve — the status matrix', () => {
     expect(run(sub({ status: 'paused' })).accessLevel).toBe('read_only')
   })
 
+  it('makes an unpaid subscription read-only', () => {
+    expect(run(sub({ status: 'unpaid' })).accessLevel).toBe('read_only')
+  })
+
+  it('keeps an unpaid subscription read-only even with a live grace timestamp', () => {
+    // Unlike past_due, unpaid must never be re-granted full access off a
+    // gracePeriodEndsAt column — Stripe has already stopped collecting, so
+    // there is no future event that should ever move this back to full.
+    expect(run(sub({ status: 'unpaid', gracePeriodEndsAt: FUTURE })).accessLevel).toBe('read_only')
+  })
+
   it('keeps full access after cancellation until the period actually ends', () => {
     // Edge case 9 depends on this: cancel then reactivate before period end
     // must never have cost anyone access in between.

@@ -43,7 +43,7 @@ describe('createFakeProvider — idempotency', () => {
     const sub = await p.createSubscription({ customerId, priceId: 'price_m', quantity: 5, idempotencyKey: 'k2' })
     const input = {
       subscriptionId: sub.id, itemId: sub.itemId!, priceId: 'price_m', quantity: 8,
-      plan: planFor({ kind: 'seats', from: 5, to: 8 }), idempotencyKey: 'seat-8',
+      plan: planFor({ kind: 'seats', from: 5, to: 8 }), idempotencyKey: 'seat-8', prorationDate: 1735689600,
     }
     await p.applyChange(input)
     const second = await p.applyChange(input)
@@ -58,7 +58,7 @@ describe('createFakeProvider — change semantics mirror the decision table', ()
     const sub = await p.createSubscription({ customerId, priceId: 'price_m', quantity: 5, idempotencyKey: 'k2' })
     const out = await p.applyChange({
       subscriptionId: sub.id, itemId: sub.itemId!, priceId: 'price_m', quantity: 8,
-      plan: planFor({ kind: 'seats', from: 5, to: 8 }), idempotencyKey: 'up',
+      plan: planFor({ kind: 'seats', from: 5, to: 8 }), idempotencyKey: 'up', prorationDate: 1735689600,
     })
     expect(out.quantity).toBe(8)
   })
@@ -70,7 +70,7 @@ describe('createFakeProvider — change semantics mirror the decision table', ()
     const sub = await p.createSubscription({ customerId, priceId: 'price_m', quantity: 8, idempotencyKey: 'k2' })
     const out = await p.applyChange({
       subscriptionId: sub.id, itemId: sub.itemId!, priceId: 'price_m', quantity: 5,
-      plan: planFor({ kind: 'seats', from: 8, to: 5 }), idempotencyKey: 'down',
+      plan: planFor({ kind: 'seats', from: 8, to: 5 }), idempotencyKey: 'down', prorationDate: 1735689600,
     })
     expect(out.quantity).toBe(8)
     expect(p.state.scheduledChanges).toHaveLength(1)
@@ -83,7 +83,7 @@ describe('createFakeProvider — previewChange', () => {
     const sub = await p.createSubscription({ customerId, priceId: 'price_m', quantity: 8, idempotencyKey: 'k2' })
     const preview = await p.previewChange({
       subscriptionId: sub.id, itemId: sub.itemId!, priceId: 'price_m', quantity: 5,
-      plan: planFor({ kind: 'seats', from: 8, to: 5 }), idempotencyKey: 'prev',
+      plan: planFor({ kind: 'seats', from: 8, to: 5 }), idempotencyKey: 'prev', prorationDate: 1735689600,
     })
     expect(preview.immediateChargeCents).toBe(0)
     expect(preview.effectiveImmediately).toBe(false)
@@ -94,7 +94,7 @@ describe('createFakeProvider — previewChange', () => {
     const sub = await p.createSubscription({ customerId, priceId: 'price_m', quantity: 5, idempotencyKey: 'k2' })
     const preview = await p.previewChange({
       subscriptionId: sub.id, itemId: sub.itemId!, priceId: 'price_m', quantity: 8,
-      plan: planFor({ kind: 'seats', from: 5, to: 8 }), idempotencyKey: 'prev',
+      plan: planFor({ kind: 'seats', from: 5, to: 8 }), idempotencyKey: 'prev', prorationDate: 1735689600,
     })
     expect(preview.immediateChargeCents).toBeGreaterThan(0)
     expect(preview.effectiveImmediately).toBe(true)
@@ -107,7 +107,7 @@ describe('createFakeProvider — previewChange', () => {
     for (const q of [1, 5, 8, 20]) {
       const preview = await p.previewChange({
         subscriptionId: sub.id, itemId: sub.itemId!, priceId: 'price_m', quantity: q,
-        plan: planFor({ kind: 'seats', from: 8, to: q }), idempotencyKey: `p${q}`,
+        plan: planFor({ kind: 'seats', from: 8, to: q }), idempotencyKey: `p${q}`, prorationDate: 1735689600,
       })
       expect(preview.immediateChargeCents).toBeGreaterThanOrEqual(0)
       expect(preview.creditAppliedCents).toBeGreaterThanOrEqual(0)

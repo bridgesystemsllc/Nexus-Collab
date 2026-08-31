@@ -4,6 +4,12 @@ export type BillingInterval = 'monthly' | 'annual'
 export type SubscriptionStatus =
   | 'trialing' | 'active' | 'past_due' | 'canceled'
   | 'incomplete' | 'incomplete_expired' | 'paused'
+  // Stripe's own status once dunning is exhausted and it has stopped
+  // collecting altogether — distinct from `past_due` (still retrying).
+  // Modelled explicitly, not folded into `past_due`, so a webhook processor
+  // can tell "first failed payment, still retrying" from "Stripe gave up"
+  // and never stamp a fresh grace window on the latter.
+  | 'unpaid'
 
 /// Added to the spec's shape. §5.4 and §5.8 both require a read-only state
 /// that is neither "has the feature" nor "does not have it", and the spec's
