@@ -220,27 +220,6 @@ function checkRule3() {
     'apps/api/src/services/emailAgent/processor.ts',
   ])
 
-  // Narrow, line-scoped exceptions: a specific flagged call in an
-  // otherwise-in-scope file, matched by a substring of its own line so it
-  // survives the file being edited elsewhere. NOT part of the brief's
-  // original allowlist — each entry here is something this audit actually
-  // found while being built, left in place because fixing it is app-code
-  // change outside this task's scope. Flagged loudly in the task-4 report;
-  // do not add to this list without the same kind of write-up.
-  const ALLOWLIST_LINES = [
-    {
-      file: 'apps/api/src/services/users/meService.ts',
-      lineIncludes: "NOT: { id: memberId }",
-      reason:
-        "verifyEmailChange()'s re-check of the pending address at confirm-time. Its sibling " +
-        'check in requestEmailChange() was scoped to the caller\'s orgId in this branch\'s tenancy ' +
-        'fix (commit 7dc19cf), but this second call site — the same check re-run inside the ' +
-        'confirmation transaction — was missed. Discovered by this audit, not fixed here: fixing it ' +
-        'is an application-code change and this task is scoped to building the guard, not patching ' +
-        'the app. Reported as a follow-up in task-4-report.md.',
-    },
-  ]
-
   const CALL_PATTERN = /\b(member\.findFirst|member\.findUnique|userInvitation\.findFirst)\s*\(/g
   const WHERE_PATTERN = /where\s*:\s*\{/
 
@@ -269,12 +248,6 @@ function checkRule3() {
       if (!filtersByEmail || hasOrgId) continue
 
       const line = lineNumberAt(text, m.index)
-      // Matched against the whole extracted call (it commonly spans several
-      // lines), not just the line the call starts on.
-      const lineAllow = ALLOWLIST_LINES.find(
-        (a) => a.file === rel && call.includes(a.lineIncludes),
-      )
-      if (lineAllow) continue
 
       violations.push({
         file: rel,

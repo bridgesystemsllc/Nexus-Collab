@@ -388,6 +388,7 @@ export async function verifyEmailChange(
       select: {
         email: true, pendingEmail: true,
         pendingEmailTokenHash: true, pendingEmailExpiresAt: true,
+        orgId: true,
       },
     })
     if (!member?.pendingEmail || !member.pendingEmailTokenHash) {
@@ -401,9 +402,15 @@ export async function verifyEmailChange(
     }
 
     // Re-checked inside the transaction: the address may have been taken in
-    // the day between requesting and confirming.
+    // the day between requesting and confirming. Scoped to the caller's own
+    // org, same reasoning as requestEmailChange (7dc19cf): email is unique
+    // per organization (@@unique([orgId, email])), not globally, so a row in
+    // a different org is not "taken" from this member's point of view. An
+    // unscoped check here would defeat the org-scoped check at request time —
+    // wrongly blocking a confirmation on a member of an organization the
+    // caller cannot even see.
     const taken = await tx.member.findFirst({
-      where: { email: { equals: member.pendingEmail, mode: 'insensitive' }, NOT: { id: memberId } },
+      where: { orgId: member.orgId, email: { equals: member.pendingEmail, mode: 'insensitive' }, NOT: { id: memberId } },
       select: { id: true },
     })
     if (taken) {
