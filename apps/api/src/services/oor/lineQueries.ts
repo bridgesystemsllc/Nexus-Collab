@@ -197,6 +197,15 @@ export async function upsertManufacturerMapping(
         updatedById: actor.id,
       },
     })
+    // Existing ERP-projected lines become available under the mapped CM
+    // immediately; users should not need another ERP refresh after saving it.
+    await tx.oorLine.updateMany({
+      where: {
+        orgId,
+        erpManufacturerName: { equals: manufacturerName.trim(), mode: 'insensitive' },
+      },
+      data: { cmCode: after.cmCode, fulfillmentType: 'CONTRACT_MFG' },
+    })
     await tx.auditLog.create({
       data: {
         actorId: actor.id,

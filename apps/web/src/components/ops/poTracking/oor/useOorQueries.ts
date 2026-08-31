@@ -145,6 +145,18 @@ export function useOorLines(filters: OorFilters, enabled = true) {
   })
 }
 
+/** Materialize the ERP-backed OPEN_ORDERS snapshots before the report loads. */
+export function useReconcileOpenOrders() {
+  return useQuery({
+    queryKey: ['oor', 'reconcile-open-orders'],
+    queryFn: async () => {
+      const { data } = await api.post(`${BASE}/reconcile-open-orders`)
+      return data as { created: number; updated: number; closed: number }
+    },
+    staleTime: 30_000,
+  })
+}
+
 export function useOorLine(lineId: string | null) {
   return useQuery({
     queryKey: ['oor', 'line', lineId],

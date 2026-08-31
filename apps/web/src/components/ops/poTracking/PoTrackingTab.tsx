@@ -7,7 +7,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, ClipboardCheck, Download, Loader2, Rows3, Upload, X } from 'lucide-react'
 import {
-  useManufacturerMapping, useOorLines, useOorMutations, useSaveManufacturerMapping, type OorFilters,
+  useManufacturerMapping, useOorLines, useOorMutations, useReconcileOpenOrders,
+  useSaveManufacturerMapping, type OorFilters,
 } from './oor/useOorQueries'
 import { COLUMN_SETS, type ReportView } from './oor/oorColumns'
 import { OorGrid } from './oor/OorGrid'
@@ -72,6 +73,7 @@ export function PoTrackingTab({
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable')
   const [openLineId, setOpenLineId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const reconciliation = useReconcileOpenOrders()
   const manufacturerName = scope?.kind === 'cm' ? scope.value : undefined
   const mapping = useManufacturerMapping(manufacturerName)
   const saveMapping = useSaveManufacturerMapping()
@@ -111,7 +113,10 @@ export function PoTrackingTab({
     ...(activeStat ? STAT_FILTERS[activeStat] : {}),
   }
 
-  const lines = useOorLines(filters, scope?.kind !== 'cm' || Boolean(resolvedCmCode))
+  const lines = useOorLines(
+    filters,
+    reconciliation.isSuccess && (scope?.kind !== 'cm' || Boolean(resolvedCmCode)),
+  )
   const rows = lines.data?.rows ?? []
   const total = lines.data?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / 50))
@@ -286,11 +291,16 @@ export function PoTrackingTab({
           These lines could not be loaded. Refresh, or check that you have access to the Open Order Report.
         </div>
       ) : null}
+      {reconciliation.isError ? (
+        <div className="rounded-xl px-4 py-3 text-[13px]" style={{ background: 'var(--danger-light)', color: 'var(--danger)', border: '1px solid var(--danger)' }}>
+          Production open lines could not be synchronized. Refresh and try again.
+        </div>
+      ) : null}
 
       {scope?.kind !== 'cm' || resolvedCmCode ? <OorGrid
         rows={rows}
         columns={columns}
-        loading={lines.isLoading}
+        loading={reconciliation.isLoading || lines.isLoading}
         sort={sort}
         dir={dir}
         onSort={onSort}

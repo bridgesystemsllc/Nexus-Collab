@@ -21,6 +21,7 @@ import {
 import { runImport } from '../services/oor/importRun'
 import { ExcelSourceAdapter } from '../services/oor/excel/excelSourceAdapter'
 import { buildExportWorkbook } from '../services/oor/exportReport'
+import { reconcileStoredOpenOrders } from '../services/oor/erpLineSync'
 import { UnknownReportFormatError } from '../services/oor/excel/detectFormat'
 import {
   listLinesQuerySchema,
@@ -142,6 +143,15 @@ oorRoutes.put('/manufacturer-mapping', requirePermission('oor:admin'), async (re
 })
 
 // ─── Lines ───────────────────────────────────────────────────
+
+oorRoutes.post('/reconcile-open-orders', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
+  try {
+    const orgId = orgIdOf(req)
+    res.json(await reconcileStoredOpenOrders(prisma, orgId))
+  } catch (error) {
+    handleError(res, error)
+  }
+})
 
 oorRoutes.get('/lines', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {

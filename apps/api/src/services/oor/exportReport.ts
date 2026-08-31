@@ -324,6 +324,7 @@ interface NodeRow {
 }
 
 interface LineWithRelations {
+  productionOrderItemId: string | null
   brandId: string | null
   customerPoNumber: string | null
   channelTag: string | null
@@ -383,7 +384,7 @@ export async function buildExportWorkbook(
   const scoped =
     options.reportType === 'open_order_shortage'
       ? lines.filter((l) => l.nodes.length > 0)
-      : lines.filter((l) => l.salesOrderNumber !== null)
+      : lines.filter((l) => l.salesOrderNumber !== null || l.productionOrderItemId !== null)
 
   const wb = new ExcelJS.Workbook()
   wb.creator = 'Nexus'

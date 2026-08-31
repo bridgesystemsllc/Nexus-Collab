@@ -283,6 +283,7 @@ export async function resolveTargetModule(
   prisma: PrismaClient,
   feedKey: string,
   routing: Routing,
+  orgId: string,
 ) {
   const feed = ERP_FEEDS.find((f) => f.key === feedKey)
   const entry = routing[feedKey]
@@ -291,14 +292,18 @@ export async function resolveTargetModule(
   if (entry?.targetModuleId) {
     const byId = await prisma.departmentModule.findUnique({
       where: { id: entry.targetModuleId },
+      include: { department: { select: { orgId: true } } },
     })
-    if (byId) return byId
+    if (byId?.department.orgId === orgId) return byId
+    // A configured ID that resolves to another tenant is invalid, not a signal
+    // to silently choose a different module.
+    if (byId) return null
   }
 
   // 2. Configured target module type.
   if (entry?.targetModuleType) {
     const byType = await prisma.departmentModule.findFirst({
-      where: { type: entry.targetModuleType },
+      where: { type: entry.targetModuleType, department: { orgId } },
     })
     if (byType) return byType
   }
@@ -306,7 +311,7 @@ export async function resolveTargetModule(
   // 3. Feed default module type.
   if (feed?.defaultModuleType) {
     const byDefault = await prisma.departmentModule.findFirst({
-      where: { type: feed.defaultModuleType },
+      where: { type: feed.defaultModuleType, department: { orgId } },
     })
     if (byDefault) return byDefault
   }

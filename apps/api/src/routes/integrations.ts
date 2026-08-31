@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import crypto from 'crypto'
 import type { Prisma } from '@prisma/client'
-import { prisma } from '../index'
+import { prisma } from '../lib/prisma'
 import { encrypt, decrypt, encryptJson, decryptJson } from '../lib/encryption'
 import {
   generateState,
@@ -42,6 +42,8 @@ import {
   sanitizeIntegrations,
 } from '../lib/connectors/mask'
 import { isGenericType, isSingletonType } from '../lib/connectors/catalog'
+import { resolveTargetModule } from '../lib/erpRouting'
+import { requirePermission, type RbacRequest } from '../middleware/requirePermission'
 
 export const integrationRoutes: ReturnType<typeof Router> = Router()
 export const webhookRoutes: ReturnType<typeof Router> = Router()
@@ -986,9 +988,29 @@ integrationRoutes.post('/:type/push', async (req: Request, res: Response) => {
 // feed and upserts it into the OPEN_ORDERS module (synthetic feed when the ERP
 // is unconfigured; the module is auto-provisioned when missing). Independent of
 // the full multi-feed sync.
-integrationRoutes.post('/erp/refresh-open-orders', async (_req: Request, res: Response) => {
+integrationRoutes.post(
+  '/erp/refresh-open-orders',
+  requirePermission('oor:edit_status'),
+  async (req: RbacRequest, res: Response) => {
   try {
-    const result = await syncErpOpenOrders(prisma)
+    const orgId = getActingOrgId(req)
+    const integration = await prisma.integration.findFirst({
+      where: { type: 'ERP_KAREVE_SYNC', orgId },
+    })
+    const routing = getRouting(integration)
+    const target = await resolveTargetModule(prisma, 'openOrders', routing, orgId)
+    if (routing.openOrders?.targetModuleId && !target) {
+      return res.status(409).json({
+        ok: false,
+        error: 'The configured Open Orders destination is unavailable for this organization.',
+      })
+    }
+    const result = await syncErpOpenOrders(
+      prisma,
+      target?.id,
+      routing.openOrders?.erpPath ?? undefined,
+      orgId,
+    )
     res.json({ ok: true, ...result })
   } catch (err) {
     console.error('[integrations] POST /erp/refresh-open-orders error:', err)
@@ -999,13 +1021,24 @@ integrationRoutes.post('/erp/refresh-open-orders', async (_req: Request, res: Re
 // ─── Push a single open order's PO status/notes to the ERP ──────────
 // Fired from the PO edit drawer after a status / urgency / note change.
 // DRY RUN until the ERP exposes a write endpoint (pushToErp never fakes a send).
-integrationRoutes.post('/erp/push-open-order/:itemId', async (req: Request, res: Response) => {
+integrationRoutes.post(
+  '/erp/push-open-order/:itemId',
+  requirePermission('oor:edit_status'),
+  async (req: RbacRequest, res: Response) => {
   try {
-    const item = await prisma.moduleItem.findUnique({ where: { id: req.params.itemId as string } })
+    const orgId = getActingOrgId(req)
+    const item = await prisma.moduleItem.findFirst({
+      where: {
+        id: req.params.itemId as string,
+        module: { type: 'OPEN_ORDERS', department: { orgId } },
+      },
+    })
     if (!item) return res.status(404).json({ ok: false, error: 'item not found' })
-    const integration = await prisma.integration.findFirst({ where: { type: 'ERP_KAREVE_SYNC' } })
+    const integration = await prisma.integration.findFirst({
+      where: { type: 'ERP_KAREVE_SYNC', orgId },
+    })
     const path = getOutbound(integration).openOrders?.erpPath || '/open-orders'
-    const result = await pushToErp(prisma, path, [mapOpenOrderForErp(item.data as any)])
+    const result = await pushToErp(prisma, path, [mapOpenOrderForErp(item.data as any)], orgId)
     res.json({ ok: true, ...result })
   } catch (err) {
     console.error('[integrations] POST /erp/push-open-order error:', err)

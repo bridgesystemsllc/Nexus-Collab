@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import {
   fetchErpSkus,
   fetchErpInventory,
@@ -10,6 +10,7 @@ import {
 import { ERP_FEEDS, getRouting, resolveTargetModule } from './erpRouting'
 import { mergeOpenOrderIntoData } from './erpOpenOrders'
 import { statusFor, statusFromStock } from './inventoryStatus'
+import { reconcileErpOpenOrderLines, type StoredOpenOrder } from '../services/oor/erpLineSync'
 
 // Average monthly demand per SKU (units), used to derive coverage months.
 // Demand is NOT part of the ERP stock feed, so it is supplied here for the
@@ -129,7 +130,8 @@ const FEED_SYNCS: Record<
     syncErpComponents(prisma, moduleId, erpPath ?? undefined, orgId),
   pricing: (prisma, moduleId, erpPath, orgId) =>
     syncErpPricing(prisma, moduleId, erpPath ?? undefined, orgId),
-  cm: (prisma, moduleId, erpPath, orgId) => syncErpCm(prisma, moduleId, erpPath ?? undefined, orgId),
+  cm: (prisma, moduleId, erpPath, orgId) =>
+    syncErpCm(prisma, moduleId, erpPath ?? undefined, orgId),
   openOrders: (prisma, moduleId, erpPath, orgId) =>
     syncErpOpenOrders(prisma, moduleId, erpPath ?? undefined, orgId),
 }
@@ -148,12 +150,9 @@ export interface ErpSyncOrchestratorResult {
  * Fully defensive: missing routing → defaults; missing module → skip the feed
  * (never throws for a single feed's resolution).
  */
-export async function syncErp(prisma: PrismaClient, orgId?: string): Promise<ErpSyncOrchestratorResult> {
-  const whereClause: { type: string; orgId?: string } = { type: 'ERP_KAREVE_SYNC' }
-  if (orgId) whereClause.orgId = orgId
-
+export async function syncErp(prisma: PrismaClient, orgId: string): Promise<ErpSyncOrchestratorResult> {
   const integration = await prisma.integration.findFirst({
-    where: whereClause,
+    where: { type: 'ERP_KAREVE_SYNC', orgId },
   })
   const routing = getRouting(integration)
 
@@ -177,7 +176,7 @@ export async function syncErp(prisma: PrismaClient, orgId?: string): Promise<Erp
       continue
     }
 
-    const targetModule = await resolveTargetModule(prisma, feed.key, routing)
+    const targetModule = await resolveTargetModule(prisma, feed.key, routing, orgId)
     if (!targetModule) {
       // No module to write to — skip this feed without throwing.
       feeds[feed.key] = inert
@@ -557,12 +556,14 @@ export async function syncErpCm(
  * always has one). Returns null only when there is no Operations department at
  * all (nothing to attach to), in which case the caller no-ops.
  */
-export async function ensureOpenOrdersModule(prisma: PrismaClient) {
-  const existing = await prisma.departmentModule.findFirst({ where: { type: 'OPEN_ORDERS' } })
+export async function ensureOpenOrdersModule(prisma: PrismaClient, orgId: string) {
+  const existing = await prisma.departmentModule.findFirst({
+    where: { type: 'OPEN_ORDERS', department: { orgId } },
+  })
   if (existing) return existing
 
   const prod = await prisma.departmentModule.findFirst({
-    where: { type: 'PRODUCTION_TRACKING' },
+    where: { type: 'PRODUCTION_TRACKING', department: { orgId } },
   })
   if (!prod) return null
 
@@ -590,9 +591,18 @@ export async function syncErpOpenOrders(
   orgId?: string,
 ): Promise<ErpSyncResult> {
   const mod = targetModuleId
-    ? await prisma.departmentModule.findUnique({ where: { id: targetModuleId } })
-    : await ensureOpenOrdersModule(prisma)
+    ? await prisma.departmentModule.findFirst({
+        where: { id: targetModuleId, ...(orgId ? { department: { orgId } } : {}) },
+      })
+    : orgId
+      ? await ensureOpenOrdersModule(prisma, orgId)
+      : null
   if (!mod) return { recordsProcessed: 0, created: 0, updated: 0 }
+  const department = await prisma.department.findUnique({
+    where: { id: mod.departmentId },
+    select: { orgId: true },
+  })
+  if (!department) return { recordsProcessed: 0, created: 0, updated: 0 }
 
   const existing = await prisma.moduleItem.findMany({ where: { moduleId: mod.id } })
   const byErpId = new Map<string, (typeof existing)[number]>()
@@ -604,20 +614,25 @@ export async function syncErpOpenOrders(
     if (po) byPo.set(String(po), item)
   }
 
-  const records = await fetchErpOpenOrders(prisma, erpPath, orgId)
+  const records = await fetchErpOpenOrders(prisma, erpPath, department.orgId)
   const now = new Date().toISOString()
   let created = 0
   let updated = 0
+  const seenItemIds = new Set<string>()
+  const syncedOrders: StoredOpenOrder[] = []
 
   for (const erp of records) {
     const match =
       (erp.erpPoId && byErpId.get(erp.erpPoId)) || (erp.poNumber && byPo.get(erp.poNumber)) || null
     if (match) {
       const data = mergeOpenOrderIntoData((match.data as any) ?? {}, erp, now)
-      await prisma.moduleItem.update({
+      const saved = await prisma.moduleItem.update({
         where: { id: match.id },
         data: { data, status: data.poStatus },
+        select: { id: true, data: true },
       })
+      seenItemIds.add(saved.id)
+      syncedOrders.push({ moduleItemId: saved.id, data: saved.data as Record<string, any> })
       updated++
     } else {
       const data = mergeOpenOrderIntoData(
@@ -625,12 +640,49 @@ export async function syncErpOpenOrders(
         erp,
         now,
       )
-      await prisma.moduleItem.create({
+      const saved = await prisma.moduleItem.create({
         data: { moduleId: mod.id, data, status: data.poStatus, sortOrder: 0 },
+        select: { id: true, data: true },
       })
+      seenItemIds.add(saved.id)
+      syncedOrders.push({ moduleItemId: saved.id, data: saved.data as Record<string, any> })
       created++
     }
   }
 
+  syncedOrders.push(...await retainOrCloseMissingOpenOrders(prisma, existing, seenItemIds, now))
+
+  await reconcileErpOpenOrderLines(prisma, department.orgId, mod.id, syncedOrders, new Date(now))
+
   return { recordsProcessed: records.length, created, updated }
+}
+
+/**
+ * An open-feed omission closes only items previously stamped by this ERP.
+ * Local/manual items are carried into reconciliation unchanged so their OOR
+ * lines are not mistaken for disappeared ERP lines.
+ */
+export async function retainOrCloseMissingOpenOrders(
+  prisma: PrismaClient,
+  existing: Array<{ id: string; data: Prisma.JsonValue; status: string | null }>,
+  seenItemIds: Set<string>,
+  now: string,
+): Promise<StoredOpenOrder[]> {
+  const snapshots: StoredOpenOrder[] = []
+  for (const item of existing) {
+    if (seenItemIds.has(item.id)) continue
+    const previous = (item.data as Record<string, any>) ?? {}
+    if (previous.source !== 'ERP_KAREVE') {
+      snapshots.push({ moduleItemId: item.id, data: previous })
+      continue
+    }
+    const data = { ...previous, poStatus: 'Closed', erpLastSyncAt: now }
+    const saved = await prisma.moduleItem.update({
+      where: { id: item.id },
+      data: { data, status: 'Closed' },
+      select: { id: true, data: true },
+    })
+    snapshots.push({ moduleItemId: saved.id, data: saved.data as Record<string, any> })
+  }
+  return snapshots
 }

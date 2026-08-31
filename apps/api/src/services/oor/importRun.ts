@@ -97,6 +97,7 @@ export async function runImport(
   }
 
   const report = await adapter.load(input)
+  const warnings = [...report.warnings]
 
   const run = await prisma.oorReportRun.create({
     data: {
@@ -110,8 +111,8 @@ export async function runImport(
       sourceAdapter: adapter.key,
       importedById: input.importedById,
       status: 'importing',
-      parseWarnings: report.warnings as unknown as Prisma.InputJsonValue,
-      parseWarningCount: report.warnings.length,
+      parseWarnings: warnings as unknown as Prisma.InputJsonValue,
+      parseWarningCount: warnings.length,
       rowCount: report.lines.length,
     },
     select: { id: true },
@@ -122,8 +123,12 @@ export async function runImport(
   let nodesWritten = 0
   let commentsImported = 0
 
-  for (const line of report.lines) {
-    const written = await writeLine(prisma, run.id, input, line, now)
+  for (const [index, line] of report.lines.entries()) {
+    const written = await writeLine(prisma, run.id, input, line, now, index + 1)
+    if (written.warning) {
+      warnings.push(written.warning)
+      continue
+    }
     if (written.created) created++
     else updated++
     nodesWritten += written.nodesWritten
@@ -132,7 +137,11 @@ export async function runImport(
 
   await prisma.oorReportRun.update({
     where: { id: run.id },
-    data: { status: 'ready' },
+    data: {
+      status: 'ready',
+      parseWarnings: warnings as unknown as Prisma.InputJsonValue,
+      parseWarningCount: warnings.length,
+    },
   })
 
   return {
@@ -141,7 +150,7 @@ export async function runImport(
     updated,
     nodesWritten,
     commentsImported,
-    warnings: report.warnings,
+    warnings,
   }
 }
 
@@ -151,13 +160,14 @@ async function writeLine(
   input: RunImportInput,
   line: ParsedLine,
   now: Date,
-): Promise<{ created: boolean; nodesWritten: number; commentsImported: number }> {
+  rowNumber: number,
+): Promise<{ created: boolean; nodesWritten: number; commentsImported: number; warning?: ParseWarning }> {
   const brandId = input.brandId || null
 
   // The unique index covers nullable columns, and Postgres treats NULLs as
   // distinct — so an upsert would create a second row for every Format B line,
   // which has no sales order number. Match explicitly instead.
-  const existing = await prisma.oorLine.findFirst({
+  let existing = await prisma.oorLine.findFirst({
     where: {
       orgId: input.orgId,
       brandId,
@@ -171,8 +181,43 @@ async function writeLine(
       statusSource: true,
       statusOverrideReason: true,
       ownerId: true,
+      closedAt: true,
+      productionOrderItemId: true,
+      rawRow: true,
+      externalIds: true,
     },
   })
+
+  // An ERP projection starts without a report brand or sales-order number.
+  // Attach an import to it only when PO + item identifies exactly one linked
+  // production line. Repeated SKUs stay unmodified and are surfaced for review.
+  if (!existing && line.customerPoNumber && line.itemNumber) {
+    const linked = await prisma.oorLine.findMany({
+      where: {
+        orgId: input.orgId,
+        productionOrderItemId: { not: null },
+        customerPoNumber: { equals: line.customerPoNumber, mode: 'insensitive' },
+        itemNumber: { equals: line.itemNumber, mode: 'insensitive' },
+      },
+      take: 2,
+    })
+    if (linked.length === 1) {
+      existing = linked[0]
+    } else if (linked.length > 1) {
+      return {
+        created: false,
+        nodesWritten: 0,
+        commentsImported: 0,
+        warning: {
+          rowNumber,
+          column: 'PO / Item',
+          rawValue: `${line.customerPoNumber} / ${line.itemNumber}`,
+          storedValue: null,
+          reason: 'More than one ERP production line matches this report row. Review the line numbers before importing it.',
+        },
+      }
+    }
+  }
 
   // Carry forward anything a person has edited on the existing tree before it
   // is replaced. Keyed on (level, job, part) because ids do not survive a
@@ -228,6 +273,7 @@ async function writeLine(
   }
   const lineStatus = deriveLineStatus(deriveInput)
   const riskLevel = deriveRiskLevel(deriveInput, now)
+  const lineIsOpen = isLineOpen(line.qtyRemaining, lineStatus)
 
   // Everything the report owns. Deliberately excludes ownerId, statusSource,
   // statusOverrideReason and every collaboration relation.
@@ -253,9 +299,44 @@ async function writeLine(
     cmCode: line.cmCode,
     jobStatus: line.jobStatus,
     riskLevel,
-    isOpen: isLineOpen(line.qtyRemaining, lineStatus),
+    isOpen: lineIsOpen,
+    closedAt: lineIsOpen ? null : existing?.closedAt ?? now,
     externalIds: line.externalIds as unknown as Prisma.InputJsonValue,
     rawRow: line.rawRow as unknown as Prisma.InputJsonValue,
+    updatedById: input.importedById,
+  }
+  const existingRaw =
+    existing?.rawRow && typeof existing.rawRow === 'object' && !Array.isArray(existing.rawRow)
+      ? existing.rawRow as Record<string, unknown>
+      : {}
+  const existingExternalIds =
+    existing?.externalIds && typeof existing.externalIds === 'object' && !Array.isArray(existing.externalIds)
+      ? existing.externalIds as Record<string, unknown>
+      : {}
+  // Once a row is linked to production, the spreadsheet only enriches it.
+  // ERP quantities, price, dates, manufacturer routing and lifecycle remain
+  // authoritative even when the uploaded file is stale.
+  const linkedReportEnrichment = {
+    reportRunId: runId,
+    brandId,
+    channelTag: line.channelTag,
+    salesOrderNumber: line.salesOrderNumber,
+    custPartNumber: line.custPartNumber,
+    shipDate: line.shipDate,
+    origRequiredDate: line.origRequiredDate,
+    workOrderNumber: line.workOrderNumber,
+    jobNumber: line.jobNumber,
+    valueSource: num(line.valueSource),
+    valueMismatch: line.valueMismatch,
+    riskLevel,
+    externalIds: {
+      ...existingExternalIds,
+      ...line.externalIds,
+    } as Prisma.InputJsonValue,
+    rawRow: {
+      ...existingRaw,
+      importedReport: line.rawRow,
+    } as Prisma.InputJsonValue,
     updatedById: input.importedById,
   }
 
@@ -265,11 +346,17 @@ async function writeLine(
   if (existing) {
     await prisma.oorLine.update({
       where: { id: existing.id },
-      data: {
-        ...reportOwnedFields,
-        // A status somebody set by hand survives every future import.
-        ...(existing.statusSource === 'manual' ? {} : { lineStatus }),
-      },
+      data: existing.productionOrderItemId
+        ? linkedReportEnrichment
+        : {
+            ...reportOwnedFields,
+            brandId,
+            customerPoNumber: line.customerPoNumber,
+            salesOrderNumber: line.salesOrderNumber,
+            itemNumber: line.itemNumber,
+            // A status somebody set by hand survives every future import.
+            ...(existing.statusSource === 'manual' ? {} : { lineStatus }),
+          },
     })
     lineId = existing.id
   } else {

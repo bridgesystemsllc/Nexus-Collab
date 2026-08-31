@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
 # Reconcile the environment after a task merge:
 #   1. Install any new/changed dependencies.
 #   2. Regenerate the Prisma client (prevents client/schema drift).
@@ -93,6 +96,6 @@ echo "── schema in sync, session store intact ──"
 # The API also self-heals on boot; this runs it at merge time so the fix does
 # not wait for a restart.
 echo "── seeding roles and permissions ──"
-cd "$(dirname "$0")/.."
+cd "$ROOT_DIR"
 pnpm --filter @nexus/shared build
 pnpm --filter @nexus/prisma seed:rbac

@@ -2,6 +2,14 @@ import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../index'
 import { syncErpSkuPipeline } from '../lib/erpSync'
+import {
+  OpenOrderEditForbiddenError,
+  ScopedModuleItemNotFoundError,
+  updateModuleItemForOrg,
+} from '../services/oor/erpLineSync'
+import { requirePermission, sendError, type RbacRequest } from '../middleware/requirePermission'
+import { can } from '../services/rbac/resolve'
+import { getActingOrgId } from '../middleware/billingContext'
 
 export const departmentRoutes: ReturnType<typeof Router> = Router()
 
@@ -251,14 +259,35 @@ departmentRoutes.post('/:id/modules/:mid/items', async (req: Request, res: Respo
 })
 
 // ─── Update module item ─────────────────────────────────────
-departmentRoutes.patch('/:id/modules/:mid/items/:iid', async (req: Request, res: Response) => {
+departmentRoutes.patch(
+  '/:id/modules/:mid/items/:iid',
+  requirePermission('departments:read'),
+  async (req: RbacRequest, res: Response) => {
   try {
-    const item = await prisma.moduleItem.update({
-      where: { id: req.params.iid as string },
-      data: req.body,
+    const orgId = getActingOrgId(req)
+    const patch = {
+      ...('data' in req.body ? { data: req.body.data } : {}),
+      ...('status' in req.body ? { status: req.body.status } : {}),
+      ...('sortOrder' in req.body ? { sortOrder: req.body.sortOrder } : {}),
+    }
+    const item = await updateModuleItemForOrg(prisma, {
+      orgId,
+      departmentId: req.params.id as string,
+      moduleId: req.params.mid as string,
+      itemId: req.params.iid as string,
+      canEditOpenOrders: can(req.subject!, 'oor:edit_status'),
+      patch,
     })
     res.json(item)
   } catch (error) {
+    if (error instanceof ScopedModuleItemNotFoundError) {
+      return sendError(res, 'NOT_FOUND', 'Module item not found.')
+    }
+    if (error instanceof OpenOrderEditForbiddenError) {
+      return sendError(res, 'FORBIDDEN', 'You do not have permission to edit production orders.', {
+        required: 'oor:edit_status',
+      })
+    }
     console.error('[departments] PATCH module item error:', error)
     res.status(500).json({ error: 'Failed to update module item' })
   }

@@ -104,7 +104,7 @@ export async function getErpConfig(prisma: PrismaClient, orgId?: string): Promis
     if (orgId) whereClause.orgId = orgId
 
     const integration = await prisma.integration.findFirst({
-      where: whereClause,
+      where: { type: 'ERP_KAREVE_SYNC', ...(orgId ? { orgId } : {}) },
     })
     const config = integration?.config as
       | { iv?: string; encrypted?: string; tag?: string }

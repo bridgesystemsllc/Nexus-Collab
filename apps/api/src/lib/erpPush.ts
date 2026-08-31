@@ -144,8 +144,9 @@ export async function pushToErp(
   prisma: PrismaClient,
   path: string,
   records: Record<string, any>[],
+  orgId?: string,
 ): Promise<PushToErpResult> {
-  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
 
   // DRY RUN — no real credentials, so report what WOULD be sent without sending.
   if (!configured || !apiUrl || !apiKey) {

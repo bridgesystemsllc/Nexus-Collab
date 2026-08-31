@@ -74,30 +74,30 @@ const dailyBriefing: JobFn = async (prisma) => {
 
 const erpSync: JobFn = async (prisma) => {
   const integrations = await prisma.integration.findMany({
-    where: { type: 'ERP_KAREVE_SYNC' },
-    select: { orgId: true },
+    where: { type: 'ERP_KAREVE_SYNC', status: 'CONNECTED' },
+    select: { orgId: true, config: true },
   })
-
-  if (integrations.length === 0) {
-    return { summary: 'no ERP integrations configured' }
-  }
-
-  const results: string[] = []
-  for (const integration of integrations) {
-    try {
-      const result = await syncErp(prisma, integration.orgId)
-      const feeds = (result as any)?.feeds ?? {}
-      const names = Object.keys(feeds)
-      const feedSummary = names.length
-        ? names.map((n) => `${n}: ${feeds[n]?.updated ?? 0}`).join(', ')
-        : 'no feeds'
-      results.push(`org ${integration.orgId.slice(0, 8)}: ${feedSummary}`)
-    } catch (err) {
-      results.push(`org ${integration.orgId.slice(0, 8)}: error - ${err instanceof Error ? err.message : String(err)}`)
+  const feeds: Record<string, { updated: number }> = {}
+  const configuredOrgIds = new Set(
+    integrations
+      .filter((integration) => {
+        const config = integration.config as Record<string, unknown> | null
+        return Boolean(config?.iv && config?.encrypted && config?.tag)
+      })
+      .map((integration) => integration.orgId),
+  )
+  for (const orgId of configuredOrgIds) {
+    const result = await syncErp(prisma, orgId)
+    for (const [name, feed] of Object.entries(result.feeds)) {
+      feeds[name] = { updated: (feeds[name]?.updated ?? 0) + feed.updated }
     }
   }
-
-  return { summary: results.join('; ') }
+  const names = Object.keys(feeds)
+  return {
+    summary: names.length
+      ? names.map((n) => `${n}: ${feeds[n]?.updated ?? 0} updated`).join(', ')
+      : 'no ERP feeds configured',
+  }
 }
 
 // ─── Automation runner ───────────────────────────────────────

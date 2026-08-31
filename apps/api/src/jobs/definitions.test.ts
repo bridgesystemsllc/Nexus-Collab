@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { JOBS, JOB_GROUPS, jobsFor } from './definitions'
 
 // The job registry is what the scheduler drives. A job that falls out of a
@@ -66,5 +66,31 @@ describe('jobsFor', () => {
   it('the union of all groups is every job', () => {
     const viaGroups = JOB_GROUPS.flatMap((g) => jobsFor(g))
     expect(new Set(viaGroups.map((j) => j.name)).size).toBe(JOBS.length)
+  })
+})
+
+describe('ERP scheduled sync', () => {
+  it('only selects connected ERP integrations', async () => {
+    const findMany = vi.fn().mockResolvedValue([])
+    const job = JOBS.find((candidate) => candidate.name === 'erp-sync')
+    expect(job).toBeDefined()
+
+    await job!.run({ integration: { findMany } } as any)
+
+    expect(findMany).toHaveBeenCalledWith({
+      where: { type: 'ERP_KAREVE_SYNC', status: 'CONNECTED' },
+      select: { orgId: true, config: true },
+    })
+  })
+
+  it('does not sync a connected row whose ERP credentials are missing', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      { orgId: 'org_without_credentials', config: { routing: {} } },
+    ])
+    const job = JOBS.find((candidate) => candidate.name === 'erp-sync')!
+
+    await expect(job.run({ integration: { findMany } } as any)).resolves.toEqual({
+      summary: 'no ERP feeds configured',
+    })
   })
 })
