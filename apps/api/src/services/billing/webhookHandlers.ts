@@ -2,6 +2,7 @@
 import type { Tx } from '../users/auditService'
 import { diff } from '../users/auditService'
 import type { HandlerContext, LinkedSubscription } from './webhookProcessor'
+import { extractCustomerId } from './webhookProcessor'
 import type { ProviderEvent } from './provider'
 import {
   toProviderSubscription, toProviderInvoice, toProviderPaymentMethod,
@@ -290,11 +291,39 @@ export async function handlePaymentMethodAttached(tx: Tx, event: ProviderEvent, 
   })
 }
 
+/**
+ * `payment_method.detached` cannot go through `requireContext`/`ctx.orgId`
+ * like every other handler: Stripe sends the payment method object AFTER
+ * detachment, so its top-level `customer` is null (see the doc comment on
+ * `StripePaymentMethodShape.customer`) — `ctx.orgId`, resolved centrally in
+ * processEvent from that same null field, is therefore also null here on a
+ * real payload, every time, not just on some edge case. The org instead
+ * comes from OUR OWN mirror: the BillingPaymentMethod row this method was
+ * upserted into at attach time already carries `orgId` directly, keyed by
+ * `stripePaymentMethodId` — no customer id needed at all. Only when that row
+ * was never mirrored (the attach event predates this handler, or was lost)
+ * does this fall back to `previous_attributes.customer`, the one place
+ * Stripe actually puts the prior owner on this event.
+ */
 export async function handlePaymentMethodDetached(tx: Tx, event: ProviderEvent, ctx: HandlerContext): Promise<void> {
-  const { orgId } = requireContext(ctx)
   const raw = event.data as unknown as StripePaymentMethodShape
-
   const existing = await tx.billingPaymentMethod.findUnique({ where: { stripePaymentMethodId: raw.id } })
+
+  let orgId = existing?.orgId ?? null
+  if (!orgId) {
+    const previousCustomerId = extractCustomerId({ customer: raw.previous_attributes?.customer })
+    const subscription = previousCustomerId
+      ? await tx.billingSubscription.findFirst({ where: { stripeCustomerId: previousCustomerId } })
+      : null
+    orgId = subscription?.orgId ?? ctx.orgId
+  }
+  if (!orgId) {
+    // Nothing resolved this org at all — genuinely unattributable. Throw so
+    // processEvent returns `failed` and the event retries and is visible,
+    // rather than dropping a real detach silently.
+    throw new Error('billing webhook: could not resolve an org for a detached payment method')
+  }
+
   if (!existing) {
     // Already gone — a redelivery, or it was never mirrored (attached before
     // this handler existed). Still audited: the trail should show Stripe

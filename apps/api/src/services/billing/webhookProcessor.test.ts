@@ -851,7 +851,7 @@ describe('payment_method.attached / .detached', () => {
     expect(entry).toBeDefined()
   })
 
-  it('detach removes the BillingPaymentMethod and audits it', async () => {
+  it('detach resolves the org from the mirrored row, not from event.data.customer (real Stripe payload has customer: null)', async () => {
     const prisma = createFakePrisma({
       subscriptions: [subscriptionFixture({ id: 'sub_row_61', orgId: 'org_61', stripeCustomerId: 'cus_61' })],
     })
@@ -861,15 +861,47 @@ describe('payment_method.attached / .detached', () => {
     }))
     expect(prisma._paymentMethods.has('pm_1')).toBe(true)
 
+    // The real shape of a `.detached` payload: `customer` is null (Stripe
+    // sends the object AFTER detachment) — no `previous_attributes` needed
+    // here because the BillingPaymentMethod row already carries orgId from
+    // the attach above.
     const outcome = await processEvent(prisma as any, makeEvent({
       id: 'evt_pm_detach', type: 'payment_method.detached',
-      data: stripePaymentMethodData({ customer: 'cus_61' }),
+      data: stripePaymentMethodData({ customer: null }),
     }))
     expect(outcome.status).toBe('processed')
     expect(prisma._paymentMethods.has('pm_1')).toBe(false)
 
     const entry = prisma._auditLogs.find((a) => a.action === 'billing.payment_method_removed')
     expect(entry).toBeDefined()
+    expect(entry!.orgId).toBe('org_61')
+  })
+
+  it('detach of a method never mirrored falls back to previous_attributes.customer', async () => {
+    const prisma = createFakePrisma({
+      subscriptions: [subscriptionFixture({ id: 'sub_row_62', orgId: 'org_62', stripeCustomerId: 'cus_62' })],
+    })
+    // Never attached in this test — nothing in BillingPaymentMethod for
+    // pm_1, so the only route to an orgId is previous_attributes.
+    const outcome = await processEvent(prisma as any, makeEvent({
+      id: 'evt_pm_detach_unmirrored', type: 'payment_method.detached',
+      data: stripePaymentMethodData({ customer: null, previous_attributes: { customer: 'cus_62' } }),
+    }))
+    expect(outcome.status).toBe('processed')
+
+    const entry = prisma._auditLogs.find((a) => a.action === 'billing.payment_method_removed')
+    expect(entry).toBeDefined()
+    expect(entry!.orgId).toBe('org_62')
+    expect(entry!.entityId).toBeNull() // nothing existed to delete
+  })
+
+  it('detach fails loudly (not unhandled) when no org can be resolved at all', async () => {
+    const prisma = createFakePrisma({ subscriptions: [] })
+    const outcome = await processEvent(prisma as any, makeEvent({
+      id: 'evt_pm_detach_orphan', type: 'payment_method.detached',
+      data: stripePaymentMethodData({ customer: null }),
+    }))
+    expect(outcome.status).toBe('failed')
   })
 })
 
