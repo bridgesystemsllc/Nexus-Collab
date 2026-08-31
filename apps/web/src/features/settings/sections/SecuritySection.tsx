@@ -58,7 +58,7 @@ export function SecuritySection({ me }: { me: MeBundle }) {
   return (
     <div className="space-y-4">
       <Section title="How you sign in" description="Identity comes from Microsoft Entra, so there is no Nexus password.">
-        <div className="flex items-start gap-2.5 rounded-lg border px-3 py-2.5" style={{ borderColor: 'var(--border)', background: 'var(--bg-subtle)' }}>
+        <div className="flex items-start gap-2.5 rounded-lg border px-3 py-2.5" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
           <ShieldCheck size={15} className="mt-0.5 shrink-0" style={{ color: 'var(--success)' }} />
           <div>
             <p className="text-xs text-[var(--text-primary)]">Microsoft single sign-on</p>
@@ -92,7 +92,7 @@ export function SecuritySection({ me }: { me: MeBundle }) {
               onClick={() => { setMessage(null); setError(null); signOut.mutate() }}
               disabled={signOut.isPending}
               className="shrink-0 rounded-lg border px-2.5 py-1.5 text-xs font-medium disabled:opacity-50"
-              style={{ borderColor: 'var(--border)', color: 'var(--danger)' }}
+              style={{ borderColor: 'var(--border-default)', color: 'var(--danger)' }}
             >
               {signOut.isPending ? 'Signing out…' : `Sign out ${others} other${others === 1 ? '' : 's'}`}
             </button>
@@ -118,7 +118,7 @@ export function SecuritySection({ me }: { me: MeBundle }) {
               <li
                 key={s.id}
                 className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
-                style={{ borderColor: s.isCurrent ? 'var(--accent)' : 'var(--border)' }}
+                style={{ borderColor: s.isCurrent ? 'var(--accent)' : 'var(--border-default)' }}
               >
                 <div className="flex min-w-0 items-center gap-2">
                   <Monitor size={13} className="shrink-0 text-[var(--text-tertiary)]" />

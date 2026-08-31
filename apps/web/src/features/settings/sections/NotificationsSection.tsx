@@ -83,7 +83,7 @@ export function NotificationsSection({ me }: { me: MeBundle }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[520px]">
             <thead>
-              <tr className="border-b" style={{ borderColor: 'var(--border)' }}>
+              <tr className="border-b" style={{ borderColor: 'var(--border-default)' }}>
                 <th className="pb-2 text-left text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">
                   Event
                 </th>
@@ -103,7 +103,7 @@ export function NotificationsSection({ me }: { me: MeBundle }) {
               {events.map((eventKey) => {
                 const meta = EVENT_LABELS[eventKey] ?? { label: eventKey, description: '' }
                 return (
-                  <tr key={eventKey} className="border-b last:border-0" style={{ borderColor: 'var(--border)' }}>
+                  <tr key={eventKey} className="border-b last:border-0" style={{ borderColor: 'var(--border-default)' }}>
                     <td className="py-2.5 pr-4">
                       <p className="text-xs text-[var(--text-primary)]">{meta.label}</p>
                       {meta.description && (
@@ -155,7 +155,7 @@ export function NotificationsSection({ me }: { me: MeBundle }) {
                 style={
                   active
                     ? { background: 'var(--accent)', color: '#fff', borderColor: 'transparent' }
-                    : { background: 'var(--bg-surface)', color: 'var(--text-secondary)', borderColor: 'var(--border)' }
+                    : { background: 'var(--bg-surface)', color: 'var(--text-secondary)', borderColor: 'var(--border-default)' }
                 }
               >
                 {f === 'off' ? 'Never' : f}

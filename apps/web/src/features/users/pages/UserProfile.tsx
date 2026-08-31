@@ -40,7 +40,7 @@ export function UserProfile({ userId, onBack }: { userId: string; onBack: () => 
     return (
       <div className="mx-auto max-w-[1000px] p-6">
         <BackButton onBack={onBack} />
-        <div className="mt-4 rounded-xl border py-16 text-center" style={{ borderColor: 'var(--border)' }}>
+        <div className="mt-4 rounded-xl border py-16 text-center" style={{ borderColor: 'var(--border-default)' }}>
           <p className="text-sm text-[var(--text-primary)]">Could not load this person</p>
         </div>
       </div>
@@ -59,13 +59,13 @@ export function UserProfile({ userId, onBack }: { userId: string; onBack: () => 
       <BackButton onBack={onBack} />
 
       {toast && (
-        <div role="status" className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: 'var(--border)', background: 'var(--bg-subtle)' }}>
+        <div role="status" className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
           {toast}
         </div>
       )}
 
       {/* Header */}
-      <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+      <div className="rounded-xl border p-4" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <Avatar user={user} size={52} />
@@ -88,13 +88,13 @@ export function UserProfile({ userId, onBack }: { userId: string; onBack: () => 
           {showAuthority && (
             <div className="flex flex-wrap gap-2">
               {can('roles:assign') && (
-                <button onClick={() => setDialog('role')} className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]" style={{ borderColor: 'var(--border)' }}>
+                <button onClick={() => setDialog('role')} className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]" style={{ borderColor: 'var(--border-default)' }}>
                   <UserCog size={12} /> Change role
                 </button>
               )}
               {can('users:deactivate') && (
                 <>
-                  <button onClick={() => setDialog('status')} className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs" style={{ borderColor: 'var(--border)', color: user.lifecycleStatus === 'active' ? 'var(--danger)' : 'var(--success)' }}>
+                  <button onClick={() => setDialog('status')} className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs" style={{ borderColor: 'var(--border-default)', color: user.lifecycleStatus === 'active' ? 'var(--danger)' : 'var(--success)' }}>
                     {user.lifecycleStatus === 'active' ? <><ShieldOff size={12} /> Deactivate</> : <><Shield size={12} /> Reactivate</>}
                   </button>
                   <button
@@ -104,7 +104,7 @@ export function UserProfile({ userId, onBack }: { userId: string; onBack: () => 
                       qc.invalidateQueries({ queryKey: ['users'] })
                     }}
                     className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs text-[var(--text-secondary)]"
-                    style={{ borderColor: 'var(--border)' }}
+                    style={{ borderColor: 'var(--border-default)' }}
                   >
                     <LogOut size={12} /> Force logout
                   </button>
@@ -116,7 +116,7 @@ export function UserProfile({ userId, onBack }: { userId: string; onBack: () => 
       </div>
 
       {/* Tabs */}
-      <div className="flex w-fit gap-1 rounded-xl border p-1" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+      <div className="flex w-fit gap-1 rounded-xl border p-1" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
         {(['overview', 'permissions', 'activity'] as Tab[]).map((t) => (
           <button
             key={t}
@@ -178,10 +178,10 @@ function Overview({ user }: { user: DirectoryUser }) {
     ...(user.deactivatedAt ? ([['Deactivated', relativeTime(user.deactivatedAt)]] as [string, string][]) : []),
   ]
   return (
-    <section className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+    <section className="rounded-xl border p-4" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
       <dl className="grid grid-cols-1 gap-x-8 gap-y-1 sm:grid-cols-2">
         {rows.map(([k, v]) => (
-          <div key={k} className="flex justify-between gap-3 border-b py-1.5" style={{ borderColor: 'var(--border)' }}>
+          <div key={k} className="flex justify-between gap-3 border-b py-1.5" style={{ borderColor: 'var(--border-default)' }}>
             <dt className="text-xs text-[var(--text-tertiary)]">{k}</dt>
             <dd className="text-xs text-[var(--text-primary)]">{v}</dd>
           </div>
@@ -243,7 +243,7 @@ function Permissions({
   }
 
   return (
-    <section className="rounded-xl border p-4" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+    <section className="rounded-xl border p-4" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
       {permissions.length === 0 ? (
         <p className="py-8 text-center text-xs text-[var(--text-tertiary)]">
           No permissions. An invited, suspended or deactivated account holds none,
@@ -261,7 +261,7 @@ function Permissions({
                 <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">{resource}</p>
                 <ul className="space-y-1">
                   {items.map((p) => (
-                    <li key={p.key} className="flex items-center justify-between gap-3 border-b py-1" style={{ borderColor: 'var(--border)' }}>
+                    <li key={p.key} className="flex items-center justify-between gap-3 border-b py-1" style={{ borderColor: 'var(--border-default)' }}>
                       <span className="font-mono text-[11px] text-[var(--text-primary)]">{p.key}</span>
                       <div className="flex items-center gap-1.5">
                         {/* Where it came from, and why — the override reason on
@@ -299,7 +299,7 @@ function Permissions({
       )}
 
       {canManage && (
-        <div className="mt-5 rounded-lg border p-3" style={{ borderColor: 'var(--border)', background: 'var(--bg-subtle)' }}>
+        <div className="mt-5 rounded-lg border p-3" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
           <div className="mb-3 flex items-center gap-1.5">
             <Plus size={13} style={{ color: 'var(--accent)' }} />
             <p className="text-xs font-medium text-[var(--text-primary)]">Add or update an override</p>
@@ -313,7 +313,7 @@ function Permissions({
                 value={permissionKey}
                 onChange={(event) => setPermissionKey(event.target.value)}
                 className="rounded-lg border bg-[var(--bg-surface)] px-2.5 py-2 text-xs text-[var(--text-primary)]"
-                style={{ borderColor: 'var(--border)' }}
+                style={{ borderColor: 'var(--border-default)' }}
               >
                 <option value="">Choose a permission</option>
                 {(catalogue.data ?? []).map((group) => (
@@ -330,7 +330,7 @@ function Permissions({
                 value={effect}
                 onChange={(event) => setEffect(event.target.value as 'grant' | 'deny')}
                 className="rounded-lg border bg-[var(--bg-surface)] px-2.5 py-2 text-xs text-[var(--text-primary)]"
-                style={{ borderColor: 'var(--border)' }}
+                style={{ borderColor: 'var(--border-default)' }}
               >
                 <option value="grant">Grant</option>
                 <option value="deny">Deny</option>
@@ -340,7 +340,7 @@ function Permissions({
                 onChange={(event) => setReason(event.target.value)}
                 placeholder="Reason for this change"
                 className="rounded-lg border bg-[var(--bg-surface)] px-2.5 py-2 text-xs text-[var(--text-primary)] sm:col-span-2"
-                style={{ borderColor: 'var(--border)' }}
+                style={{ borderColor: 'var(--border-default)' }}
               />
               {error && <p className="text-xs text-[var(--danger)] sm:col-span-2">{error}</p>}
               <div className="sm:col-span-2">
@@ -365,7 +365,7 @@ function Permissions({
 function Activity({ rows }: { rows: AuditRow[] }) {
   if (rows.length === 0) {
     return (
-      <section className="rounded-xl border py-12 text-center" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+      <section className="rounded-xl border py-12 text-center" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
         <p className="text-xs text-[var(--text-tertiary)]">Nothing has happened to this account yet.</p>
       </section>
     )
@@ -375,7 +375,7 @@ function Activity({ rows }: { rows: AuditRow[] }) {
       {rows.map((row) => {
         const { diffs, reason, notes } = splitChanges(row.changes)
         return (
-          <article key={row.id} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+          <article key={row.id} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
             <p className="text-[11px] text-[var(--text-primary)]">{humaniseAction(row.action)}</p>
             {diffs.length > 0 && (
               <ul className="mt-1 space-y-0.5">
@@ -466,7 +466,7 @@ function ChangeRoleDialog({ user, onClose, onDone }: { user: DirectoryUser; onCl
       {error && <Alert>{error}</Alert>}
       <select
         value={roleId} onChange={(e) => { setRoleId(e.target.value); setError(null) }}
-        className="w-full rounded-lg border px-2.5 py-2 text-xs" style={{ borderColor: 'var(--border)' }}
+        className="w-full rounded-lg border px-2.5 py-2 text-xs" style={{ borderColor: 'var(--border-default)' }}
       >
         <option value="">Choose a role…</option>
         {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
@@ -482,7 +482,7 @@ function ChangeRoleDialog({ user, onClose, onDone }: { user: DirectoryUser; onCl
       <input
         value={reason} onChange={(e) => setReason(e.target.value)}
         placeholder="Reason (optional)"
-        className="w-full rounded-lg border px-2.5 py-2 text-xs" style={{ borderColor: 'var(--border)' }}
+        className="w-full rounded-lg border px-2.5 py-2 text-xs" style={{ borderColor: 'var(--border-default)' }}
       />
 
       <DialogActions
@@ -531,7 +531,7 @@ function ChangeStatusDialog({ user, onClose, onDone }: { user: DirectoryUser; on
       )}
 
       {!reactivating && (
-        <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className="w-full rounded-lg border px-2.5 py-2 text-xs" style={{ borderColor: 'var(--border)' }}>
+        <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)} className="w-full rounded-lg border px-2.5 py-2 text-xs" style={{ borderColor: 'var(--border-default)' }}>
           <option value="deactivated">Deactivate — no longer has access</option>
           <option value="suspended">Suspend — temporarily blocked</option>
         </select>
@@ -541,7 +541,7 @@ function ChangeStatusDialog({ user, onClose, onDone }: { user: DirectoryUser; on
         <input
           value={reason} onChange={(e) => { setReason(e.target.value); setError(null) }}
           placeholder="Why? (required)"
-          className="w-full rounded-lg border px-2.5 py-2 text-xs" style={{ borderColor: 'var(--border)' }}
+          className="w-full rounded-lg border px-2.5 py-2 text-xs" style={{ borderColor: 'var(--border-default)' }}
         />
         <p className="mt-1 text-[10px] text-[var(--text-tertiary)]">
           Recorded in the audit log, so whoever reviews this later knows why.
@@ -578,7 +578,7 @@ function Dialog({
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-md space-y-3 rounded-2xl border p-5 shadow-xl"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+        style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}
       >
         <h2 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h2>
         {children}
@@ -599,7 +599,7 @@ function DialogActions({
 }: { onClose: () => void; onConfirm: () => void; confirmLabel: string; disabled?: boolean; danger?: boolean }) {
   return (
     <div className="flex justify-end gap-2 pt-1">
-      <button onClick={onClose} className="rounded-lg border px-3 py-2 text-xs text-[var(--text-secondary)]" style={{ borderColor: 'var(--border)' }}>
+      <button onClick={onClose} className="rounded-lg border px-3 py-2 text-xs text-[var(--text-secondary)]" style={{ borderColor: 'var(--border-default)' }}>
         Cancel
       </button>
       <button

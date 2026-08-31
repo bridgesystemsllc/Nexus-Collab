@@ -32,7 +32,7 @@ export function PermissionPreview({ roleId }: { roleId: string | null }) {
 
   if (!roleId) {
     return (
-      <div className="rounded-lg border border-dashed border-[var(--border)] px-3 py-4 text-center">
+      <div className="rounded-lg border border-dashed border-[var(--border-default)] px-3 py-4 text-center">
         <p className="text-[11px] text-[var(--text-tertiary)]">
           Choose a role to see exactly what it allows.
         </p>
@@ -50,7 +50,7 @@ export function PermissionPreview({ roleId }: { roleId: string | null }) {
 
   if (isError || !data) {
     return (
-      <div className="rounded-lg border border-[var(--border)] px-3 py-3">
+      <div className="rounded-lg border border-[var(--border-default)] px-3 py-3">
         <p className="flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]">
           <ShieldAlert size={12} />
           Could not load this role's permissions. Assigning it will still work —
@@ -63,7 +63,7 @@ export function PermissionPreview({ roleId }: { roleId: string | null }) {
   const total = data.permissionsByResource.reduce((n, g) => n + g.permissions.length, 0)
 
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-subtle)] p-3">
+    <div className="rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-3">
       <div className="mb-2 flex items-baseline justify-between gap-2">
         <p className="text-[11px] font-medium text-[var(--text-primary)]">
           {/* "A Admin" reads as a typo the first time and every time after. */}

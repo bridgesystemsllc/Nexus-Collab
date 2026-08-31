@@ -50,7 +50,7 @@ export function AccessSection({ me }: { me: MeBundle }) {
   return (
     <div className="space-y-4">
       {toast && (
-        <p role="status" className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: 'var(--border)', background: 'var(--bg-subtle)' }}>
+        <p role="status" className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
           {toast}
         </p>
       )}
@@ -75,7 +75,7 @@ export function AccessSection({ me }: { me: MeBundle }) {
           {list.map((role) => {
             const open = role.id === selectedId
             return (
-              <li key={role.id} className="rounded-lg border" style={{ borderColor: open ? 'var(--accent)' : 'var(--border)' }}>
+              <li key={role.id} className="rounded-lg border" style={{ borderColor: open ? 'var(--accent)' : 'var(--border-default)' }}>
                 <button
                   onClick={() => setSelectedId(open ? null : role.id)}
                   aria-expanded={open}
@@ -103,7 +103,7 @@ export function AccessSection({ me }: { me: MeBundle }) {
                 </button>
 
                 {open && (
-                  <div className="border-t px-3 py-3" style={{ borderColor: 'var(--border)' }}>
+                  <div className="border-t px-3 py-3" style={{ borderColor: 'var(--border-default)' }}>
                     <RoleEditor
                       role={role}
                       catalogue={catalogue.data ?? []}
@@ -212,7 +212,7 @@ function RoleEditor({
                 return (
                   <label
                     key={perm.key}
-                    className={`flex items-start gap-2 rounded px-1.5 py-1 ${disabled ? 'opacity-55' : 'cursor-pointer hover:bg-[var(--bg-subtle)]'}`}
+                    className={`flex items-start gap-2 rounded px-1.5 py-1 ${disabled ? 'opacity-55' : 'cursor-pointer hover:bg-[var(--bg-surface)]'}`}
                     title={cannotAdd ? 'You cannot grant a permission you do not have yourself.' : perm.description ?? ''}
                   >
                     <input
@@ -244,10 +244,10 @@ function RoleEditor({
         ))}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3" style={{ borderColor: 'var(--border-default)' }}>
         <div className="flex gap-2">
           {canManage && (
-            <button onClick={onClone} className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs text-[var(--text-secondary)]" style={{ borderColor: 'var(--border)' }}>
+            <button onClick={onClone} className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs text-[var(--text-secondary)]" style={{ borderColor: 'var(--border-default)' }}>
               <Copy size={12} /> Clone
             </button>
           )}
@@ -257,7 +257,7 @@ function RoleEditor({
               disabled={remove.isPending || role.memberCount > 0}
               title={role.memberCount > 0 ? 'Move everyone off this role first.' : undefined}
               className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs disabled:opacity-40"
-              style={{ borderColor: 'var(--border)', color: 'var(--danger)' }}
+              style={{ borderColor: 'var(--border-default)', color: 'var(--danger)' }}
             >
               <Trash2 size={12} /> Delete
             </button>
@@ -268,7 +268,7 @@ function RoleEditor({
           <div className="flex items-center gap-2">
             {saved && !dirty && <span className="text-[11px]" style={{ color: 'var(--success)' }}>Saved</span>}
             {dirty && (
-              <button onClick={() => setKeys(new Set(role.permissionKeys))} className="rounded-lg border px-2.5 py-1.5 text-xs text-[var(--text-secondary)]" style={{ borderColor: 'var(--border)' }}>
+              <button onClick={() => setKeys(new Set(role.permissionKeys))} className="rounded-lg border px-2.5 py-1.5 text-xs text-[var(--text-secondary)]" style={{ borderColor: 'var(--border-default)' }}>
                 Discard
               </button>
             )}
@@ -337,7 +337,7 @@ function CloneRoleDialog({
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-md space-y-3 rounded-2xl border p-5 shadow-xl"
-        style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+        style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}
       >
         <div>
           <h2 className="text-sm font-semibold text-[var(--text-primary)]">Create a role</h2>
@@ -371,7 +371,7 @@ function CloneRoleDialog({
         )}
 
         <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} className="rounded-lg border px-3 py-2 text-xs text-[var(--text-secondary)]" style={{ borderColor: 'var(--border)' }}>
+          <button onClick={onClose} className="rounded-lg border px-3 py-2 text-xs text-[var(--text-secondary)]" style={{ borderColor: 'var(--border-default)' }}>
             Cancel
           </button>
           <button
