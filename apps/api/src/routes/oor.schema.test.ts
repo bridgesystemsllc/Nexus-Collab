@@ -62,13 +62,18 @@ describe('buildLineWhere', () => {
     expect(buildLineWhere('org_1', parse({})).nodes).toBeUndefined()
   })
 
-  it('filters by brand, fulfillment type, cm code and required date', () => {
+  it('filters by brand, fulfillment type, CM, PO and required date', () => {
     const where = buildLineWhere('org_1', parse({
-      brandId: 'brand_1', fulfillmentType: 'CONTRACT_MFG', cmCode: 'ACT', requiredBefore: '2026-09-30',
+      brandId: 'brand_1',
+      fulfillmentType: 'CONTRACT_MFG',
+      cmCode: 'ACT',
+      customerPoNumber: 'PO-123',
+      requiredBefore: '2026-09-30',
     }))
     expect(where.brandId).toBe('brand_1')
     expect(where.fulfillmentType).toBe('CONTRACT_MFG')
-    expect(where.cmCode).toBe('ACT')
+    expect(where.cmCode).toEqual({ equals: 'ACT', mode: 'insensitive' })
+    expect(where.customerPoNumber).toEqual({ equals: 'PO-123', mode: 'insensitive' })
     expect(where.requiredDeliveryDate).toEqual({ lte: new Date('2026-09-30') })
   })
 })

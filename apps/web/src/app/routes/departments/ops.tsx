@@ -24,7 +24,6 @@ import {
   Table2,
   TrendingUp,
   Users,
-  ClipboardCheck,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { api } from '@/lib/api'
@@ -41,7 +40,7 @@ import { ProductionOrderDrawer } from '@/components/ops/production/ProductionOrd
 import { CMTab } from '@/components/cm/CMTab'
 import { ComponentsTab } from '@/components/ops/ComponentsTab'
 import { BOMTab } from '@/components/ops/BOMTab'
-import { PoTrackingTab } from '@/components/ops/poTracking/PoTrackingTab'
+import { PoTrackingOverlay, type PoTrackingScope } from '@/components/ops/poTracking/PoTrackingTab'
 import { brandLabel } from '@/components/ops/brandLabel'
 import { useAppStore } from '@/stores/appStore'
 
@@ -60,14 +59,13 @@ function relativeTime(dateStr: string): string {
 }
 
 // ─── Types ─────────────────────────────────────────────────
-type OpsTab = 'projects' | 'sku' | 'inventory' | 'production' | 'poTracking' | 'brand' | 'components' | 'bom' | 'cm'
+type OpsTab = 'projects' | 'sku' | 'inventory' | 'production' | 'brand' | 'components' | 'bom' | 'cm'
 
 const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'projects', label: 'Projects', icon: FolderKanban },
   { key: 'sku', label: 'SKU Pipeline', icon: Package },
   { key: 'inventory', label: 'Inventory Health', icon: Box },
   { key: 'production', label: 'Production Tracking', icon: Factory },
-  { key: 'poTracking', label: 'Purchase Order Tracking', icon: ClipboardCheck },
   { key: 'brand', label: 'Brand Transition', icon: TrendingUp },
   { key: 'components', label: 'Components', icon: Boxes },
   { key: 'bom', label: 'Bill of Materials', icon: ClipboardList },
@@ -822,12 +820,10 @@ function ProductionTab({
   openOrders,
   openOrderModuleId,
   onRefresh,
-  onOpenPoTracking,
 }: TabProps & {
   openOrders: any[]
   openOrderModuleId: string | null
   onRefresh: () => void
-  onOpenPoTracking?: () => void
 }) {
   const [view, setView] = useState<ViewMode>('table')
   const [mode, setMode] = useState<'production' | 'openOrders'>('production')
@@ -837,6 +833,7 @@ function ProductionTab({
   const [emailItem, setEmailItem] = useState<any>(null)
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({})
   const [refreshing, setRefreshing] = useState(false)
+  const [trackingScope, setTrackingScope] = useState<PoTrackingScope | null>(null)
 
   const toggleRow = (id: string) => setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }))
 
@@ -973,31 +970,12 @@ function ProductionTab({
 
       {mode === 'openOrders' ? (
         <>
-          {/* The Open Order Report supersedes this view: it holds the same open
-              lines plus their shortage tree, status and history, and it is fed
-              by the same data through a source adapter. This view stays for one
-              release so a rollback is a single line, and points at its
-              replacement in the meantime rather than quietly disagreeing with
-              it about what is open. */}
-          <div
-            className="mb-3 rounded-xl px-4 py-3 flex items-start gap-3"
-            style={{ background: 'var(--accent-secondary-light)', border: '1px solid var(--accent-secondary)' }}
-          >
-            <div className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>
-              <strong style={{ color: 'var(--text-primary)' }}>This view has moved.</strong>{' '}
-              Open orders now live under{' '}
-              <button
-                type="button"
-                onClick={() => onOpenPoTracking?.()}
-                className="underline font-medium"
-                style={{ color: 'var(--accent-secondary)' }}
-              >
-                Purchase Order Tracking → Open Order Report
-              </button>
-              , with the shortage tree, status and history for each line. This copy stays for now and still works.
-            </div>
-          </div>
-          <OpenOrdersView items={openOrders} moduleId={openOrderModuleId} onRefresh={onRefresh} />
+          <OpenOrdersView
+            items={openOrders}
+            moduleId={openOrderModuleId}
+            onRefresh={onRefresh}
+            onOpenTracking={setTrackingScope}
+          />
         </>
       ) : (
         <div className="space-y-5">
@@ -1252,7 +1230,13 @@ function ProductionTab({
         moduleId={openOrderModuleId}
         onClose={() => setDetail(null)}
         onRefresh={onRefresh}
+        onOpenTracking={() => {
+          if (!detail) return
+          setDetail(null)
+          setTrackingScope({ kind: 'po', value: detail.poNumber, label: detail.poNumber })
+        }}
       />
+      {trackingScope ? <PoTrackingOverlay scope={trackingScope} onClose={() => setTrackingScope(null)} /> : null}
 
       {/* CM production-update email (row/card quick action) */}
       <ProductionEmailModal item={emailItem} open={!!emailItem} onClose={() => setEmailItem(null)} />
@@ -1366,7 +1350,6 @@ const MODULE_TYPE_BY_TAB: Record<OpsTab, string> = {
   sku: 'SKU_PIPELINE',
   inventory: 'INVENTORY_HEALTH',
   production: 'PRODUCTION_TRACKING',
-  poTracking: 'OPEN_ORDER_REPORT',
   brand: 'BRAND_TRANSITION',
   components: 'COMPONENTS',
   bom: 'BILL_OF_MATERIALS',
@@ -1549,9 +1532,7 @@ export function OpsPage() {
           ) : activeTab === 'inventory' ? (
             <InventoryHealthTab items={moduleData.inventory} geodisItems={moduleData.geodisInventory} moduleId={moduleIds.inventory} geodisModuleId={moduleIds.geodisInventory} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
           ) : activeTab === 'production' ? (
-            <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} openOrders={moduleData.openOrders} openOrderModuleId={moduleIds.openOrders} onRefresh={() => refetchDept()} onOpenPoTracking={() => setActiveTab('poTracking')} />
-          ) : activeTab === 'poTracking' ? (
-            <PoTrackingTab />
+            <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} openOrders={moduleData.openOrders} openOrderModuleId={moduleIds.openOrders} onRefresh={() => refetchDept()} />
           ) : activeTab === 'components' ? (
             <ComponentsTab items={moduleData.components} moduleId={moduleIds.components} departmentId={deptId} onRefresh={() => refetchDept()} />
           ) : activeTab === 'bom' ? (

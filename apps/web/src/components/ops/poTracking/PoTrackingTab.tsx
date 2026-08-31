@@ -4,8 +4,8 @@
 // parameters, so the screen behaves the same on the fiftieth import as the
 // first.
 
-import { useMemo, useState } from 'react'
-import { Download, Loader2, Rows3, Upload, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ClipboardCheck, Download, Loader2, Rows3, Upload, X } from 'lucide-react'
 import { useOorLines, useOorMutations, type OorFilters } from './oor/useOorQueries'
 import { COLUMN_SETS, type ReportView } from './oor/oorColumns'
 import { OorGrid } from './oor/OorGrid'
@@ -14,6 +14,7 @@ import { OorModal } from './oor/OorModal'
 import { useExpansionState } from './oor/ShortageTree'
 import { api } from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
+import { OverlayPortal } from '@/components/shared/OverlayPortal'
 
 interface Brand {
   id: string
@@ -46,7 +47,17 @@ function useBrands() {
   })
 }
 
-export function PoTrackingTab() {
+export type PoTrackingScope =
+  | { kind: 'po'; value: string; label?: string }
+  | { kind: 'cm'; value: string; label?: string }
+
+export function PoTrackingTab({
+  scope,
+  onNestedDialogChange,
+}: {
+  scope?: PoTrackingScope
+  onNestedDialogChange?: (open: boolean) => void
+}) {
   const brands = useBrands().data ?? []
   const [view, setView] = useState<ReportView>('customer_open_order')
   const [brandId, setBrandId] = useState<string>('')
@@ -59,6 +70,11 @@ export function PoTrackingTab() {
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable')
   const [openLineId, setOpenLineId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+
+  useEffect(() => {
+    onNestedDialogChange?.(Boolean(openLineId || importOpen))
+    return () => onNestedDialogChange?.(false)
+  }, [openLineId, importOpen, onNestedDialogChange])
 
   const { expanded, toggle } = useExpansionState('oor.expanded.v1')
   const columns = COLUMN_SETS[view]
@@ -73,6 +89,8 @@ export function PoTrackingTab() {
 
   const filters: OorFilters = {
     brandId: brandId || undefined,
+    ...(scope?.kind === 'po' ? { customerPoNumber: scope.value } : {}),
+    ...(scope?.kind === 'cm' ? { cmCode: scope.value } : {}),
     search: combinedSearch || undefined,
     page,
     pageSize: 50,
@@ -98,6 +116,17 @@ export function PoTrackingTab() {
 
   return (
     <div className="space-y-4">
+      {scope ? (
+        <div
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px]"
+          style={{ background: 'var(--accent-secondary-light)', color: 'var(--text-secondary)' }}
+        >
+          <ClipboardCheck size={14} style={{ color: 'var(--accent-secondary)' }} />
+          <span>
+            Showing open lines for <strong style={{ color: 'var(--text-primary)' }}>{scope.label ?? scope.value}</strong>
+          </span>
+        </div>
+      ) : null}
       {/* ── Controls ── */}
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--border-default)' }}>
@@ -162,11 +191,11 @@ export function PoTrackingTab() {
           className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium"
           style={{ border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
         >
-          <Upload size={13} /> Import report
+          <Upload size={13} /> {scope?.kind === 'cm' ? 'Import CM report' : 'Import report'}
         </button>
 
         <a
-          href={`/api/v1/operations/oor/exports?reportType=${view}${brandId ? `&brandId=${brandId}` : ''}`}
+          href={`/api/v1/operations/oor/exports?reportType=${view}${brandId ? `&brandId=${brandId}` : ''}${scope?.kind === 'po' ? `&customerPoNumber=${encodeURIComponent(scope.value)}` : ''}${scope?.kind === 'cm' ? `&cmCode=${encodeURIComponent(scope.value)}` : ''}`}
           className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium"
           style={{ border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
         >
@@ -237,20 +266,107 @@ export function PoTrackingTab() {
       </div>
 
       {openLineId ? <OorModal lineId={openLineId} onClose={() => setOpenLineId(null)} /> : null}
-      {importOpen ? <ImportPanel brands={brands} onClose={() => setImportOpen(false)} /> : null}
+      {importOpen ? (
+        <ImportPanel
+          brands={brands}
+          initialBrandId={brandId}
+          contextLabel={scope?.kind === 'cm' ? scope.label ?? scope.value : undefined}
+          onClose={() => setImportOpen(false)}
+        />
+      ) : null}
     </div>
+  )
+}
+
+export function PoTrackingOverlay({
+  scope,
+  onClose,
+}: {
+  scope: PoTrackingScope
+  onClose: () => void
+}) {
+  const [nestedDialogOpen, setNestedDialogOpen] = useState(false)
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !nestedDialogOpen) onClose()
+    }
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [nestedDialogOpen, onClose])
+
+  return (
+    <OverlayPortal>
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-3 backdrop-blur-sm"
+        onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+      >
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Production order tracking for ${scope.label ?? scope.value}`}
+          className="flex max-h-[94vh] w-[min(1500px,96vw)] flex-col overflow-hidden rounded-2xl border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-2xl"
+        >
+          <header className="flex items-center justify-between gap-4 border-b border-[var(--border-default)] px-5 py-4">
+            <div>
+              <h2 className="flex items-center gap-2 text-base font-semibold text-[var(--text-primary)]">
+                <ClipboardCheck size={17} className="text-[var(--accent)]" />
+                Production Order Tracking
+              </h2>
+              <p className="mt-0.5 text-xs text-[var(--text-tertiary)]">
+                {scope.kind === 'po' ? 'Purchase order' : 'Contract manufacturer'} · {scope.label ?? scope.value}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close production order tracking"
+              className="rounded-lg p-2 text-[var(--text-tertiary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+            >
+              <X size={18} />
+            </button>
+          </header>
+          <div className="flex-1 overflow-auto p-5">
+            <PoTrackingTab scope={scope} onNestedDialogChange={setNestedDialogOpen} />
+          </div>
+        </section>
+      </div>
+    </OverlayPortal>
   )
 }
 
 /** Import plus the review of what the file got wrong. Warnings never block the
  *  import — they are a worklist, and on a normal week there are about ten. */
-function ImportPanel({ brands, onClose }: { brands: Brand[]; onClose: () => void }) {
+function ImportPanel({
+  brands,
+  initialBrandId,
+  contextLabel,
+  onClose,
+}: {
+  brands: Brand[]
+  initialBrandId?: string
+  contextLabel?: string
+  onClose: () => void
+}) {
   const { importReport } = useOorMutations()
-  const [brandId, setBrandId] = useState(brands[0]?.id ?? '')
+  const [brandId, setBrandId] = useState(initialBrandId || (brands.length === 1 ? brands[0]?.id ?? '' : ''))
   const [file, setFile] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const result = importReport.data
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.45)', zIndex: 60 }}>
@@ -260,6 +376,7 @@ function ImportPanel({ brands, onClose }: { brands: Brand[]; onClose: () => void
             <h3 className="text-[15px] font-semibold" style={{ color: 'var(--text-primary)' }}>Import an open order report</h3>
             <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
               Either format, .xls or .xlsx. Existing lines keep their comments, notes and status.
+              {contextLabel ? ` Results will refresh in the ${contextLabel} view.` : ''}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" style={{ color: 'var(--text-tertiary)' }}><X size={16} /></button>
@@ -272,6 +389,7 @@ function ImportPanel({ brands, onClose }: { brands: Brand[]; onClose: () => void
             className="rounded-lg px-2.5 py-1.5 text-[12px]"
             style={{ background: 'var(--bg-base)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
           >
+            <option value="" disabled>Select a brand</option>
             {brands.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
             ))}

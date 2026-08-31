@@ -20,6 +20,7 @@ import {
   Check,
   History,
   Mail,
+  ClipboardCheck,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import {
@@ -35,6 +36,7 @@ import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { ProductionEmailModal } from './ProductionEmailModal'
 import { OverlayPortal } from '@/components/shared/OverlayPortal'
 import { AddToCowork } from '@/components/shared/AddToCowork'
+import type { PoTrackingScope } from '@/components/ops/poTracking/PoTrackingTab'
 
 /** Attachment module scope for open-order POs and their line items. */
 const OO_ATTACH_MODULE = 'open_orders'
@@ -50,6 +52,7 @@ interface OpenOrdersViewProps {
   items: any[]
   moduleId: string | null
   onRefresh: () => void
+  onOpenTracking: (scope: PoTrackingScope) => void
 }
 
 /** Semantic color for a PO lifecycle status. */
@@ -100,7 +103,7 @@ function KpiCell({
   )
 }
 
-export function OpenOrdersView({ items, moduleId, onRefresh }: OpenOrdersViewProps) {
+export function OpenOrdersView({ items, moduleId, onRefresh, onOpenTracking }: OpenOrdersViewProps) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [mfrFilter, setMfrFilter] = useState('All')
@@ -221,10 +224,12 @@ export function OpenOrdersView({ items, moduleId, onRefresh }: OpenOrdersViewPro
                 className="rounded-xl border border-[var(--border-subtle)] overflow-hidden"
               >
                 {/* Group header */}
-                <button
-                  onClick={() => toggleGroup(g.manufacturer)}
-                  className="w-full flex items-center justify-between gap-3 px-4 py-3 bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] transition-colors"
-                >
+                <div className="flex items-center gap-3 bg-[var(--bg-surface)] px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(g.manufacturer)}
+                    className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left hover:opacity-90"
+                  >
                   <div className="flex items-center gap-2.5">
                     <ChevronDown
                       size={16}
@@ -237,11 +242,20 @@ export function OpenOrdersView({ items, moduleId, onRefresh }: OpenOrdersViewPro
                       {g.poCount} {g.poCount === 1 ? 'PO' : 'POs'}
                     </span>
                   </div>
-                  <div className="text-right">
+                    <div className="text-right">
                     <p className="text-[10px] uppercase tracking-[0.06em] text-[var(--text-tertiary)]">Units Remaining</p>
                     <p className="text-sm font-semibold tabular-nums text-[var(--text-primary)]">{fmt(g.unitsRemaining)}</p>
-                  </div>
-                </button>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onOpenTracking({ kind: 'cm', value: g.manufacturer, label: g.manufacturer })}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[var(--border-default)] px-3 py-2 text-xs font-medium text-[var(--text-secondary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                  >
+                    <ClipboardCheck size={14} />
+                    Production Order Tracking
+                  </button>
+                </div>
 
                 {/* PO table */}
                 {!collapsed && (
@@ -367,6 +381,11 @@ export function OpenOrdersView({ items, moduleId, onRefresh }: OpenOrdersViewPro
         moduleId={moduleId}
         onClose={() => setDetail(null)}
         onRefresh={onRefresh}
+        onOpenTracking={() => {
+          if (!detail) return
+          setDetail(null)
+          onOpenTracking({ kind: 'po', value: detail.poNumber, label: detail.poNumber })
+        }}
       />
     </div>
   )
@@ -403,11 +422,13 @@ export function OpenOrderDrawer({
   moduleId,
   onClose,
   onRefresh,
+  onOpenTracking,
 }: {
   order: OpenOrder | null
   moduleId: string | null
   onClose: () => void
   onRefresh: () => void
+  onOpenTracking?: () => void
 }) {
   const [status, setStatus] = useState('')
   const [urgency, setUrgency] = useState<'Normal' | 'Urgent'>('Normal')
@@ -571,6 +592,16 @@ export function OpenOrderDrawer({
           </div>
 
           <div className="p-5 space-y-5">
+            {onOpenTracking ? (
+              <button
+                type="button"
+                onClick={onOpenTracking}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--accent)] px-4 py-2.5 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-subtle)]"
+              >
+                <ClipboardCheck size={16} />
+                Production Order Tracking
+              </button>
+            ) : null}
             {/* Summary */}
             <div className="grid grid-cols-3 gap-3">
               <div className="data-cell py-3">

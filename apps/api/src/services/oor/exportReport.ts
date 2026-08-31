@@ -24,6 +24,8 @@ import { OOR_STATUS_META, type OorLineStatus } from '@nexus/shared'
 export interface ExportOptions {
   orgId: string
   brandId?: string | null
+  customerPoNumber?: string | null
+  cmCode?: string | null
   reportType: 'customer_open_order' | 'open_order_shortage'
   includeStatus?: boolean
   includeAppendix?: boolean
@@ -356,6 +358,10 @@ export async function buildExportWorkbook(
     where: {
       orgId: options.orgId,
       ...(options.brandId ? { brandId: options.brandId } : {}),
+      ...(options.customerPoNumber
+        ? { customerPoNumber: { equals: options.customerPoNumber, mode: 'insensitive' as const } }
+        : {}),
+      ...(options.cmCode ? { cmCode: { equals: options.cmCode, mode: 'insensitive' as const } } : {}),
       isOpen: true,
     },
     orderBy: [{ customerPoNumber: 'asc' }, { salesOrderNumber: 'asc' }, { itemNumber: 'asc' }],

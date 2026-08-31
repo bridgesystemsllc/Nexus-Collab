@@ -46,6 +46,7 @@ export const SORTABLE_FIELDS = [
 
 export const listLinesQuerySchema = z.object({
   brandId: z.string().optional(),
+  customerPoNumber: z.string().trim().min(1).optional(),
   status: csvArray(OOR_LINE_STATUSES),
   risk: csvArray(OOR_RISK_LEVELS),
   fulfillmentType: z.enum(OOR_FULFILLMENT_TYPES).optional(),
@@ -77,11 +78,14 @@ export function buildLineWhere(orgId: string, q: ListLinesQuery): Prisma.OorLine
   const where: Prisma.OorLineWhereInput = { orgId }
 
   if (q.brandId) where.brandId = q.brandId
+  if (q.customerPoNumber) {
+    where.customerPoNumber = { equals: q.customerPoNumber, mode: 'insensitive' }
+  }
   if (q.openOnly) where.isOpen = true
   if (q.status && q.status.length > 0) where.lineStatus = { in: q.status }
   if (q.risk && q.risk.length > 0) where.riskLevel = { in: q.risk }
   if (q.fulfillmentType) where.fulfillmentType = q.fulfillmentType
-  if (q.cmCode) where.cmCode = q.cmCode
+  if (q.cmCode) where.cmCode = { equals: q.cmCode, mode: 'insensitive' }
   if (q.requiredBefore) where.requiredDeliveryDate = { lte: q.requiredBefore }
 
   if (q.search) {
@@ -219,6 +223,8 @@ export const activityQuerySchema = z.object({
 export const exportQuerySchema = z.object({
   reportType: z.enum(['customer_open_order', 'open_order_shortage']).default('customer_open_order'),
   brandId: z.string().optional(),
+  customerPoNumber: z.string().trim().min(1).optional(),
+  cmCode: z.string().trim().min(1).optional(),
   format: z.enum(['xlsx']).default('xlsx'),
   includeStatus: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
   includeAppendix: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),

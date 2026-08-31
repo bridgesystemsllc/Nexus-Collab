@@ -109,6 +109,7 @@ export function OorModal({ lineId, onClose }: { lineId: string; onClose: () => v
   // Focus trap plus Escape. A modal this large that swallows the keyboard is
   // worse than no modal.
   useEffect(() => {
+    const previousOverflow = document.body.style.overflow
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') return onClose()
       if (e.key !== 'Tab') return
@@ -130,7 +131,7 @@ export function OorModal({ lineId, onClose }: { lineId: string; onClose: () => v
     document.body.style.overflow = 'hidden'
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = ''
+      document.body.style.overflow = previousOverflow
     }
   }, [onClose])
 

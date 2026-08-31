@@ -75,6 +75,7 @@ export interface OorTreeNode {
 
 export interface OorFilters {
   brandId?: string
+  customerPoNumber?: string
   status?: string[]
   risk?: string[]
   fulfillmentType?: string

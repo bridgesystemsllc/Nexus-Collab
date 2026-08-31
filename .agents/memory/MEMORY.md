@@ -1,6 +1,6 @@
 - [Merge-induced duplicate declarations](merge-conflict-duplicates.md) — bad merges leave dup funcs/stale blocks in apps/web; esbuild ignores it, run `tsc --noEmit` to catch.
 - [Prisma client drift](prisma-client-drift.md) — prisma.<model> undefined at runtime means stale generated client; startup now runs prisma generate.
-- [DB schema drift](db-schema-drift-push.md) — P2022 "column does not exist" means env DB lags schema.prisma; fix with prisma db push (startup only runs generate, not migrate).
+- [DB schema drift](db-schema-drift-push.md) — P2021/P2022 means the env DB lags schema.prisma; use targeted additive SQL because broad db push threatens session data.
 - [Microsoft-only auth](microsoft-auth.md) — sole login is MS Entra, session-based (no passport); SESSION_SECRET required + session.regenerate on login; cookie.secure=false in dev; Member.clerkUserId stores MS oid.
 - [OAuth account-linking state](oauth-account-linking-state.md) — per-user connect flows need server-side single-use session-bound state + member match, not stateless HMAC (hijack risk).
 - [prisma db push drops session table](prisma-db-push-drops-session-table.md) — session table isn't in schema; for additive changes use raw CREATE TABLE SQL, never --accept-data-loss.

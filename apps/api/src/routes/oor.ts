@@ -603,6 +603,8 @@ oorRoutes.get('/exports', requirePermission('oor:export'), async (req: RbacReque
     const { buffer, filename } = await buildExportWorkbook(prisma, {
       orgId,
       brandId: query.brandId ?? null,
+      customerPoNumber: query.customerPoNumber ?? null,
+      cmCode: query.cmCode ?? null,
       reportType: query.reportType,
       includeStatus: query.includeStatus,
       includeAppendix: query.includeAppendix,
