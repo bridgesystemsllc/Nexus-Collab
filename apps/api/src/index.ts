@@ -50,6 +50,7 @@ import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
 import { setupAuth, attachMember, isAuthenticated } from './auth/session'
 import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
+import { ensureOorModule } from './services/oor/bootstrap'
 import { ensureRbacSeeded, ensureEmailsNormalised } from './services/rbac/bootstrap'
 import { billingContextErrors } from './middleware/billingContext'
 import { ensureOrgTenantBackfill } from './services/rbac/ensureOrgTenant'
@@ -244,6 +245,7 @@ async function start() {
   // Self-heal the department structure (Finance hub + retired stubs) on boot so
   // a deployed instance reflects the latest structure without a manual migration.
   await ensureDepartmentStructure(prisma)
+  await ensureOorModule(prisma)
 
   // Same reasoning, higher stakes: every permission check fails closed, so a
   // workspace with no permission catalogue is one where nobody can open the
