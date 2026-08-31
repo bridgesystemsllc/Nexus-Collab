@@ -4,6 +4,7 @@ import crypto from 'crypto'
 import { normaliseEmail, LEGACY_ROLE_TO_KEY } from '@nexus/shared'
 import { prisma } from '../index'
 import { requirePermission, sendError, type RbacRequest } from '../middleware/requirePermission'
+import { getActingOrgId } from '../middleware/billingContext'
 import { can } from '../services/rbac/resolve'
 import { append } from '../services/users/auditService'
 import { updateMemberSchema } from './members.schema'
@@ -60,13 +61,13 @@ const createMemberSchema = z.object({
 memberRoutes.post('/', requirePermission('users:create'), async (req: Request, res: Response) => {
   try {
     const data = createMemberSchema.parse(req.body)
-    const org = await prisma.organization.findFirst()
-    if (!org) return res.status(400).json({ error: 'No organization found' })
+    // requirePermission guarantees a member on req, so this is the caller's org.
+    const orgId = getActingOrgId(req)
 
     const member = await prisma.member.create({
       data: {
         clerkUserId: `user_${crypto.randomUUID().slice(0, 8)}`,
-        orgId: org.id,
+        orgId,
         name: data.name,
         email: normaliseEmail(data.email),
         role: data.role,
@@ -195,22 +196,22 @@ const inviteSchema = z.object({
 memberRoutes.post('/invite', requirePermission('users:create'), async (req: Request, res: Response) => {
   try {
     const data = inviteSchema.parse(req.body)
-    const org = await prisma.organization.findFirst()
-    if (!org) return res.status(400).json({ error: 'No organization found' })
+    // requirePermission guarantees a member on req, so this is the caller's org.
+    const orgId = getActingOrgId(req)
 
-    const inviter = await prisma.member.findFirst({
-      where: { role: 'admin' },
-    }) || await prisma.member.findFirst()
-    // `invitedBy` is required, and an invite nobody sent has no one to chase
-    // when it is queried later.
-    if (!inviter) return res.status(400).json({ error: 'No member to attribute the invite to' })
+    // The inviter is the caller, full stop — not a role lookup, and never a
+    // global "first admin" that can resolve to a member in a different org.
+    // requirePermission (mounted on this route) already attaches the acting
+    // member, so it's on the request.
+    const inviter = (req as any).member
+    if (!inviter) return res.status(401).json({ error: 'Unauthorized' })
 
     const token = crypto.randomUUID()
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
 
     const invite = await prisma.organizationInvite.create({
       data: {
-        orgId: org.id,
+        orgId,
         invitedEmail: normaliseEmail(data.email),
         role: data.role || 'member',
         token,
@@ -223,7 +224,7 @@ memberRoutes.post('/invite', requirePermission('users:create'), async (req: Requ
     const member = await prisma.member.create({
       data: {
         clerkUserId: `user_${crypto.randomUUID().slice(0, 8)}`,
-        orgId: org.id,
+        orgId,
         name: data.email.split('@')[0],
         email: normaliseEmail(data.email),
         role: data.role || 'member',
@@ -242,9 +243,12 @@ memberRoutes.post('/invite', requirePermission('users:create'), async (req: Requ
 })
 
 // ─── List all pending invites ──────────────────────────────
-memberRoutes.get('/invites', requirePermission('users:read'), async (_req: Request, res: Response) => {
+memberRoutes.get('/invites', requirePermission('users:read'), async (req: Request, res: Response) => {
   try {
+    // requirePermission guarantees a member on req, so this is the caller's org.
+    const orgId = getActingOrgId(req)
     const invites = await prisma.organizationInvite.findMany({
+      where: { orgId },
       orderBy: { createdAt: 'desc' },
       // `invitedBy` is the foreign key column; `inviter` is the relation.
       include: { inviter: { select: { name: true, email: true } } },

@@ -4,6 +4,7 @@ import { mergedCollabFeed } from '../services/projects/collabFeed'
 import { prisma, io } from '../index'
 import { ObjectStorageService } from '../lib/objectStorage'
 import { UPLOAD_MAX_BYTES, validateUpload } from '../lib/uploadValidation'
+import { getActingOrgId } from '../middleware/billingContext'
 
 export const coworkRoutes: ReturnType<typeof Router> = Router()
 
@@ -603,8 +604,9 @@ coworkRoutes.post('/:id/files', async (req: Request, res: Response) => {
       }
     }
 
-    const org = await prisma.organization.findFirst()
-    if (!org) return res.status(400).json({ error: 'No organization found' })
+    // coworkSpaceGuard (mounted on '/:id') already requires a signed-in
+    // member before this handler runs, so the caller's org is available here.
+    const orgId = getActingOrgId(req)
     // Attribute the upload to the genuinely logged-in member.
     const uploader = (req as any).member
     if (!uploader) return res.status(401).json({ error: 'Unauthorized' })
@@ -630,7 +632,7 @@ coworkRoutes.post('/:id/files', async (req: Request, res: Response) => {
         storageKey: docStorageKey,
         storageUrl: docStorageUrl,
         type: type || 'OTHER',
-        orgId: org.id,
+        orgId,
         uploadedById: uploader?.id ?? '',
         coworkSpaces: { connect: { id: req.params.id as string } },
       },
