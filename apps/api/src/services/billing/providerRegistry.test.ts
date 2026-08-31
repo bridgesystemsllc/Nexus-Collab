@@ -1,16 +1,16 @@
 // apps/api/src/services/billing/providerRegistry.test.ts
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { getBillingProvider, resetProviderForTests } from './providerRegistry'
-import { BillingUnconfiguredError } from './provider'
-import { planFor } from './proration'
+import { BillingProviderError, BillingUnconfiguredError } from './provider'
+import { resetStripeClientForTests } from './stripeClient'
 
 // This install has no Stripe key yet, so the unconfigured path is the one that
 // actually runs today. It must fail closed and say why — not return a broken
 // object that fails somewhere less obvious.
 
 const saved = { ...process.env }
-beforeEach(() => { resetProviderForTests() })
-afterEach(() => { process.env = { ...saved }; resetProviderForTests() })
+beforeEach(() => { resetProviderForTests(); resetStripeClientForTests() })
+afterEach(() => { process.env = { ...saved }; resetProviderForTests(); resetStripeClientForTests() })
 
 describe('getBillingProvider — unconfigured', () => {
   it('every method rejects with BillingUnconfiguredError when no key is set', async () => {
@@ -35,52 +35,46 @@ describe('getBillingProvider — unconfigured', () => {
   })
 })
 
-// Guard against premature wiring: STRIPE_SECRET_KEY being set must NOT make
-// getBillingProvider() hand back a working Stripe provider — that
-// implementation does not exist yet (it arrives in PR B5). This block pins
-// today's deliberate behaviour (the set-key branch still returns the
-// unconfigured provider) so that when B5 replaces that line with a real
-// createStripeProvider(), the suite goes red on purpose and whoever makes
-// the change updates this test knowingly, instead of either accidentally
-// leaving the fallback in place or being surprised by a failing suite.
-describe('getBillingProvider — STRIPE_SECRET_KEY set, still unconfigured (guard against premature wiring)', () => {
-  it('every async method still rejects with BillingUnconfiguredError when STRIPE_SECRET_KEY is set', async () => {
-    delete process.env.BILLING_PROVIDER
-    process.env.STRIPE_SECRET_KEY = 'sk_test_fake_not_a_real_key'
-    const p = getBillingProvider()
-
-    await expect(p.ensureCustomer({ orgId: 'o', name: 'n', email: 'e@x.com', idempotencyKey: 'k' }))
-      .rejects.toThrow(BillingUnconfiguredError)
-    await expect(p.createSetupIntent('cus_1')).rejects.toThrow(BillingUnconfiguredError)
-    await expect(p.listPaymentMethods('cus_1')).rejects.toThrow(BillingUnconfiguredError)
-    await expect(p.setDefaultPaymentMethod('cus_1', 'pm_1')).rejects.toThrow(BillingUnconfiguredError)
-    await expect(p.detachPaymentMethod('pm_1')).rejects.toThrow(BillingUnconfiguredError)
-    await expect(p.createSubscription({ customerId: 'cus_1', priceId: 'price_1', quantity: 1, idempotencyKey: 'k' }))
-      .rejects.toThrow(BillingUnconfiguredError)
-    await expect(p.previewChange({
-      subscriptionId: 'sub_1', itemId: 'si_1', priceId: 'price_1', quantity: 2,
-      plan: planFor({ kind: 'seats', from: 1, to: 2 }), idempotencyKey: 'k',
-    })).rejects.toThrow(BillingUnconfiguredError)
-    await expect(p.applyChange({
-      subscriptionId: 'sub_1', itemId: 'si_1', priceId: 'price_1', quantity: 2,
-      plan: planFor({ kind: 'seats', from: 1, to: 2 }), idempotencyKey: 'k',
-    })).rejects.toThrow(BillingUnconfiguredError)
-    await expect(p.cancelAtPeriodEnd('sub_1', 'k')).rejects.toThrow(BillingUnconfiguredError)
-    await expect(p.reactivate('sub_1', 'k')).rejects.toThrow(BillingUnconfiguredError)
-    await expect(p.listInvoices('cus_1')).rejects.toThrow(BillingUnconfiguredError)
-  })
-
-  it('verifyWebhook still throws BillingUnconfiguredError when STRIPE_SECRET_KEY is set', () => {
-    delete process.env.BILLING_PROVIDER
-    process.env.STRIPE_SECRET_KEY = 'sk_test_fake_not_a_real_key'
-    expect(() => getBillingProvider().verifyWebhook(Buffer.from('{}'), 'sig'))
-      .toThrow(BillingUnconfiguredError)
-  })
-
-  it('getBillingProvider() does not throw at construction when STRIPE_SECRET_KEY is set', () => {
+// Formerly "guard against premature wiring": until PR B5, STRIPE_SECRET_KEY
+// being set deliberately still returned the unconfigured provider, because
+// the Stripe implementation didn't exist yet — and this block pinned that so
+// the suite would go red the moment someone wired it up, forcing a knowing
+// update rather than an accidental one. B5 IS that knowing update:
+// `getBillingProvider()` now returns the real Stripe provider once a key is
+// set. What this block asserts today is only that the routing works — it
+// must never require a real key or reach the network, so every check below
+// is either synchronous (construction, `verifyWebhook`'s local signature
+// check) or a `mode` assertion, never an awaited Stripe API call.
+describe('getBillingProvider — Stripe provider wired when STRIPE_SECRET_KEY is set (B5)', () => {
+  it('does not throw at construction when STRIPE_SECRET_KEY is set', () => {
     delete process.env.BILLING_PROVIDER
     process.env.STRIPE_SECRET_KEY = 'sk_test_fake_not_a_real_key'
     expect(() => getBillingProvider()).not.toThrow()
+  })
+
+  it('routes to the real Stripe provider, not the unconfigured stub, once a key is set', () => {
+    delete process.env.BILLING_PROVIDER
+    process.env.STRIPE_SECRET_KEY = 'sk_test_fake_not_a_real_key'
+    process.env.STRIPE_WEBHOOK_SECRET = 'whsec_fake_not_a_real_secret'
+    const p = getBillingProvider()
+
+    // `verifyWebhook` is synchronous and makes no network call — Stripe's
+    // signature check is a local HMAC comparison against the webhook secret,
+    // never a request to Stripe. That makes it the one method that can prove
+    // which provider is wired up without a real key or a network call: the
+    // unconfigured stub always throws `BillingUnconfiguredError` no matter
+    // what secrets are set, while the Stripe provider gets far enough to
+    // reject the (deliberately invalid) signature on its own terms.
+    expect(() => p.verifyWebhook(Buffer.from('{}'), 'not-a-valid-signature'))
+      .toThrow(BillingProviderError)
+  })
+
+  it('verifyWebhook still throws BillingUnconfiguredError when STRIPE_WEBHOOK_SECRET is unset', () => {
+    delete process.env.BILLING_PROVIDER
+    process.env.STRIPE_SECRET_KEY = 'sk_test_fake_not_a_real_key'
+    delete process.env.STRIPE_WEBHOOK_SECRET
+    const p = getBillingProvider()
+    expect(() => p.verifyWebhook(Buffer.from('{}'), 'sig')).toThrow(BillingUnconfiguredError)
   })
 })
 

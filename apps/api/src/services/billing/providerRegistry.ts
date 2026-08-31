@@ -1,6 +1,7 @@
 // apps/api/src/services/billing/providerRegistry.ts
 import { BillingUnconfiguredError, type BillingProvider } from './provider'
 import { createFakeProvider } from './fakeProvider'
+import { createStripeProvider } from './stripeProvider'
 
 // ─── Provider selection ──────────────────────────────────────
 // One place decides which BillingProvider the app is running against, so no
@@ -44,10 +45,13 @@ export function getBillingProvider(): BillingProvider {
   }
 
   if (process.env.STRIPE_SECRET_KEY) {
-    // Replaced in Task 7 with `cached = createStripeProvider()`. Until the
-    // Stripe implementation exists, a set key must not imply a working
-    // provider — that would be a worse lie than no key at all.
-    cached = unconfiguredProvider()
+    // The Stripe implementation lands here in PR B5 (this change). Before it
+    // existed, a set key still fell through to `unconfiguredProvider()` on
+    // purpose — a set key implying a working provider before one existed
+    // would have been a worse lie than no key at all. `providerRegistry.test.ts`
+    // pinned that placeholder behaviour precisely so this line couldn't be
+    // swapped without the suite going red — see the guard test's comment.
+    cached = createStripeProvider()
     return cached
   }
 

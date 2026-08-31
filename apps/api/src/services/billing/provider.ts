@@ -49,6 +49,15 @@ export interface ChangeInput {
   /// Derive it from what the change IS (org + target state), never from a clock
   /// or a random — a retry has to compute the same key the first attempt did.
   idempotencyKey: string
+  /// Unix seconds. The caller (never the provider) computes this exactly
+  /// once per change and reuses it for BOTH the `previewChange` call that
+  /// shows the customer a number and the `applyChange` call that charges
+  /// them — the same discipline as `idempotencyKey`, and for the same
+  /// reason: a value the provider generated itself from `Date.now()` would
+  /// drift between the two calls (seats added mid-preview, or a preview
+  /// held open across a period boundary), so the previewed number and the
+  /// charged number would silently stop being the same number.
+  prorationDate: number
 }
 
 export interface CreateSubscriptionInput {
@@ -57,7 +66,15 @@ export interface CreateSubscriptionInput {
 }
 
 export interface BillingProvider {
-  ensureCustomer(i: { orgId: string; name: string; email: string; idempotencyKey: string }): Promise<{ customerId: string }>
+  ensureCustomer(i: {
+    orgId: string; name: string; email: string; idempotencyKey: string
+    /// Optional, but load-bearing once a subscription is created: every
+    /// subscription/change/preview call sets `automatic_tax: { enabled: true
+    /// }`, and Stripe refuses that outright (`customer_tax_location_invalid`)
+    /// when it cannot resolve a tax location for the customer. Country +
+    /// postal code is the practical minimum Stripe needs.
+    address?: { line1?: string; line2?: string; city?: string; state?: string; postalCode: string; country: string }
+  }): Promise<{ customerId: string }>
   createSetupIntent(customerId: string): Promise<{ clientSecret: string }>
   listPaymentMethods(customerId: string): Promise<ProviderPaymentMethod[]>
   setDefaultPaymentMethod(customerId: string, paymentMethodId: string): Promise<void>
