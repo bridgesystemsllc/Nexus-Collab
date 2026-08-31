@@ -61,6 +61,13 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # Static regression guard for the tenancy/auth fixes on
+      # feat/tenancy-scoping: implicit org resolution, an ungated router, or
+      # an unscoped email lookup. None of these are caught by the test suite
+      # above — see scripts/tenancy-audit.mjs for why. No deps, no database.
+      - name: Tenancy audit
+        run: pnpm tenancy:audit
+
       # Covers apps/api only. The web app is typechecked by its build step
       # below, whose script is `tsc -b && vite build`.
       - name: Typecheck API
