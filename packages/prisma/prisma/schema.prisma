@@ -1528,7 +1528,11 @@ model BillingSubscription {
   tierId                   String
   tier                     BillingTier  @relation("SubscriptionTier", fields: [tierId], references: [id])
 
-  stripeCustomerId         String
+  /// @unique as of billing-02's webhook review: two rows sharing a Stripe
+  /// customer id would let a webhook write one org's tier/status/seats onto
+  /// another (processEvent's lookup is a bare findFirst, no ordering). Safe
+  /// to add — verified 0 rows in BillingSubscription before this migration.
+  stripeCustomerId         String       @unique
   stripeSubscriptionId     String?      @unique
   stripeSubscriptionItemId String?
 
@@ -1564,8 +1568,8 @@ model BillingSubscription {
   createdAt                DateTime     @default(now())
   updatedAt                DateTime     @updatedAt
 
+  // stripeCustomerId's index is now implied by its @unique above.
   @@index([status])
-  @@index([stripeCustomerId])
 }
 
 model SeatAssignment {

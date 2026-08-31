@@ -49,6 +49,7 @@ import { meRoutes } from './routes/me'
 import { jobRoutes } from './routes/jobs'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
+import { billingWebhookRoutes } from './routes/billingWebhooks'
 import { setupAuth, attachMember, isAuthenticated } from './auth/session'
 import { isLocalDevelopment } from './lib/devOnly'
 import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
@@ -104,6 +105,22 @@ app.use(helmet({
 app.use(cors({ origin: isReplit ? '*' : frontendUrl, credentials: !isReplit }))
 app.use(compression())
 app.use(morgan('dev'))
+
+// The Stripe webhook MUST be mounted here — above express.json() — with its
+// own express.raw() parser. Stripe signs the exact bytes it sent; express.json()
+// below this line parses that body into an object and discards those bytes, and
+// re-serialising the parsed object never reproduces them byte-for-byte (key
+// order, whitespace), so verification against it fails 100% of the time, not
+// intermittently. That makes the bug easy to reproduce but easy to reintroduce
+// too, if this ever gets moved below the parser while "tidying imports".
+//
+// It is also deliberately outside `api.use(isAuthenticated)` (see index.ts's
+// API router below) and CSRF-exempt — this is NOT the hole PR #116 closed.
+// #116 was a router left public by omission; this one is public because the
+// Stripe signature IS its authentication, and Stripe cannot hold a Nexus
+// session. See the longer version of this note in routes/billingWebhooks.ts.
+app.use('/api/v1/webhooks/stripe', express.raw({ type: 'application/json' }), billingWebhookRoutes)
+
 app.use(express.json({ limit: '10mb' }))
 
 // ─── Health Check ───────────────────────────────────────────

@@ -1,5 +1,10 @@
-import type { PrismaClient } from '@prisma/client'
+import type { Prisma, PrismaClient } from '@prisma/client'
 import type { FeatureKey, TierKey } from '@nexus/shared'
+
+/// Accepts either the top-level client or a transaction handle. The webhook
+/// processor calls these from inside its transaction (see webhookHandlers.ts)
+/// — a plain `PrismaClient` parameter type would reject that at compile time
+/// even though `Prisma.TransactionClient` has every method this module uses.
 
 // ─── Tier catalogue ──────────────────────────────────────────
 // The DB rows are authoritative at runtime — an admin may change a price
@@ -34,6 +39,8 @@ export interface TierRecord {
   features: TierFeatureRecord[]
 }
 
+type CatalogueClient = PrismaClient | Prisma.TransactionClient
+
 const TTL_MS = 60_000
 let cache: { at: number; tiers: TierRecord[] } | null = null
 
@@ -42,7 +49,7 @@ export function invalidateCatalogue(): void {
   cache = null
 }
 
-export async function loadCatalogue(prisma: PrismaClient): Promise<TierRecord[]> {
+export async function loadCatalogue(prisma: CatalogueClient): Promise<TierRecord[]> {
   const now = Date.now()
   if (cache && now - cache.at < TTL_MS) return cache.tiers
 
@@ -77,6 +84,21 @@ export async function loadCatalogue(prisma: PrismaClient): Promise<TierRecord[]>
 }
 
 /** The active tier for a key, or null. Used by the change-tier route in B8. */
-export async function findTier(prisma: PrismaClient, key: string): Promise<TierRecord | null> {
+export async function findTier(prisma: CatalogueClient, key: string): Promise<TierRecord | null> {
   return (await loadCatalogue(prisma)).find((t) => t.key === key) ?? null
+}
+
+/**
+ * The active tier whose monthly or annual Stripe price matches `priceId`, or
+ * null if none does.
+ *
+ * Used by the webhook processor to turn a Stripe subscription item's price
+ * back into a `BillingTier` — deliberately returns null rather than guessing
+ * on a miss: a price this catalogue doesn't recognise must fail the event
+ * and page someone, not silently land on some default tier.
+ */
+export async function findTierByPriceId(prisma: CatalogueClient, priceId: string): Promise<TierRecord | null> {
+  if (!priceId) return null
+  const tiers = await loadCatalogue(prisma)
+  return tiers.find((t) => t.stripePriceIdMonthly === priceId || t.stripePriceIdAnnual === priceId) ?? null
 }

@@ -57,6 +57,20 @@ export interface StripeInvoiceShape {
 export interface StripePaymentMethodShape {
   id: string
   card?: { brand: string; last4: string; exp_month: number; exp_year: number } | null
+  /// The customer this method is (or, on `.detached`, WAS) attached to.
+  /// Present on `payment_method.attached` and most other payment_method
+  /// events. Stripe sends `.detached` AFTER detachment completes, so on that
+  /// one event this is always null — the prior owner survives only in
+  /// `previous_attributes.customer` below. Declared here, rather than left
+  /// for the webhook processor's `extractCustomerId` to duck-type off an
+  /// undeclared field, so the resolver/mapper contract is visible in the
+  /// type instead of only in a comment.
+  customer?: string | { id: string } | null
+  /// Stripe's diff envelope: the values this object had immediately before
+  /// the change this event reports. The only field this module reads off it
+  /// is `customer`, and the only event that needs it is `.detached` — see
+  /// `webhookHandlers.handlePaymentMethodDetached`.
+  previous_attributes?: { customer?: string | { id: string } | null } | null
 }
 
 export interface StripeEventShape {
