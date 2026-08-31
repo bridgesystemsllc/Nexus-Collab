@@ -1,0 +1,34 @@
+---
+alwaysApply: true
+---
+
+# Bridge Coding Rules
+
+## Workflow
+**PREP → BUILD → VERIFY.** Even a 5-line fix gets a 2-sentence plan (files + signatures).
+
+## Code Quality
+- Fix root cause, not symptoms
+- No silent catches, no magic numbers
+- Match existing patterns
+
+## UI (Light-First)
+Apple spatial + SpaceX industrial.
+
+| Token | Value |
+|-------|-------|
+| Canvas | `#F5F5F7` |
+| Surfaces | white |
+| Text | `#1D1D1F` |
+| Primary | `#0071E3` (Apple Blue) |
+| Chrome | `#111111` |
+| Destructive | `#E82127` (SpaceX red) |
+
+**Type:** SF Pro / -apple-system UI, Space Grotesk headlines, JetBrains Mono data. Never Inter/Roboto/Arial alone.
+
+**Retired:** dark-first, Electric Indigo `#7C3AED` — unless spec names them.
+
+## Safety
+- Do not merge to main
+- Do not deploy
+- No secrets or real customer data in repo
