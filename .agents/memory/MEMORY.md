@@ -12,3 +12,4 @@
 - [Preview pane grey vs app health](preview-pane-vs-app-health.md) — if curl+screenshot render fine, bisect with direct dev URL in new tab; grey preview = workspace pane issue, user reloads workspace tab.
 - [Post-merge missing deps kill API](post-merge-missing-deps.md) — merged task code can import packages never installed; API dies at boot (Cannot find module), vite still serves → login 500s. Check workflow log first.
 - [ERP sync fallback contract](erp-sync-fallback-contract.md) — ERP fetchers return synthetic ONLY when unconfigured; throw when configured; base needs /api/v1 + JSON guard; out-of-band sync must never reject.
+- [Shared package build drift](shared-package-build-drift.md) — web startup/build must compile @nexus/shared first or new exports can crash Vite while source typechecks.
