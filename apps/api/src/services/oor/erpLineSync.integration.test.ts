@@ -386,6 +386,21 @@ describe('ERP open-order line reconciliation', () => {
     const response = await requestIntegrationRoute('/erp/refresh-open-orders', ['oor:read'])
     expect(response.status).toBe(403)
   })
+
+  it('refuses to push an open order owned by another organization', async () => {
+    const otherItem = await prisma.moduleItem.create({
+      data: {
+        moduleId: OTHER_MODULE_ID,
+        status: 'In Production',
+        data: orderData([{ lineNo: 1, sku: 'OTHER-PUSH-SKU', qtyOrdered: 4, qtyReceived: 0 }]),
+      },
+    })
+    const response = await requestIntegrationRoute(
+      `/erp/push-open-order/${otherItem.id}`,
+      ['oor:edit_status'],
+    )
+    expect(response.status).toBe(404)
+  })
 })
 
 function parsedLine(itemNumber: string): ParsedReport['lines'][number] {

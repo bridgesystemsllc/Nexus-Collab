@@ -23,15 +23,16 @@ export interface RunImportResult {
 
 export interface RunImportInput {
   prisma: PrismaClient
+  orgId: string
   buffer: Buffer
   filename: string
   overrideGuard?: boolean
 }
 
 export async function runGeodisImport(input: RunImportInput): Promise<RunImportResult> {
-  const { prisma, buffer, filename, overrideGuard = false } = input
+  const { prisma, orgId, buffer, filename, overrideGuard = false } = input
 
-  const feed = await ensureGeodisFeed(prisma)
+  const feed = await ensureGeodisFeed(prisma, orgId)
   if (!feed || !feed.config.targetModuleId) {
     return {
       ok: false,
@@ -92,6 +93,7 @@ export async function runGeodisImport(input: RunImportInput): Promise<RunImportR
 
   const outcome = await importInventorySnapshot({
     prisma,
+    orgId,
     integrationId: feed.integrationId,
     moduleId: feed.config.targetModuleId,
     records: mapped.records,

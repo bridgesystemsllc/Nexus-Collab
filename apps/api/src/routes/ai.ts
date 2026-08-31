@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express'
-import { prisma } from '../index'
+import { prisma } from '../lib/prisma'
+import { getActingOrgId } from '../middleware/billingContext'
+import { requirePermission, type RbacRequest } from '../middleware/requirePermission'
 
 export const aiRoutes: ReturnType<typeof Router> = Router()
 
@@ -186,13 +188,16 @@ aiRoutes.post('/actions/generate-wosr', async (_req: Request, res: Response) => 
 })
 
 // Trigger ERP sync
-aiRoutes.post('/actions/sync-erp', async (_req: Request, res: Response) => {
+aiRoutes.post('/actions/sync-erp', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
   try {
-    const integration = await prisma.integration.findFirst({ where: { type: 'ERP_KAREVE_SYNC' } })
+    const orgId = getActingOrgId(req)
+    const integration = await prisma.integration.findFirst({
+      where: { type: 'ERP_KAREVE_SYNC', orgId },
+    })
     if (!integration) return res.status(404).json({ error: 'ERP integration not found' })
 
     await prisma.integration.update({
-      where: { id: integration.id },
+      where: { id: integration.id, orgId },
       data: { lastSyncAt: new Date(), syncCount: { increment: 1 } },
     })
 

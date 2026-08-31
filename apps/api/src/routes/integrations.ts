@@ -168,7 +168,7 @@ async function persistErpLiveResult(probe: ErpProbeResult, base: string, orgId: 
   if (!integration) return
   const existing = (integration.config ?? {}) as Record<string, unknown>
   await prisma.integration.update({
-    where: { id: integration.id },
+    where: { id: integration.id, orgId },
     data: {
       config: {
         ...existing,
@@ -369,9 +369,10 @@ integrationRoutes.delete('/:id', async (req: Request, res: Response) => {
 })
 
 // ─── Connect integration ────────────────────────────────────
-integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => {
+integrationRoutes.post('/:type/connect', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
   try {
     const type = req.params.type as string
+    const orgId = getActingOrgId(req)
 
     // ── Microsoft OAuth ──────────────────────────────────────
     if (type.startsWith('MICROSOFT_')) {
@@ -393,7 +394,7 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
         })
       }
 
-      const state = generateState('microsoft')
+      const state = generateState('microsoft', orgId)
       const scopes =
         'openid profile offline_access Mail.Read Mail.Send Mail.ReadWrite Files.ReadWrite.All ChannelMessage.Send Chat.ReadWrite User.Read'
 
@@ -429,7 +430,7 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
         })
       }
 
-      const state = generateState('google')
+      const state = generateState('google', orgId)
 
       const params = new URLSearchParams({
         client_id: clientId,
@@ -458,7 +459,7 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
       const encryptedConfig = encryptJson({ webhookId })
 
       await prisma.integration.updateMany({
-        where: { type },
+        where: { type, orgId },
         data: {
           status: 'CONNECTED',
           config: encryptedConfig,
@@ -540,7 +541,7 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
 
     // ── Default: generic connect ─────────────────────────────
     const integration = await prisma.integration.updateMany({
-      where: { type },
+      where: { type, orgId },
       data: { status: 'CONNECTED', config: req.body.config || {} },
     })
     res.json({ success: true, integration })
@@ -555,7 +556,7 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
 // the test uses the stored (encrypted) credentials rather than anything in the
 // body. For the ERP it actually reaches out to the configured URL; for other
 // integrations it reports whether the integration is currently connected.
-integrationRoutes.post('/:type/test', async (req: Request, res: Response) => {
+integrationRoutes.post('/:type/test', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
   try {
     const { type } = req.params
     const orgId = getActingOrgId(req)
@@ -602,8 +603,9 @@ integrationRoutes.post('/:type/test', async (req: Request, res: Response) => {
 })
 
 // ─── Microsoft OAuth callback ───────────────────────────────
-integrationRoutes.get('/microsoft/callback', async (req: Request, res: Response) => {
+integrationRoutes.get('/microsoft/callback', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
     const code = req.query.code as string | undefined
     const state = req.query.state as string | undefined
 
@@ -611,7 +613,7 @@ integrationRoutes.get('/microsoft/callback', async (req: Request, res: Response)
       return res.redirect(`${FRONTEND_URL()}/integrations?error=invalid_state`)
     }
 
-    if (!validateState(state, 'microsoft')) {
+    if (!validateState(state, 'microsoft', orgId)) {
       return res.redirect(`${FRONTEND_URL()}/integrations?error=invalid_state`)
     }
 
@@ -624,7 +626,7 @@ integrationRoutes.get('/microsoft/callback', async (req: Request, res: Response)
     })
 
     await prisma.integration.updateMany({
-      where: { type: { startsWith: 'MICROSOFT_' } },
+      where: { type: { startsWith: 'MICROSOFT_' }, orgId },
       data: {
         status: 'CONNECTED',
         config: encryptedTokens,
@@ -640,8 +642,9 @@ integrationRoutes.get('/microsoft/callback', async (req: Request, res: Response)
 })
 
 // ─── Google OAuth callback ──────────────────────────────────
-integrationRoutes.get('/google/callback', async (req: Request, res: Response) => {
+integrationRoutes.get('/google/callback', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
     const code = req.query.code as string | undefined
     const state = req.query.state as string | undefined
 
@@ -649,7 +652,7 @@ integrationRoutes.get('/google/callback', async (req: Request, res: Response) =>
       return res.redirect(`${FRONTEND_URL()}/integrations?error=invalid_state`)
     }
 
-    if (!validateState(state, 'google')) {
+    if (!validateState(state, 'google', orgId)) {
       return res.redirect(`${FRONTEND_URL()}/integrations?error=invalid_state`)
     }
 
@@ -662,7 +665,7 @@ integrationRoutes.get('/google/callback', async (req: Request, res: Response) =>
     })
 
     await prisma.integration.updateMany({
-      where: { type: { in: ['GOOGLE_GMAIL', 'GOOGLE_SHEETS'] } },
+      where: { type: { in: ['GOOGLE_GMAIL', 'GOOGLE_SHEETS'] }, orgId },
       data: {
         status: 'CONNECTED',
         config: encryptedTokens,
@@ -703,6 +706,7 @@ function feedRoutingResponse(integration: Awaited<ReturnType<typeof prisma.integ
 // GET routing — read-only, any authenticated user.
 integrationRoutes.get('/:type/routing', async (req: Request, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
     if (req.params.type !== 'ERP_KAREVE_SYNC') {
       return res.status(404).json({ error: 'Routing is only available for ERP_KAREVE_SYNC' })
     }
@@ -725,16 +729,13 @@ integrationRoutes.get('/:type/routing', async (req: Request, res: Response) => {
   }
 })
 
-// PATCH routing — ADMIN / OPS_MANAGER only.
-integrationRoutes.patch('/:type/routing', async (req: Request, res: Response) => {
+// PATCH routing — requires workspace settings management permission.
+integrationRoutes.patch('/:type/routing', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
     if (req.params.type !== 'ERP_KAREVE_SYNC') {
       return res.status(404).json({ error: 'Routing is only available for ERP_KAREVE_SYNC' })
     }
-
-    if (!requirePrivileged(req, res)) return
-
-    const orgId = getActingOrgId(req)
 
     const body = (req.body ?? {}) as { routing?: Record<string, Partial<RouteEntry>> }
     const patch = body.routing
@@ -753,7 +754,7 @@ integrationRoutes.patch('/:type/routing', async (req: Request, res: Response) =>
     for (const [key, entry] of Object.entries(patch)) {
       if (entry && entry.targetModuleId) {
         const mod = await prisma.departmentModule.findUnique({
-          where: { id: entry.targetModuleId },
+          where: { id: entry.targetModuleId, department: { orgId } },
         })
         if (!mod) {
           return res.status(400).json({ error: `targetModuleId for feed "${key}" does not exist` })
@@ -768,11 +769,11 @@ integrationRoutes.patch('/:type/routing', async (req: Request, res: Response) =>
 
     const config = setRoutingOnConfig(integration.config, patch)
     await prisma.integration.update({
-      where: { id: integration.id },
+      where: { id: integration.id, orgId },
       data: { config },
     })
 
-    const updated = await prisma.integration.findUnique({ where: { id: integration.id } })
+    const updated = await prisma.integration.findFirst({ where: { id: integration.id, orgId } })
     res.json({
       feeds: feedRoutingResponse(updated),
       connected: updated?.status === 'CONNECTED',
@@ -797,13 +798,14 @@ integrationRoutes.patch('/:type/routing', async (req: Request, res: Response) =>
 // each feed's source module.
 async function feedOutboundResponse(
   integration: Awaited<ReturnType<typeof prisma.integration.findFirst>>,
+  orgId: string,
 ) {
   const outbound = getOutbound(integration)
   return Promise.all(
     ERP_OUTBOUND_FEEDS.map(async (feed) => {
       const entry = outbound[feed.key]
       const mod = await prisma.departmentModule.findFirst({
-        where: { type: feed.sourceModuleType },
+        where: { type: feed.sourceModuleType, department: { orgId } },
       })
       const itemCount = mod
         ? await prisma.moduleItem.count({ where: { moduleId: mod.id } })
@@ -823,6 +825,7 @@ async function feedOutboundResponse(
 // GET outbound — read-only, any authenticated user.
 integrationRoutes.get('/:type/outbound', async (req: Request, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
     if (req.params.type !== 'ERP_KAREVE_SYNC') {
       return res.status(404).json({ error: 'Outbound is only available for ERP_KAREVE_SYNC' })
     }
@@ -836,7 +839,7 @@ integrationRoutes.get('/:type/outbound', async (req: Request, res: Response) => 
     res.json({
       connected: integration.status === 'CONNECTED',
       configured,
-      feeds: await feedOutboundResponse(integration),
+      feeds: await feedOutboundResponse(integration, orgId),
     })
   } catch (error) {
     if (error instanceof NoActingOrgError) {
@@ -847,16 +850,13 @@ integrationRoutes.get('/:type/outbound', async (req: Request, res: Response) => 
   }
 })
 
-// PATCH outbound — ADMIN / OPS_MANAGER only.
-integrationRoutes.patch('/:type/outbound', async (req: Request, res: Response) => {
+// PATCH outbound — requires workspace settings management permission.
+integrationRoutes.patch('/:type/outbound', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
     if (req.params.type !== 'ERP_KAREVE_SYNC') {
       return res.status(404).json({ error: 'Outbound is only available for ERP_KAREVE_SYNC' })
     }
-
-    if (!requirePrivileged(req, res)) return
-
-    const orgId = getActingOrgId(req)
 
     const body = (req.body ?? {}) as { outbound?: Record<string, Partial<OutboundEntry>> }
     const patch = body.outbound
@@ -878,16 +878,16 @@ integrationRoutes.patch('/:type/outbound', async (req: Request, res: Response) =
 
     const config = setOutboundOnConfig(integration.config, patch)
     await prisma.integration.update({
-      where: { id: integration.id },
+      where: { id: integration.id, orgId },
       data: { config },
     })
 
-    const updated = await prisma.integration.findUnique({ where: { id: integration.id } })
+    const updated = await prisma.integration.findFirst({ where: { id: integration.id, orgId } })
     const { configured } = await getErpConfig(prisma, orgId)
     res.json({
       connected: updated?.status === 'CONNECTED',
       configured,
-      feeds: await feedOutboundResponse(updated),
+      feeds: await feedOutboundResponse(updated, orgId),
     })
   } catch (error) {
     if (error instanceof NoActingOrgError) {
@@ -901,15 +901,12 @@ integrationRoutes.patch('/:type/outbound', async (req: Request, res: Response) =
 // POST push — ADMIN / OPS_MANAGER only. Pushes the
 // enabled outbound feeds (or the explicitly-requested feeds) to the ERP and
 // records a SyncLog noting the OUTBOUND direction.
-integrationRoutes.post('/:type/push', async (req: Request, res: Response) => {
+integrationRoutes.post('/:type/push', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
     if (req.params.type !== 'ERP_KAREVE_SYNC') {
       return res.status(404).json({ error: 'Push is only available for ERP_KAREVE_SYNC' })
     }
-
-    if (!requirePrivileged(req, res)) return
-
-    const orgId = getActingOrgId(req)
 
     const body = (req.body ?? {}) as { feeds?: string[] }
     let feedKeys: string[] | undefined
@@ -939,7 +936,7 @@ integrationRoutes.post('/:type/push', async (req: Request, res: Response) => {
     })
 
     try {
-      const result = await pushErp(prisma, feedKeys)
+      const result = await pushErp(prisma, orgId, feedKeys)
 
       // A push is a DRY RUN when the ERP is not configured (no feed sent real
       // data). Surface this so the UI can label it "dry run (ERP not connected)".
@@ -1047,20 +1044,11 @@ integrationRoutes.post(
 })
 
 // ─── Disconnect integration ─────────────────────────────────
-integrationRoutes.post('/:type/disconnect', async (req: Request, res: Response) => {
+integrationRoutes.post('/:type/disconnect', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
   try {
-    if (!requirePrivileged(req, res)) return
     const orgId = getActingOrgId(req)
-
-    const integration = await prisma.integration.findFirst({
+    await prisma.integration.updateMany({
       where: { type: req.params.type as string, orgId },
-    })
-    if (!integration) {
-      return res.status(404).json({ error: 'Integration not found' })
-    }
-
-    await prisma.integration.update({
-      where: { id: integration.id },
       data: { status: 'DISCONNECTED', config: {} },
     })
     res.json({ success: true })
@@ -1074,7 +1062,7 @@ integrationRoutes.post('/:type/disconnect', async (req: Request, res: Response) 
 })
 
 // ─── Manual sync trigger ────────────────────────────────────
-integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
+integrationRoutes.post('/:type/sync', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
   try {
     const orgId = getActingOrgId(req)
     const integration = await prisma.integration.findFirst({
@@ -1093,7 +1081,7 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
 
     // Update integration status
     await prisma.integration.update({
-      where: { id: integration.id },
+      where: { id: integration.id, orgId },
       data: { status: 'SYNCING' },
     })
 
@@ -1117,7 +1105,7 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
           data: { status: 'COMPLETE', completedAt: new Date(), recordsProcessed },
         })
         await prisma.integration.update({
-          where: { id: integration.id },
+          where: { id: integration.id, orgId },
           data: {
             status: 'CONNECTED',
             lastSyncAt: new Date(),
@@ -1135,7 +1123,7 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
             data: { status: 'FAILED', completedAt: new Date(), errors: { message: String(err) } },
           })
           await prisma.integration.update({
-            where: { id: integration.id },
+            where: { id: integration.id, orgId },
             data: { status: 'CONNECTED' },
           })
         } catch (recordErr) {
@@ -1161,9 +1149,7 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
 integrationRoutes.get('/:type/status', async (req: Request, res: Response) => {
   try {
     const orgId = getActingOrgId(req)
-    const integration = await prisma.integration.findFirst({
-      where: { type: req.params.type as string, orgId },
-    })
+    const integration = await prisma.integration.findFirst({ where: { type: req.params.type as string, orgId } })
     if (!integration) return res.status(404).json({ error: 'Integration not found' })
     res.json({
       status: integration.status,
@@ -1187,9 +1173,7 @@ integrationRoutes.get('/:type/status', async (req: Request, res: Response) => {
 integrationRoutes.get('/:type/logs', async (req: Request, res: Response) => {
   try {
     const orgId = getActingOrgId(req)
-    const integration = await prisma.integration.findFirst({
-      where: { type: req.params.type as string, orgId },
-    })
+    const integration = await prisma.integration.findFirst({ where: { type: req.params.type as string, orgId } })
     if (!integration) return res.status(404).json({ error: 'Integration not found' })
 
     const logs = await prisma.syncLog.findMany({

@@ -1,6 +1,6 @@
-import { Router, Request, Response } from 'express'
+import { Router, Response } from 'express'
 import multer from 'multer'
-import { prisma } from '../index'
+import { prisma } from '../lib/prisma'
 import { runGeodisImport } from '../services/inventoryImport/runImport'
 import {
   ensureGeodisFeed,
@@ -8,6 +8,8 @@ import {
   GEODIS_FEED_TYPE,
 } from '../services/inventoryImport/feedConfig'
 import { UPLOAD_MAX_BYTES } from '../lib/uploadValidation'
+import { getActingOrgId } from '../middleware/billingContext'
+import { requirePermission, type RbacRequest } from '../middleware/requirePermission'
 
 export const inventoryImportRoutes: ReturnType<typeof Router> = Router()
 
@@ -18,36 +20,29 @@ const upload = multer({
   limits: { fileSize: UPLOAD_MAX_BYTES, files: 1 },
 })
 
-// Mirrors the role gate used by the integrations routing endpoint: inventory
-// is operational data, so writes require ADMIN or OPS_MANAGER. This route
-// sits behind isAuthenticated, so `member` should always be resolved here;
-// local development authenticates via /api/dev-login, not a bypass in this check.
-function requirePrivileged(req: Request, res: Response): boolean {
-  const member = (req as any).member as { role?: string } | undefined
-  const role = member?.role
-  const privileged = role === 'ADMIN' || role === 'OPS_MANAGER'
-  if (!privileged) {
-    res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
-    return false
-  }
-  return true
-}
-
 // ─── Feed status ─────────────────────────────────────────────
-inventoryImportRoutes.get('/geodis/status', async (_req: Request, res: Response) => {
+inventoryImportRoutes.get('/geodis/status', requirePermission('settings:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const feed = await ensureGeodisFeed(prisma)
+    const orgId = getActingOrgId(req)
+    const feed = await ensureGeodisFeed(prisma, orgId)
     if (!feed) {
       return res.json({ configured: false, reason: 'No organization or Operations department' })
     }
 
-    const integration = await prisma.integration.findUnique({ where: { id: feed.integrationId } })
+    const integration = await prisma.integration.findFirst({
+      where: { id: feed.integrationId, orgId },
+    })
     const lastRun = await prisma.syncLog.findFirst({
       where: { integrationId: feed.integrationId },
       orderBy: { startedAt: 'desc' },
     })
     const itemCount = feed.config.targetModuleId
-      ? await prisma.moduleItem.count({ where: { moduleId: feed.config.targetModuleId } })
+      ? await prisma.moduleItem.count({
+          where: {
+            moduleId: feed.config.targetModuleId,
+            module: { department: { orgId } },
+          },
+        })
       : 0
 
     res.json({
@@ -77,9 +72,12 @@ inventoryImportRoutes.get('/geodis/status', async (_req: Request, res: Response)
 })
 
 // ─── Run history ─────────────────────────────────────────────
-inventoryImportRoutes.get('/geodis/logs', async (_req: Request, res: Response) => {
+inventoryImportRoutes.get('/geodis/logs', requirePermission('settings:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const integration = await prisma.integration.findFirst({ where: { type: GEODIS_FEED_TYPE } })
+    const orgId = getActingOrgId(req)
+    const integration = await prisma.integration.findFirst({
+      where: { type: GEODIS_FEED_TYPE, orgId },
+    })
     if (!integration) return res.json([])
 
     const logs = await prisma.syncLog.findMany({
@@ -95,11 +93,10 @@ inventoryImportRoutes.get('/geodis/logs', async (_req: Request, res: Response) =
 })
 
 // ─── Update feed configuration (column map, guard, matching) ─
-inventoryImportRoutes.put('/geodis/config', async (req: Request, res: Response) => {
-  if (!requirePrivileged(req, res)) return
-
+inventoryImportRoutes.put('/geodis/config', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
   try {
-    const feed = await ensureGeodisFeed(prisma)
+    const orgId = getActingOrgId(req)
+    const feed = await ensureGeodisFeed(prisma, orgId)
     if (!feed) return res.status(409).json({ error: 'Geodis feed is not configured' })
 
     // Merge over the resolved config so a partial update cannot blank fields,
@@ -112,7 +109,7 @@ inventoryImportRoutes.put('/geodis/config', async (req: Request, res: Response) 
     })
 
     await prisma.integration.update({
-      where: { id: feed.integrationId },
+      where: { id: feed.integrationId, orgId },
       data: { config: merged as unknown as object },
     })
     res.json({ success: true, config: merged })
@@ -128,11 +125,11 @@ inventoryImportRoutes.put('/geodis/config', async (req: Request, res: Response) 
 // validated against a real file before the automated feed is trusted.
 inventoryImportRoutes.post(
   '/geodis/upload',
+  requirePermission('settings:manage'),
   upload.single('file'),
-  async (req: Request, res: Response) => {
-    if (!requirePrivileged(req, res)) return
-
+  async (req: RbacRequest, res: Response) => {
     try {
+      const orgId = getActingOrgId(req)
       const file = (req as any).file as Express.Multer.File | undefined
       if (!file) return res.status(400).json({ error: 'A spreadsheet file is required' })
 
@@ -144,6 +141,7 @@ inventoryImportRoutes.post(
         buffer: file.buffer,
         filename: file.originalname,
         overrideGuard,
+        orgId,
       })
 
       // A held import is a deliberate refusal to write, not a server fault —

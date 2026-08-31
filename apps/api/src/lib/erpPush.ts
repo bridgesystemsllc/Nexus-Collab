@@ -214,9 +214,10 @@ export interface PushErpResult {
 async function loadFeedPayloads(
   prisma: PrismaClient,
   feed: ErpOutboundFeed,
+  orgId: string,
 ): Promise<Record<string, any>[]> {
   const mod = await prisma.departmentModule.findFirst({
-    where: { type: feed.sourceModuleType },
+    where: { type: feed.sourceModuleType, department: { orgId } },
   })
   if (!mod) return []
 
@@ -240,10 +241,11 @@ async function loadFeedPayloads(
  */
 export async function pushErp(
   prisma: PrismaClient,
+  orgId: string,
   feedKeys?: string[],
 ): Promise<PushErpResult> {
   const integration = await prisma.integration.findFirst({
-    where: { type: 'ERP_KAREVE_SYNC' },
+    where: { type: 'ERP_KAREVE_SYNC', orgId },
   })
   const outbound = getOutbound(integration)
 
@@ -262,9 +264,9 @@ export async function pushErp(
     if (!selected) continue
 
     try {
-      const payloads = await loadFeedPayloads(prisma, feed)
+      const payloads = await loadFeedPayloads(prisma, feed, orgId)
       const path = entry?.erpPath || feed.defaultPath
-      const pushResult = await pushToErp(prisma, path, payloads)
+      const pushResult = await pushToErp(prisma, path, payloads, orgId)
 
       feeds[feed.key] = {
         count: payloads.length,

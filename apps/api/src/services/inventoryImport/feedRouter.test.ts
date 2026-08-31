@@ -9,6 +9,7 @@ function fakePrisma(integrations: any[]): any {
 
 const geodisIntegration = (config: any = DEFAULT_GEODIS_CONFIG) => ({
   id: 'int-1',
+  orgId: 'org-1',
   type: GEODIS_FEED_TYPE,
   config,
 })
@@ -45,6 +46,7 @@ describe('matchFeed — positive matching', () => {
     const match = await matchFeed(fakePrisma([geodisIntegration()]), email())
     expect(match).not.toBeNull()
     expect(match!.type).toBe(GEODIS_FEED_TYPE)
+    expect(match!.orgId).toBe('org-1')
     expect(match!.attachmentName).toBe('stock.xlsx')
   })
 
@@ -103,6 +105,16 @@ describe('matchFeed — negative matching', () => {
 })
 
 describe('matchFeed — misconfiguration safety', () => {
+  it('fails closed when the same shared-mailbox rule matches multiple workspaces', async () => {
+    await expect(matchFeed(
+      fakePrisma([
+        geodisIntegration(),
+        { ...geodisIntegration(), id: 'int-2', orgId: 'org-2' },
+      ]),
+      email(),
+    )).rejects.toThrow('AMBIGUOUS_INVENTORY_FEED_MATCH')
+  })
+
   it('refuses to match when the feed has no constraints at all', async () => {
     // An unconstrained feed would swallow every email in the shared mailbox,
     // silently disabling the assistant for human requests.

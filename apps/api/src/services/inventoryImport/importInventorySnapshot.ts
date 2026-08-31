@@ -31,6 +31,7 @@ export interface ImportOutcome {
 
 export interface ImportInput {
   prisma: PrismaClient
+  orgId: string
   integrationId: string
   moduleId: string
   records: InventoryRecord[]
@@ -105,9 +106,17 @@ export function evaluateGuard(
 
 export async function importInventorySnapshot(input: ImportInput): Promise<ImportOutcome> {
   const {
-    prisma, integrationId, moduleId, records,
+    prisma, orgId, integrationId, moduleId, records,
     rowErrors = [], duplicateSkus = [], guard, warehouse, source, overrideGuard = false,
   } = input
+
+  const [integration, targetModule] = await Promise.all([
+    prisma.integration.findFirst({ where: { id: integrationId, orgId } }),
+    prisma.departmentModule.findFirst({ where: { id: moduleId, department: { orgId } } }),
+  ])
+  if (!integration || !targetModule) {
+    throw new Error('Inventory feed or target module is unavailable for this organization.')
+  }
 
   const syncLog = await prisma.syncLog.create({
     data: { integrationId, status: 'running', recordsProcessed: 0 },
@@ -129,12 +138,12 @@ export async function importInventorySnapshot(input: ImportInput): Promise<Impor
     })
     if (status === 'complete') {
       await prisma.integration.update({
-        where: { id: integrationId },
+        where: { id: integrationId, orgId },
         data: { status: 'CONNECTED', lastSyncAt: new Date(), syncCount: { increment: 1 } },
       })
     } else {
       await prisma.integration
-        .update({ where: { id: integrationId }, data: { status: 'ERROR' } })
+        .update({ where: { id: integrationId, orgId }, data: { status: 'ERROR' } })
         .catch(() => {})
     }
     return { status, ...outcome }

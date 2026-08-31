@@ -21,6 +21,7 @@ export interface RoutableEmail {
 export interface MatchedFeed {
   type: string
   integrationId: string
+  orgId: string
   config: FeedConfig
   // Name of the attachment that will be imported.
   attachmentName: string
@@ -64,6 +65,7 @@ export async function matchFeed(
     where: { type: { in: INVENTORY_FEED_TYPES } },
   })
 
+  const matches: MatchedFeed[] = []
   for (const integration of integrations) {
     const config = normalizeFeedConfig(integration.config)
     if (!matchesRule(email, config)) continue
@@ -72,13 +74,17 @@ export async function matchFeed(
     // The sender and subject matched, so this IS the feed — it just arrived
     // without a usable file. Claim it anyway: passing a supplier's automated
     // report to the AI executor is worse than reporting a missing attachment.
-    return {
+    matches.push({
       type: integration.type,
       integrationId: integration.id,
+      orgId: integration.orgId,
       config,
       attachmentName: attachmentName ?? '',
-    }
+    })
   }
 
-  return null
+  if (matches.length > 1) {
+    throw new Error('AMBIGUOUS_INVENTORY_FEED_MATCH')
+  }
+  return matches[0] ?? null
 }

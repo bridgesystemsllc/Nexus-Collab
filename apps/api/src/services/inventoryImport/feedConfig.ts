@@ -121,11 +121,13 @@ export interface ResolvedFeed {
 
 // Find or create the Geodis feed, together with the inventory module it writes
 // into. Idempotent: safe to call on every import and on startup.
-export async function ensureGeodisFeed(prisma: PrismaClient): Promise<ResolvedFeed | null> {
-  const org = await prisma.organization.findFirst()
-  if (!org) return null
-
-  let integration = await prisma.integration.findFirst({ where: { type: GEODIS_FEED_TYPE } })
+export async function ensureGeodisFeed(
+  prisma: PrismaClient,
+  orgId: string,
+): Promise<ResolvedFeed | null> {
+  let integration = await prisma.integration.findFirst({
+    where: { type: GEODIS_FEED_TYPE, orgId },
+  })
   if (!integration) {
     integration = await prisma.integration.create({
       data: {
@@ -133,7 +135,7 @@ export async function ensureGeodisFeed(prisma: PrismaClient): Promise<ResolvedFe
         name: 'Geodis Inventory Feed',
         status: 'DISCONNECTED',
         config: DEFAULT_GEODIS_CONFIG as unknown as object,
-        orgId: org.id,
+        orgId,
       },
     })
   }
@@ -146,19 +148,25 @@ export async function ensureGeodisFeed(prisma: PrismaClient): Promise<ResolvedFe
   // Geodis.
   let moduleId = config.targetModuleId
   const existingModule = moduleId
-    ? await prisma.departmentModule.findUnique({ where: { id: moduleId } })
+    ? await prisma.departmentModule.findFirst({
+        where: { id: moduleId, department: { orgId } },
+      })
     : null
 
   if (!existingModule) {
     const found = await prisma.departmentModule.findFirst({
-      where: { type: 'INVENTORY_HEALTH', name: GEODIS_MODULE_NAME },
+      where: {
+        type: 'INVENTORY_HEALTH',
+        name: GEODIS_MODULE_NAME,
+        department: { orgId },
+      },
     })
     if (found) {
       moduleId = found.id
     } else {
       const ops =
-        (await prisma.department.findFirst({ where: { type: 'BUILTIN_OPS' } })) ??
-        (await prisma.department.findFirst({ where: { orgId: org.id } }))
+        (await prisma.department.findFirst({ where: { type: 'BUILTIN_OPS', orgId } })) ??
+        (await prisma.department.findFirst({ where: { orgId } }))
       if (!ops) return null
 
       const created = await prisma.departmentModule.create({
@@ -175,7 +183,7 @@ export async function ensureGeodisFeed(prisma: PrismaClient): Promise<ResolvedFe
 
     config.targetModuleId = moduleId
     await prisma.integration.update({
-      where: { id: integration.id },
+      where: { id: integration.id, orgId },
       data: { config: config as unknown as object },
     })
   }

@@ -40,6 +40,7 @@ export async function handleFeedEmail(input: FeedEmailInput): Promise<RunImportR
 
   const result = await runGeodisImport({
     prisma,
+    orgId: feed.orgId,
     buffer: attachment.content,
     filename: attachment.name,
   })

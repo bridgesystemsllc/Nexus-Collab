@@ -76,6 +76,7 @@ describe('processIncomingEmail — feed emails bypass the AI pipeline', () => {
     matchFeed.mockResolvedValue({
       type: 'GEODIS_INVENTORY_FEED',
       integrationId: 'int-1',
+      orgId: 'org-1',
       config: { warehouse: 'GEODIS' },
       attachmentName: 'stock.csv',
     })
@@ -95,6 +96,7 @@ describe('processIncomingEmail — feed emails bypass the AI pipeline', () => {
     matchFeed.mockResolvedValue({
       type: 'GEODIS_INVENTORY_FEED',
       integrationId: 'int-1',
+      orgId: 'org-1',
       config: { warehouse: 'GEODIS' },
       attachmentName: 'stock.csv',
     })
@@ -113,6 +115,7 @@ describe('processIncomingEmail — feed emails bypass the AI pipeline', () => {
     matchFeed.mockResolvedValue({
       type: 'GEODIS_INVENTORY_FEED',
       integrationId: 'int-1',
+      orgId: 'org-1',
       config: { warehouse: 'GEODIS' },
       attachmentName: '',
     })
@@ -129,6 +132,7 @@ describe('processIncomingEmail — feed emails bypass the AI pipeline', () => {
     matchFeed.mockResolvedValue({
       type: 'GEODIS_INVENTORY_FEED',
       integrationId: 'int-1',
+      orgId: 'org-1',
       config: { warehouse: 'GEODIS' },
       attachmentName: 'stock.csv',
     })
@@ -150,6 +154,7 @@ describe('processIncomingEmail — feed authorization', () => {
     matchFeed.mockResolvedValue({
       type: 'GEODIS_INVENTORY_FEED',
       integrationId: 'int-1',
+      orgId: 'org-1',
       config: { warehouse: 'GEODIS' },
       attachmentName: 'stock.csv',
     })
@@ -216,6 +221,7 @@ describe('processIncomingEmail — deduplication', () => {
     matchFeed.mockResolvedValue({
       type: 'GEODIS_INVENTORY_FEED',
       integrationId: 'int-1',
+      orgId: 'org-1',
       config: { warehouse: 'GEODIS' },
       attachmentName: 'stock.csv',
     })

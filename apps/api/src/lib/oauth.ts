@@ -7,11 +7,11 @@ interface OAuthTokenResponse {
 }
 
 // ─── State Parameter (CSRF protection) ────────────────────────
-const pendingStates = new Map<string, { provider: string; createdAt: number }>()
+const pendingStates = new Map<string, { provider: string; orgId: string; createdAt: number }>()
 
-export function generateState(provider: string): string {
+export function generateState(provider: string, orgId: string): string {
   const state = crypto.randomBytes(32).toString('hex')
-  pendingStates.set(state, { provider, createdAt: Date.now() })
+  pendingStates.set(state, { provider, orgId, createdAt: Date.now() })
   // Clean up states older than 10 minutes
   for (const [key, value] of pendingStates) {
     if (Date.now() - value.createdAt > 10 * 60 * 1000) pendingStates.delete(key)
@@ -19,10 +19,11 @@ export function generateState(provider: string): string {
   return state
 }
 
-export function validateState(state: string, expectedProvider: string): boolean {
+export function validateState(state: string, expectedProvider: string, expectedOrgId: string): boolean {
   const entry = pendingStates.get(state)
   if (!entry) return false
   if (entry.provider !== expectedProvider) return false
+  if (entry.orgId !== expectedOrgId) return false
   if (Date.now() - entry.createdAt > 10 * 60 * 1000) {
     pendingStates.delete(state)
     return false
