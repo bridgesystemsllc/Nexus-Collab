@@ -439,21 +439,21 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
       <div>
         <SectionHeader icon={Activity} label="Quick Stats" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)]">
+          <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)]">
             <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider">Active Assignments</p>
             <p className="text-xl font-bold text-[var(--text-primary)] mt-1">{activeAssignments.length}</p>
           </div>
-          <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)]">
+          <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)]">
             <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider">Best Unit Cost</p>
             <p className="text-xl font-bold mt-1" style={{ color: costIsUnder ? '#10B981' : costIsOver ? '#EF4444' : 'var(--text-primary)' }}>
               {bestCost > 0 ? `$${bestCost.toFixed(2)}` : '\u2014'}
             </p>
           </div>
-          <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)]">
+          <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)]">
             <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider">Total Vendors</p>
             <p className="text-xl font-bold text-[var(--text-primary)] mt-1">{vendors.length}</p>
           </div>
-          <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)]">
+          <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)]">
             <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider">Days to Target Approval</p>
             <p className="text-xl font-bold mt-1" style={{ color: daysToApproval !== null && daysToApproval < 0 ? '#EF4444' : 'var(--text-primary)' }}>
               {daysToApproval !== null ? daysToApproval : '\u2014'}
@@ -590,7 +590,7 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
           </button>
         </div>
         {showRiskForm && (
-          <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] mb-4 space-y-3">
+          <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] mb-4 space-y-3">
             <input
               type="text"
               placeholder="Risk description"
@@ -671,7 +671,7 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
           {vendors.map((v, idx) => (
             <div
               key={idx}
-              className="p-4 rounded-lg border bg-[var(--bg-primary)]"
+              className="p-4 rounded-lg border bg-[var(--bg-base)]"
               style={{ borderColor: v.vendorStatus === 'Primary' ? '#10B981' : 'var(--border-subtle)' }}
             >
               <div className="flex items-start justify-between mb-3">
@@ -805,7 +805,7 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
       {/* Cost Modeling Calculator */}
       <div>
         <SectionHeader icon={DollarSign} label="Cost Modeling Calculator" />
-        <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] space-y-4">
+        <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] space-y-4">
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider mb-1 block">Order Quantity</label>
@@ -906,7 +906,7 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
         </div>
 
         {showAssignForm && (
-          <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] space-y-3">
+          <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <input
                 type="text"
@@ -982,19 +982,19 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
         <div>
           <SectionHeader icon={Beaker} label="Compatibility Summary" />
           <div className="grid grid-cols-4 gap-3">
-            <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] text-center">
+            <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] text-center">
               <p className="text-xl font-bold text-[#10B981]">{compatCounts.pass}</p>
               <p className="text-[10px] text-[var(--text-tertiary)] uppercase">Compatible</p>
             </div>
-            <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] text-center">
+            <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] text-center">
               <p className="text-xl font-bold text-[#F59E0B]">{compatCounts.conditional}</p>
               <p className="text-[10px] text-[var(--text-tertiary)] uppercase">Conditional</p>
             </div>
-            <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] text-center">
+            <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] text-center">
               <p className="text-xl font-bold text-[#EF4444]">{compatCounts.fail}</p>
               <p className="text-[10px] text-[var(--text-tertiary)] uppercase">Incompatible</p>
             </div>
-            <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] text-center">
+            <div className="p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] text-center">
               <p className="text-xl font-bold text-[#6B7280]">{compatCounts.notTested}</p>
               <p className="text-[10px] text-[var(--text-tertiary)] uppercase">Not Tested</p>
             </div>
@@ -1039,7 +1039,7 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
                       {expandedProduct === prod && (
                         <tr key={`${prod}-detail`}>
                           <td colSpan={uniqueTestTypes.length + 1} className="p-0">
-                            <div className="p-3 bg-[var(--bg-primary)] border-t border-[var(--border-subtle)]">
+                            <div className="p-3 bg-[var(--bg-base)] border-t border-[var(--border-subtle)]">
                               <div className="space-y-2">
                                 {tests
                                   .filter((t) => t.productName === prod)
@@ -1079,7 +1079,7 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
           </button>
         </div>
         {showTestForm && (
-          <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)] space-y-3">
+          <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <input
                 type="text"
@@ -1180,7 +1180,7 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
                 {catFiles.map((f, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between p-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-primary)]"
+                    className="flex items-center justify-between p-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)]"
                   >
                     <div className="flex items-center gap-2">
                       <FileText size={14} className="text-[var(--text-tertiary)]" />

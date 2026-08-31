@@ -156,14 +156,14 @@ export function UserDirectory() {
               placeholder="Search people…"
               aria-label="Search people"
               className="w-52 rounded-lg border py-1.5 pl-8 pr-3 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none"
-              style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+              style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}
             />
           </div>
 
           <select
             value={roleId} onChange={(e) => setFilter('role', e.target.value)} aria-label="Filter by role"
             className="rounded-lg border px-2 py-1.5 text-xs text-[var(--text-secondary)]"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+            style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}
           >
             <option value="">All roles</option>
             {(roles.data ?? []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
@@ -172,7 +172,7 @@ export function UserDirectory() {
           <select
             value={departmentId} onChange={(e) => setFilter('dept', e.target.value)} aria-label="Filter by department"
             className="rounded-lg border px-2 py-1.5 text-xs text-[var(--text-secondary)]"
-            style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}
+            style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}
           >
             <option value="">All departments</option>
             {(departments.data ?? []).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -205,7 +205,7 @@ export function UserDirectory() {
               style={
                 active
                   ? { background: 'var(--accent)', color: '#fff', borderColor: 'transparent' }
-                  : { background: 'var(--bg-surface)', color: 'var(--text-secondary)', borderColor: 'var(--border)' }
+                  : { background: 'var(--bg-surface)', color: 'var(--text-secondary)', borderColor: 'var(--border-default)' }
               }
             >
               {s.label}
@@ -237,7 +237,7 @@ export function UserDirectory() {
             onClick={() => setFilter('page', String(Math.max(1, page - 1)))}
             disabled={page <= 1}
             className="rounded-lg border px-3 py-1.5 text-xs text-[var(--text-secondary)] disabled:opacity-40"
-            style={{ borderColor: 'var(--border)' }}
+            style={{ borderColor: 'var(--border-default)' }}
           >
             Previous
           </button>
@@ -248,7 +248,7 @@ export function UserDirectory() {
             onClick={() => setFilter('page', String(page + 1))}
             disabled={page >= (users.data?.pages ?? 1)}
             className="rounded-lg border px-3 py-1.5 text-xs text-[var(--text-secondary)] disabled:opacity-40"
-            style={{ borderColor: 'var(--border)' }}
+            style={{ borderColor: 'var(--border-default)' }}
           >
             Next
           </button>
@@ -274,10 +274,10 @@ export function UserDirectory() {
 
 function UserTable({ users, onOpen }: { users: DirectoryUser[]; onOpen: (id: string) => void }) {
   return (
-    <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+    <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b" style={{ borderColor: 'var(--border)', background: 'var(--bg-subtle)' }}>
+          <tr className="border-b" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
             {['Name', 'Role', 'Department', 'Status', 'Last active'].map((h, i) => (
               <th key={h} className={`px-3 py-2 font-medium text-[var(--text-tertiary)] ${i === 0 ? 'text-left' : 'text-left'}`}>
                 {h}
@@ -294,8 +294,8 @@ function UserTable({ users, onOpen }: { users: DirectoryUser[]; onOpen: (id: str
               tabIndex={0}
               role="button"
               aria-label={`Open ${u.name}`}
-              className="cursor-pointer border-b transition-colors last:border-0 hover:bg-[var(--bg-subtle)] focus:outline-none focus:ring-2"
-              style={{ borderColor: 'var(--border)' }}
+              className="cursor-pointer border-b transition-colors last:border-0 hover:bg-[var(--bg-surface)] focus:outline-none focus:ring-2"
+              style={{ borderColor: 'var(--border-default)' }}
             >
               <td className="px-3 py-2">
                 <div className="flex items-center gap-2">
@@ -394,7 +394,7 @@ const ErrorState = ({
         <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-[var(--text-tertiary)]">
           Nobody has been assigned a role, so every permission check refuses — including yours.
           Restarting the API repairs this automatically; an administrator can also run{' '}
-          <code className="rounded bg-[var(--bg-subtle)] px-1 py-0.5">pnpm db:seed:rbac</code>.
+          <code className="rounded bg-[var(--bg-surface)] px-1 py-0.5">pnpm db:seed:rbac</code>.
         </p>
         <button onClick={onRetry} className="mt-3 text-xs font-medium" style={{ color: 'var(--accent)' }}>
           Check again
@@ -405,7 +405,7 @@ const ErrorState = ({
 
   if (forbidden) {
     return (
-      <div className="rounded-xl border py-16 text-center" style={{ borderColor: 'var(--border)' }}>
+      <div className="rounded-xl border py-16 text-center" style={{ borderColor: 'var(--border-default)' }}>
         <AlertTriangle size={22} className="mx-auto mb-2 text-[var(--text-tertiary)]" />
         <p className="text-sm text-[var(--text-primary)]">You cannot view the directory</p>
         <p className="mt-1 text-xs text-[var(--text-tertiary)]">
@@ -416,7 +416,7 @@ const ErrorState = ({
   }
 
   return (
-    <div className="rounded-xl border py-16 text-center" style={{ borderColor: 'var(--border)' }}>
+    <div className="rounded-xl border py-16 text-center" style={{ borderColor: 'var(--border-default)' }}>
       <AlertTriangle size={22} className="mx-auto mb-2" style={{ color: 'var(--danger)' }} />
       <p className="text-sm text-[var(--text-primary)]">Could not load the directory</p>
       <button onClick={onRetry} className="mt-2 text-xs font-medium" style={{ color: 'var(--accent)' }}>

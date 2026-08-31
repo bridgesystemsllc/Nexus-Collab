@@ -139,7 +139,7 @@ export function AuditSection() {
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
             className="rounded-lg border px-3 py-1.5 text-xs text-[var(--text-secondary)] disabled:opacity-40"
-            style={{ borderColor: 'var(--border)' }}
+            style={{ borderColor: 'var(--border-default)' }}
           >
             Previous
           </button>
@@ -149,7 +149,7 @@ export function AuditSection() {
           <button
             onClick={() => setPage((p) => p + 1)} disabled={page >= (log.data?.pages ?? 1)}
             className="rounded-lg border px-3 py-1.5 text-xs text-[var(--text-secondary)] disabled:opacity-40"
-            style={{ borderColor: 'var(--border)' }}
+            style={{ borderColor: 'var(--border-default)' }}
           >
             Next
           </button>
@@ -165,7 +165,7 @@ function Entry({ row }: { row: AuditRow }) {
   const meta = (row.metadata ?? {}) as Record<string, unknown>
 
   return (
-    <li className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border)' }}>
+    <li className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-default)' }}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-xs text-[var(--text-primary)]">
           <b className="font-medium">{row.actorLabel}</b>{' '}
@@ -198,7 +198,7 @@ function Entry({ row }: { row: AuditRow }) {
       </button>
 
       {open && (
-        <dl className="mt-1 space-y-0.5 rounded bg-[var(--bg-subtle)] px-2 py-1.5">
+        <dl className="mt-1 space-y-0.5 rounded bg-[var(--bg-surface)] px-2 py-1.5">
           <Meta label="Action" value={row.action} />
           <Meta label="Entity" value={`${row.entityType}${row.entityId ? ` · ${row.entityId}` : ''}`} />
           <Meta label="When" value={new Date(row.createdAt).toLocaleString('en-US', { timeZone: 'America/New_York' })} />

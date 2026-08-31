@@ -101,7 +101,7 @@ function TestAgentModal({ onClose }: { onClose: () => void }) {
 
         {/* Error */}
         {testMutation.isError && (
-          <div className="p-4 rounded-[12px] bg-[var(--danger-subtle)] border border-[var(--danger)]/20">
+          <div className="p-4 rounded-[12px] bg-[var(--danger-light)] border border-[var(--danger)]/20">
             <div className="flex items-center gap-2 mb-1">
               <AlertTriangle size={14} className="text-[var(--danger)]" />
               <span className="text-[13px] font-medium text-[var(--danger)]">Test Failed</span>

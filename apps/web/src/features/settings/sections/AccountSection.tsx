@@ -154,7 +154,7 @@ export function AccountSection({ me }: { me: MeBundle }) {
 }
 
 const Row = ({ label, value }: { label: string; value: string }) => (
-  <div className="flex justify-between gap-3 border-b py-1.5 last:border-0" style={{ borderColor: 'var(--border)' }}>
+  <div className="flex justify-between gap-3 border-b py-1.5 last:border-0" style={{ borderColor: 'var(--border-default)' }}>
     <dt className="text-xs text-[var(--text-tertiary)]">{label}</dt>
     <dd className="text-xs text-[var(--text-primary)]">{value}</dd>
   </div>
@@ -188,7 +188,7 @@ function EmailCard({ me }: { me: MeBundle }) {
 
   return (
     <Section title="Email address" description="Signing in still goes through Microsoft; this is where Nexus writes to you.">
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border)', background: 'var(--bg-subtle)' }}>
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
         <Mail size={13} className="text-[var(--text-tertiary)]" />
         <span className="text-xs text-[var(--text-primary)]">{p.email}</span>
         {p.emailVerifiedAt
@@ -224,13 +224,13 @@ function EmailCard({ me }: { me: MeBundle }) {
             Email is not configured on this deployment, so nothing was sent. Open this link to confirm:
           </p>
           <div className="mt-1.5 flex items-center gap-1.5">
-            <code className="min-w-0 flex-1 truncate rounded bg-[var(--bg-subtle)] px-1.5 py-1 text-[10px] text-[var(--text-secondary)]">
+            <code className="min-w-0 flex-1 truncate rounded bg-[var(--bg-surface)] px-1.5 py-1 text-[10px] text-[var(--text-secondary)]">
               {result.meta.confirmUrl}
             </code>
             <button
               onClick={() => { navigator.clipboard.writeText(result.meta.confirmUrl!); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
               className="inline-flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-[10px] text-[var(--text-secondary)]"
-              style={{ borderColor: 'var(--border)' }}
+              style={{ borderColor: 'var(--border-default)' }}
             >
               {copied ? <><Check size={10} /> Copied</> : <><Copy size={10} /> Copy</>}
             </button>
@@ -252,7 +252,7 @@ function EmailCard({ me }: { me: MeBundle }) {
           onClick={() => { setError(null); request.mutate() }}
           disabled={!newEmail.trim() || request.isPending}
           className="rounded-lg border px-3 py-2 text-xs font-medium text-[var(--text-primary)] disabled:opacity-40"
-          style={{ borderColor: 'var(--border)' }}
+          style={{ borderColor: 'var(--border-default)' }}
         >
           {request.isPending ? 'Sending…' : 'Send confirmation'}
         </button>

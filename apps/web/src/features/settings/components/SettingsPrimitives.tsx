@@ -13,7 +13,7 @@ export function Section({
   action?: React.ReactNode
 }) {
   return (
-    <section className="rounded-xl border p-5" style={{ borderColor: 'var(--border)', background: 'var(--bg-surface)' }}>
+    <section className="rounded-xl border p-5" style={{ borderColor: 'var(--border-default)', background: 'var(--bg-surface)' }}>
       <header className="mb-4 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h2>
@@ -55,7 +55,7 @@ export function Field({
 export const inputClass =
   'w-full rounded-lg border bg-[var(--bg-surface)] px-2.5 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none'
 
-export const borderFor = (error?: string) => ({ borderColor: error ? 'var(--danger)' : 'var(--border)' })
+export const borderFor = (error?: string) => ({ borderColor: error ? 'var(--danger)' : 'var(--border-default)' })
 
 export function Alert({ tone = 'danger', children }: { tone?: 'danger' | 'warning'; children: React.ReactNode }) {
   const color = tone === 'danger' ? 'var(--danger)' : 'var(--warning)'
@@ -86,14 +86,14 @@ export function SaveRow({
   label?: string
 }) {
   return (
-    <div className="mt-4 flex items-center justify-end gap-2 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+    <div className="mt-4 flex items-center justify-end gap-2 border-t pt-3" style={{ borderColor: 'var(--border-default)' }}>
       {saved && !dirty && (
         <span className="mr-auto inline-flex items-center gap-1 text-[11px]" style={{ color: 'var(--success)' }}>
           <Check size={12} /> Saved
         </span>
       )}
       {dirty && onReset && (
-        <button onClick={onReset} className="rounded-lg border px-3 py-1.5 text-xs text-[var(--text-secondary)]" style={{ borderColor: 'var(--border)' }}>
+        <button onClick={onReset} className="rounded-lg border px-3 py-1.5 text-xs text-[var(--text-secondary)]" style={{ borderColor: 'var(--border-default)' }}>
           Discard
         </button>
       )}

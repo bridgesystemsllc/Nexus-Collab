@@ -131,8 +131,8 @@ export function CoworkTaskBadge({ tasks }: { tasks: CoworkTaskRef[] }) {
             left: 0,
             zIndex: 50,
             minWidth: 320,
-            background: 'var(--bg-primary)',
-            border: '1px solid var(--border)',
+            background: 'var(--bg-base)',
+            border: '1px solid var(--border-default)',
             borderRadius: 10,
             boxShadow: '0 8px 32px rgba(0,0,0,.12)',
             padding: 12,
@@ -160,7 +160,7 @@ export function CoworkTaskBadge({ tasks }: { tasks: CoworkTaskRef[] }) {
                   gap: 4,
                   padding: '8px 10px',
                   borderRadius: 8,
-                  background: 'var(--bg-secondary)',
+                  background: 'var(--bg-surface)',
                 }}
               >
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
@@ -335,8 +335,8 @@ export function CreateCoworkTaskModal({
           maxWidth: 540,
           maxHeight: '90vh',
           overflow: 'auto',
-          background: 'var(--bg-primary)',
-          border: '1px solid var(--border)',
+          background: 'var(--bg-base)',
+          border: '1px solid var(--border-default)',
           borderRadius: 14,
           boxShadow: '0 24px 80px rgba(0,0,0,.2)',
           padding: 28,
@@ -473,7 +473,7 @@ export function CreateCoworkTaskModal({
                   color: 'var(--text-tertiary)',
                   padding: '8px 12px',
                   borderRadius: 8,
-                  background: 'var(--bg-secondary)',
+                  background: 'var(--bg-surface)',
                 }}
               >
                 A new space will be created: <strong>{itemType}: {itemName}</strong>
@@ -514,7 +514,7 @@ export function CreateCoworkTaskModal({
             gap: 10,
             marginTop: 24,
             paddingTop: 16,
-            borderTop: '1px solid var(--border)',
+            borderTop: '1px solid var(--border-default)',
           }}
         >
           <button onClick={onClose} style={secondaryBtnStyle} disabled={submitting}>
@@ -548,9 +548,9 @@ export function CoworkTasksPanel({ tasks, onCreateTask, onRefresh }: CoworkTasks
   return (
     <div
       style={{
-        border: '1px solid var(--border)',
+        border: '1px solid var(--border-default)',
         borderRadius: 10,
-        background: 'var(--bg-primary)',
+        background: 'var(--bg-base)',
         overflow: 'hidden',
       }}
     >
@@ -672,7 +672,7 @@ function TaskRow({ task }: { task: CoworkTaskRef }) {
         gap: 10,
         padding: '8px 12px',
         borderRadius: 8,
-        background: done ? 'transparent' : 'var(--bg-secondary)',
+        background: done ? 'transparent' : 'var(--bg-surface)',
         opacity: done ? 0.6 : 1,
       }}
     >
@@ -737,8 +737,8 @@ const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 12px',
   borderRadius: 8,
-  border: '1px solid var(--border)',
-  background: 'var(--bg-secondary)',
+  border: '1px solid var(--border-default)',
+  background: 'var(--bg-surface)',
   color: 'var(--text-primary)',
   fontSize: 13,
   outline: 'none',
@@ -751,8 +751,8 @@ const pillButtonStyle: React.CSSProperties = {
   gap: 4,
   padding: '4px 12px',
   borderRadius: 6,
-  border: '1px solid var(--border)',
-  background: 'var(--bg-secondary)',
+  border: '1px solid var(--border-default)',
+  background: 'var(--bg-surface)',
   color: 'var(--text-secondary)',
   fontSize: 12,
   fontWeight: 500,
@@ -779,8 +779,8 @@ const primaryBtnStyle: React.CSSProperties = {
 const secondaryBtnStyle: React.CSSProperties = {
   padding: '8px 20px',
   borderRadius: 8,
-  border: '1px solid var(--border)',
-  background: 'var(--bg-secondary)',
+  border: '1px solid var(--border-default)',
+  background: 'var(--bg-surface)',
   color: 'var(--text-secondary)',
   fontSize: 13,
   fontWeight: 600,

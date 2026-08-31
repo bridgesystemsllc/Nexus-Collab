@@ -100,7 +100,7 @@ export function SettingsPage() {
             You have not been assigned a role, so Access &amp; permissions and the Audit log are
             hidden and nothing here can grant them. Restarting the API repairs this automatically;
             an administrator can also run{' '}
-            <code className="rounded bg-[var(--bg-subtle)] px-1 py-0.5">pnpm db:seed:rbac</code>.
+            <code className="rounded bg-[var(--bg-surface)] px-1 py-0.5">pnpm db:seed:rbac</code>.
           </p>
         </Alert>
       )}

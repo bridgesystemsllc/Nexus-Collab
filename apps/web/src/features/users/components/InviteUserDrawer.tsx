@@ -102,7 +102,7 @@ export function InviteUserDrawer({ onClose, onInvited }: Props) {
   const field =
     'w-full rounded-lg border bg-[var(--bg-surface)] px-2.5 py-2 text-xs text-[var(--text-primary)] transition-colors focus:outline-none'
   const borderFor = (k: string) =>
-    errors[k] ? { borderColor: 'var(--danger)' } : { borderColor: 'var(--border)' }
+    errors[k] ? { borderColor: 'var(--danger)' } : { borderColor: 'var(--border-default)' }
 
   return (
     <div
@@ -116,12 +116,12 @@ export function InviteUserDrawer({ onClose, onInvited }: Props) {
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         className="flex h-full w-full max-w-md flex-col border-l bg-[var(--bg-surface)]"
-        style={{ borderColor: 'var(--border)' }}
+        style={{ borderColor: 'var(--border-default)' }}
         role="dialog"
         aria-modal="true"
         aria-label="Invite a user"
       >
-        <header className="flex items-start justify-between gap-3 border-b px-5 py-4" style={{ borderColor: 'var(--border)' }}>
+        <header className="flex items-start justify-between gap-3 border-b px-5 py-4" style={{ borderColor: 'var(--border-default)' }}>
           <div>
             <h2 className="text-sm font-semibold text-[var(--text-primary)]">Invite someone</h2>
             <p className="mt-0.5 text-[11px] text-[var(--text-tertiary)]">
@@ -131,7 +131,7 @@ export function InviteUserDrawer({ onClose, onInvited }: Props) {
           <button
             onClick={onClose}
             aria-label="Close"
-            className="shrink-0 rounded-lg p-1.5 text-[var(--text-tertiary)] hover:bg-[var(--bg-subtle)] hover:text-[var(--text-primary)]"
+            className="shrink-0 rounded-lg p-1.5 text-[var(--text-tertiary)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
           >
             <X size={15} />
           </button>
@@ -210,11 +210,11 @@ export function InviteUserDrawer({ onClose, onInvited }: Props) {
             </Field>
           </div>
 
-          <footer className="flex items-center justify-end gap-2 border-t px-5 py-3" style={{ borderColor: 'var(--border)' }}>
+          <footer className="flex items-center justify-end gap-2 border-t px-5 py-3" style={{ borderColor: 'var(--border-default)' }}>
             <button
               type="button" onClick={onClose}
               className="rounded-lg border px-3 py-2 text-xs text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
-              style={{ borderColor: 'var(--border)' }}
+              style={{ borderColor: 'var(--border-default)' }}
             >
               Cancel
             </button>
@@ -268,13 +268,13 @@ export function InviteResultBanner({ result, onDismiss }: { result: InviteRespon
           Send this link to {result.data.invitation.email} yourself. It is single-use and expires in 7 days.
         </p>
         <div className="mt-1.5 flex items-center gap-1.5">
-          <code className="min-w-0 flex-1 truncate rounded bg-[var(--bg-subtle)] px-1.5 py-1 text-[10px] text-[var(--text-secondary)]">
+          <code className="min-w-0 flex-1 truncate rounded bg-[var(--bg-surface)] px-1.5 py-1 text-[10px] text-[var(--text-secondary)]">
             {url}
           </code>
           <button
             onClick={() => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000) }}
             className="inline-flex shrink-0 items-center gap-1 rounded-lg border px-2 py-1 text-[10px] text-[var(--text-secondary)]"
-            style={{ borderColor: 'var(--border)' }}
+            style={{ borderColor: 'var(--border-default)' }}
           >
             {copied ? <><Check size={10} /> Copied</> : <><Copy size={10} /> Copy</>}
           </button>
