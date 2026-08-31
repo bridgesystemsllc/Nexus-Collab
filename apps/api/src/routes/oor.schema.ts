@@ -215,3 +215,11 @@ export const activityQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(50),
 })
+
+export const exportQuerySchema = z.object({
+  reportType: z.enum(['customer_open_order', 'open_order_shortage']).default('customer_open_order'),
+  brandId: z.string().optional(),
+  format: z.enum(['xlsx']).default('xlsx'),
+  includeStatus: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
+  includeAppendix: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
+})

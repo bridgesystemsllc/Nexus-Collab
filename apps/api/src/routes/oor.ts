@@ -16,12 +16,14 @@ import { UPLOAD_MAX_BYTES } from '../lib/uploadValidation'
 import { listLines, getLine, getTree, updateLine, updateNode } from '../services/oor/lineQueries'
 import { runImport } from '../services/oor/importRun'
 import { ExcelSourceAdapter } from '../services/oor/excel/excelSourceAdapter'
+import { buildExportWorkbook } from '../services/oor/exportReport'
 import { UnknownReportFormatError } from '../services/oor/excel/detectFormat'
 import {
   listLinesQuerySchema,
   patchLineSchema,
   patchNodeSchema,
   importQuerySchema,
+  exportQuerySchema,
   createCommentSchema,
   patchCommentSchema,
   createNoteSchema,
@@ -605,6 +607,31 @@ oorRoutes.get('/lines/:id/activity', requirePermission('oor:read'), async (req: 
     )
     const start = (page - 1) * pageSize
     res.json({ rows: feed.slice(start, start + pageSize), total: feed.length, page, pageSize })
+  } catch (error) {
+    handleError(res, error)
+  }
+})
+
+// ─── Export ──────────────────────────────────────────────────
+
+oorRoutes.get('/exports', requirePermission('oor:export'), async (req: RbacRequest, res: Response) => {
+  try {
+    const orgId = await orgIdOf(req)
+    if (!orgId) return fail(res, 400, 'No organization found')
+    const query = exportQuerySchema.parse(req.query)
+
+    const { buffer, filename } = await buildExportWorkbook(prisma, {
+      orgId,
+      brandId: query.brandId ?? null,
+      reportType: query.reportType,
+      includeStatus: query.includeStatus,
+      includeAppendix: query.includeAppendix,
+    })
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+    res.setHeader('Content-Length', String(buffer.length))
+    res.end(buffer)
   } catch (error) {
     handleError(res, error)
   }
