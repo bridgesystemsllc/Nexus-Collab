@@ -564,8 +564,17 @@ describe('processEvent — the ordering guard is scoped, not global (C1 regressi
   })
 })
 
-describe('processEvent — concurrent insert of the same id', () => {
-  it('one winner is unhandled/processed, the other sees P2002 and returns duplicate', async () => {
+describe('processEvent — a create() that collides with an already-committed row', () => {
+  // NOT a real concurrency test — this is single-threaded and sequential: it
+  // pre-seeds an already-`processedAt`-set row and forces the next create()
+  // to throw P2002, which only exercises the "P2002 + processedAt already
+  // set" branch (duplicate). It cannot exercise the other P2002 branch (a
+  // row that exists but has NOT finished processing yet — two deliveries
+  // genuinely racing each other) because nothing here ever runs two
+  // operations concurrently. That branch is covered by
+  // webhookProcessor.integration.test.ts, against two real PrismaClient
+  // connections.
+  it('reports duplicate rather than reprocessing a row that finished under a different delivery', async () => {
     const prisma = createFakePrisma()
     const event = makeEvent({ id: 'evt_race_1' })
 
