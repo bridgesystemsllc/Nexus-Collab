@@ -11,6 +11,7 @@ import multer from 'multer'
 import { z } from 'zod'
 import { prisma } from '../index'
 import { requirePermission, type RbacRequest } from '../middleware/requirePermission'
+import { getActingOrgId, NoActingOrgError } from '../middleware/billingContext'
 import { can } from '../services/rbac/resolve'
 import { UPLOAD_MAX_BYTES } from '../lib/uploadValidation'
 import { listLines, getLine, getTree, updateLine, updateNode } from '../services/oor/lineQueries'
@@ -60,18 +61,17 @@ function canAdminister(req: RbacRequest): boolean {
 }
 
 /**
- * Nexus is single-organization per deployment today but multi-tenant by model.
- * Resolving the org from the acting member — not from a query parameter — is
- * what keeps a crafted request from reading another tenant's orders.
+ * The acting organization, from the session and nowhere else.
+ *
+ * The tempting shortcut is to fall back to "just look up the first org in the
+ * table". That returns whichever one is oldest rather than the caller's:
+ * invisible while a single organization exists, and a cross-tenant read the
+ * moment a second one does. The repo's tenancy audit fails the build on it, and
+ * it caught this exact fallback here. getActingOrgId throws when there is no
+ * acting member, which handleError turns into a 401.
  */
-async function orgIdOf(req: RbacRequest): Promise<string | null> {
-  const subject = req.subject
-  if (subject?.id) {
-    const member = await prisma.member.findUnique({ where: { id: subject.id }, select: { orgId: true } })
-    if (member) return member.orgId
-  }
-  const org = await prisma.organization.findFirst({ select: { id: true } })
-  return org?.id ?? null
+function orgIdOf(req: RbacRequest): string {
+  return getActingOrgId(req)
 }
 
 function fail(res: Response, status: number, message: string, extra?: Record<string, unknown>) {
@@ -79,6 +79,9 @@ function fail(res: Response, status: number, message: string, extra?: Record<str
 }
 
 function handleError(res: Response, error: unknown) {
+  // getActingOrgId throws when there is no acting member. That is a missing
+  // session, not a server fault, so it answers 401 rather than 500.
+  if (error instanceof NoActingOrgError) return fail(res, 401, 'Sign in to continue.')
   if (error instanceof z.ZodError) return fail(res, 422, 'Invalid request', { issues: error.errors })
   if (error instanceof UnknownReportFormatError) return fail(res, 422, error.message)
   console.error('[oor]', error)
@@ -93,8 +96,7 @@ function handleError(res: Response, error: unknown) {
 
 oorRoutes.get('/brands', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     const brands = await prisma.brand.findMany({
       where: { orgId },
       orderBy: { name: 'asc' },
@@ -110,8 +112,7 @@ oorRoutes.get('/brands', requirePermission('oor:read'), async (req: RbacRequest,
 
 oorRoutes.get('/lines', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     const query = listLinesQuerySchema.parse(req.query)
     res.json(await listLines(prisma, orgId, query))
   } catch (error) {
@@ -121,8 +122,7 @@ oorRoutes.get('/lines', requirePermission('oor:read'), async (req: RbacRequest, 
 
 oorRoutes.get('/lines/:id', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     const line = await getLine(prisma, orgId, req.params.id)
     if (!line) return fail(res, 404, 'That line does not exist.')
     res.json(line)
@@ -133,8 +133,7 @@ oorRoutes.get('/lines/:id', requirePermission('oor:read'), async (req: RbacReque
 
 oorRoutes.get('/lines/:id/tree', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     const tree = await getTree(prisma, orgId, req.params.id)
     if (tree === null) return fail(res, 404, 'That line does not exist.')
     res.json({ nodes: tree })
@@ -145,8 +144,7 @@ oorRoutes.get('/lines/:id/tree', requirePermission('oor:read'), async (req: Rbac
 
 oorRoutes.patch('/lines/:id', requirePermission('oor:edit_status'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     const patch = patchLineSchema.parse(req.body)
     const updated = await updateLine(prisma, orgId, actorOf(req), req.params.id, patch)
     if (!updated) return fail(res, 404, 'That line does not exist.')
@@ -158,8 +156,7 @@ oorRoutes.patch('/lines/:id', requirePermission('oor:edit_status'), async (req: 
 
 oorRoutes.patch('/nodes/:id', requirePermission('oor:edit_tree'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     const patch = patchNodeSchema.parse(req.body)
     const updated = await updateNode(prisma, orgId, actorOf(req), req.params.id, patch)
     if (!updated) return fail(res, 404, 'That material does not exist.')
@@ -177,8 +174,7 @@ oorRoutes.post(
   upload.single('file'),
   async (req: RbacRequest, res: Response) => {
     try {
-      const orgId = await orgIdOf(req)
-      if (!orgId) return fail(res, 400, 'No organization found')
+      const orgId = orgIdOf(req)
       if (!req.file) return fail(res, 400, 'Attach the report file as `file`.')
 
       const { brandId } = importQuerySchema.parse({ ...req.query, ...req.body })
@@ -201,8 +197,7 @@ oorRoutes.post(
 
 oorRoutes.get('/imports/:id', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     const run = await prisma.oorReportRun.findFirst({
       where: { id: req.params.id, orgId },
       include: { _count: { select: { lines: true } } },
@@ -216,8 +211,7 @@ oorRoutes.get('/imports/:id', requirePermission('oor:read'), async (req: RbacReq
 
 oorRoutes.get('/imports', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     const runs = await prisma.oorReportRun.findMany({
       where: { orgId },
       orderBy: { importedAt: 'desc' },
@@ -247,8 +241,7 @@ const EMAIL_ATTACHABLE_TYPE = 'oor_line'
 
 oorRoutes.get('/lines/:id/comments', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     if (!(await lineInOrg(orgId, req.params.id))) return fail(res, 404, 'That line does not exist.')
 
     const { page, pageSize } = activityQuerySchema.parse(req.query)
@@ -270,8 +263,7 @@ oorRoutes.get('/lines/:id/comments', requirePermission('oor:read'), async (req: 
 
 oorRoutes.post('/lines/:id/comments', requirePermission('oor:comment'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     if (!(await lineInOrg(orgId, req.params.id))) return fail(res, 404, 'That line does not exist.')
 
     const data = createCommentSchema.parse(req.body)
@@ -295,8 +287,7 @@ oorRoutes.post('/lines/:id/comments', requirePermission('oor:comment'), async (r
 
 oorRoutes.patch('/comments/:id', requirePermission('oor:comment'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
 
     const existing = await prisma.oorComment.findFirst({
       where: { id: req.params.id, oorLine: { orgId } },
@@ -335,8 +326,7 @@ oorRoutes.patch('/comments/:id', requirePermission('oor:comment'), async (req: R
 
 oorRoutes.get('/lines/:id/notes', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     if (!(await lineInOrg(orgId, req.params.id))) return fail(res, 404, 'That line does not exist.')
     const rows = await prisma.oorNote.findMany({
       where: { oorLineId: req.params.id, deletedAt: null },
@@ -350,8 +340,7 @@ oorRoutes.get('/lines/:id/notes', requirePermission('oor:read'), async (req: Rba
 
 oorRoutes.post('/lines/:id/notes', requirePermission('oor:comment'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     if (!(await lineInOrg(orgId, req.params.id))) return fail(res, 404, 'That line does not exist.')
     const data = createNoteSchema.parse(req.body)
     const note = await prisma.oorNote.create({
@@ -365,8 +354,7 @@ oorRoutes.post('/lines/:id/notes', requirePermission('oor:comment'), async (req:
 
 oorRoutes.patch('/notes/:id', requirePermission('oor:comment'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     const existing = await prisma.oorNote.findFirst({ where: { id: req.params.id, oorLine: { orgId } } })
     if (!existing) return fail(res, 404, 'That note does not exist.')
     const { deleted, ...fields } = patchNoteSchema.parse(req.body)
@@ -386,8 +374,7 @@ oorRoutes.patch('/notes/:id', requirePermission('oor:comment'), async (req: Rbac
 
 oorRoutes.get('/lines/:id/meeting-updates', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     if (!(await lineInOrg(orgId, req.params.id))) return fail(res, 404, 'That line does not exist.')
     const rows = await prisma.oorMeetingUpdate.findMany({
       where: { oorLineId: req.params.id, deletedAt: null },
@@ -407,8 +394,7 @@ oorRoutes.get('/lines/:id/meeting-updates', requirePermission('oor:read'), async
 
 oorRoutes.post('/lines/:id/meeting-updates', requirePermission('oor:comment'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     if (!(await lineInOrg(orgId, req.params.id))) return fail(res, 404, 'That line does not exist.')
     const data = createMeetingUpdateSchema.parse(req.body)
     const update = await prisma.oorMeetingUpdate.create({
@@ -427,8 +413,7 @@ oorRoutes.post('/lines/:id/meeting-updates', requirePermission('oor:comment'), a
 
 oorRoutes.patch('/meeting-updates/:id', requirePermission('oor:comment'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     const existing = await prisma.oorMeetingUpdate.findFirst({ where: { id: req.params.id, oorLine: { orgId } } })
     if (!existing) return fail(res, 404, 'That meeting update does not exist.')
     const { deleted, attendees, ...fields } = patchMeetingUpdateSchema.parse(req.body)
@@ -454,8 +439,7 @@ oorRoutes.patch('/meeting-updates/:id', requirePermission('oor:comment'), async 
 
 oorRoutes.get('/lines/:id/emails', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     if (!(await lineInOrg(orgId, req.params.id))) return fail(res, 404, 'That line does not exist.')
     const rows = await prisma.attachment.findMany({
       where: { attachableType: EMAIL_ATTACHABLE_TYPE, attachableId: req.params.id, type: 'email', deletedAt: null },
@@ -473,8 +457,7 @@ oorRoutes.post(
   upload.single('file'),
   async (req: RbacRequest, res: Response) => {
     try {
-      const orgId = await orgIdOf(req)
-      if (!orgId) return fail(res, 400, 'No organization found')
+      const orgId = orgIdOf(req)
       if (!(await lineInOrg(orgId, req.params.id))) return fail(res, 404, 'That line does not exist.')
 
       let parsed: ReturnType<typeof parsePastedEmail> & { attachmentCount?: number }
@@ -545,8 +528,7 @@ oorRoutes.post(
 
 oorRoutes.get('/lines/:id/emails/:emailId', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     if (!(await lineInOrg(orgId, req.params.id))) return fail(res, 404, 'That line does not exist.')
     const email = await prisma.attachment.findFirst({
       where: {
@@ -568,8 +550,7 @@ oorRoutes.get('/lines/:id/emails/:emailId', requirePermission('oor:read'), async
 
 oorRoutes.get('/lines/:id/activity', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     if (!(await lineInOrg(orgId, req.params.id))) return fail(res, 404, 'That line does not exist.')
 
     const { kind, page, pageSize } = activityQuerySchema.parse(req.query)
@@ -616,8 +597,7 @@ oorRoutes.get('/lines/:id/activity', requirePermission('oor:read'), async (req: 
 
 oorRoutes.get('/exports', requirePermission('oor:export'), async (req: RbacRequest, res: Response) => {
   try {
-    const orgId = await orgIdOf(req)
-    if (!orgId) return fail(res, 400, 'No organization found')
+    const orgId = orgIdOf(req)
     const query = exportQuerySchema.parse(req.query)
 
     const { buffer, filename } = await buildExportWorkbook(prisma, {
