@@ -1,3 +1,7 @@
+// Needs a live database — run with `pnpm --filter @nexus/api test:integration`.
+// Named *.integration.test.ts so the default `pnpm test` (and CI, which has no
+// Postgres) skips it. These assert on indexed queries, SQL aggregates and
+// cross-tenant scoping, none of which survive being mocked.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'

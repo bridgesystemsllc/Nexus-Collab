@@ -1,3 +1,8 @@
+// Needs a live database — run with `pnpm --filter @nexus/api test:integration`.
+// Named *.integration.test.ts so the default `pnpm test` (and CI, which has no
+// Postgres) skips it. The importer's contract — "never destroys user-authored
+// content" — is a claim about real upserts against real constraints, so proving
+// it against a mocked client would prove nothing.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
