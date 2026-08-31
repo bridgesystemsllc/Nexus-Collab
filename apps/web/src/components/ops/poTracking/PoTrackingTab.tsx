@@ -5,8 +5,10 @@
 // first.
 
 import { useEffect, useMemo, useState } from 'react'
-import { ClipboardCheck, Download, Loader2, Rows3, Upload, X } from 'lucide-react'
-import { useOorLines, useOorMutations, type OorFilters } from './oor/useOorQueries'
+import { AlertTriangle, ClipboardCheck, Download, Loader2, Rows3, Upload, X } from 'lucide-react'
+import {
+  useManufacturerMapping, useOorLines, useOorMutations, useSaveManufacturerMapping, type OorFilters,
+} from './oor/useOorQueries'
 import { COLUMN_SETS, type ReportView } from './oor/oorColumns'
 import { OorGrid } from './oor/OorGrid'
 import { OorStatCards, type StatKey } from './oor/OorStatCards'
@@ -70,6 +72,15 @@ export function PoTrackingTab({
   const [density, setDensity] = useState<'comfortable' | 'compact'>('comfortable')
   const [openLineId, setOpenLineId] = useState<string | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const manufacturerName = scope?.kind === 'cm' ? scope.value : undefined
+  const mapping = useManufacturerMapping(manufacturerName)
+  const saveMapping = useSaveManufacturerMapping()
+  const resolvedCmCode = scope?.kind === 'cm' ? mapping.data?.mapping?.cmCode : undefined
+  const [selectedCmCode, setSelectedCmCode] = useState('')
+
+  useEffect(() => {
+    setSelectedCmCode(mapping.data?.mapping?.cmCode ?? '')
+  }, [mapping.data?.mapping?.cmCode])
 
   useEffect(() => {
     onNestedDialogChange?.(Boolean(openLineId || importOpen))
@@ -90,7 +101,7 @@ export function PoTrackingTab({
   const filters: OorFilters = {
     brandId: brandId || undefined,
     ...(scope?.kind === 'po' ? { customerPoNumber: scope.value } : {}),
-    ...(scope?.kind === 'cm' ? { cmCode: scope.value } : {}),
+    ...(scope?.kind === 'cm' && resolvedCmCode ? { cmCode: resolvedCmCode } : {}),
     search: combinedSearch || undefined,
     page,
     pageSize: 50,
@@ -100,7 +111,7 @@ export function PoTrackingTab({
     ...(activeStat ? STAT_FILTERS[activeStat] : {}),
   }
 
-  const lines = useOorLines(filters)
+  const lines = useOorLines(filters, scope?.kind !== 'cm' || Boolean(resolvedCmCode))
   const rows = lines.data?.rows ?? []
   const total = lines.data?.total ?? 0
   const pageCount = Math.max(1, Math.ceil(total / 50))
@@ -125,6 +136,61 @@ export function PoTrackingTab({
           <span>
             Showing open lines for <strong style={{ color: 'var(--text-primary)' }}>{scope.label ?? scope.value}</strong>
           </span>
+        </div>
+      ) : null}
+      {scope?.kind === 'cm' && !mapping.isLoading ? (
+        <div
+          className="rounded-xl border p-4"
+          style={{
+            borderColor: resolvedCmCode ? 'var(--border-default)' : 'var(--warning)',
+            background: resolvedCmCode ? 'var(--bg-surface)' : 'var(--warning-light)',
+          }}
+        >
+          <div className="flex items-start gap-3">
+            {resolvedCmCode ? (
+              <ClipboardCheck size={18} className="mt-0.5 shrink-0 text-[var(--success)]" />
+            ) : (
+              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-[var(--warning)]" />
+            )}
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-[var(--text-primary)]">
+                {resolvedCmCode ? `Mapped to report CM code ${resolvedCmCode}` : 'Connect this manufacturer to a report CM code'}
+              </p>
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                “{scope.label ?? scope.value}” is the ERP manufacturer name.
+                {resolvedCmCode ? ' Tracking lines below use this saved organization mapping.' : ' Choose the code used in imported CM reports before viewing tracking lines.'}
+              </p>
+              {mapping.data?.canManage ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <select
+                    value={selectedCmCode}
+                    onChange={(event) => setSelectedCmCode(event.target.value)}
+                    className="rounded-lg px-3 py-2 text-xs"
+                    style={{ background: 'var(--bg-base)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
+                  >
+                    <option value="">Select report CM code</option>
+                    {mapping.data.cmCodes.map((code) => <option key={code} value={code}>{code}</option>)}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={!selectedCmCode || saveMapping.isPending}
+                    onClick={() => saveMapping.mutate({ manufacturerName: scope.value, cmCode: selectedCmCode })}
+                    className="rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-medium text-white disabled:opacity-50"
+                  >
+                    {saveMapping.isPending ? 'Saving…' : resolvedCmCode ? 'Update mapping' : 'Save mapping'}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">Ask an OOR administrator to set this mapping.</p>
+              )}
+              {mapping.data?.canManage && mapping.data.cmCodes.length === 0 ? (
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">Import a CM report first so its codes are available.</p>
+              ) : null}
+              {saveMapping.isError ? (
+                <p className="mt-2 text-xs text-[var(--danger)]">The mapping could not be saved. Refresh and try again.</p>
+              ) : null}
+            </div>
+          </div>
         </div>
       ) : null}
       {/* ── Controls ── */}
@@ -194,16 +260,18 @@ export function PoTrackingTab({
           <Upload size={13} /> {scope?.kind === 'cm' ? 'Import CM report' : 'Import report'}
         </button>
 
-        <a
-          href={`/api/v1/operations/oor/exports?reportType=${view}${brandId ? `&brandId=${brandId}` : ''}${scope?.kind === 'po' ? `&customerPoNumber=${encodeURIComponent(scope.value)}` : ''}${scope?.kind === 'cm' ? `&cmCode=${encodeURIComponent(scope.value)}` : ''}`}
-          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium"
-          style={{ border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
-        >
-          <Download size={13} /> Export
-        </a>
+        {scope?.kind !== 'cm' || resolvedCmCode ? (
+          <a
+            href={`/api/v1/operations/oor/exports?reportType=${view}${brandId ? `&brandId=${brandId}` : ''}${scope?.kind === 'po' ? `&customerPoNumber=${encodeURIComponent(scope.value)}` : ''}${resolvedCmCode ? `&cmCode=${encodeURIComponent(resolvedCmCode)}` : ''}`}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium"
+            style={{ border: '1px solid var(--border-default)', color: 'var(--text-secondary)' }}
+          >
+            <Download size={13} /> Export
+          </a>
+        ) : null}
       </div>
 
-      <OorStatCards
+      {scope?.kind !== 'cm' || resolvedCmCode ? <OorStatCards
         summary={lines.data?.summary}
         active={activeStat}
         loading={lines.isLoading}
@@ -211,7 +279,7 @@ export function PoTrackingTab({
           setActiveStat((prev) => (prev === key ? null : key))
           setPage(1)
         }}
-      />
+      /> : null}
 
       {lines.isError ? (
         <div className="rounded-xl px-4 py-3 text-[13px]" style={{ background: 'var(--danger-light)', color: 'var(--danger)', border: '1px solid var(--danger)' }}>
@@ -219,7 +287,7 @@ export function PoTrackingTab({
         </div>
       ) : null}
 
-      <OorGrid
+      {scope?.kind !== 'cm' || resolvedCmCode ? <OorGrid
         rows={rows}
         columns={columns}
         loading={lines.isLoading}
@@ -235,9 +303,9 @@ export function PoTrackingTab({
         onToggleExpand={toggle}
         onOpenLine={setOpenLineId}
         density={density}
-      />
+      /> : null}
 
-      <div className="flex items-center justify-between text-[12px]" style={{ color: 'var(--text-tertiary)' }}>
+      {scope?.kind !== 'cm' || resolvedCmCode ? <div className="flex items-center justify-between text-[12px]" style={{ color: 'var(--text-tertiary)' }}>
         <span>
           {total.toLocaleString('en-US')} line{total === 1 ? '' : 's'}
           {activeStat ? ' (filtered)' : ''}
@@ -263,7 +331,7 @@ export function PoTrackingTab({
             Next
           </button>
         </div>
-      </div>
+      </div> : null}
 
       {openLineId ? <OorModal lineId={openLineId} onClose={() => setOpenLineId(null)} /> : null}
       {importOpen ? (

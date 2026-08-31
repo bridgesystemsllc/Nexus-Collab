@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { redactChanges, diff } from './auditService'
+import { describe, it, expect, vi } from 'vitest'
+import type { PrismaClient } from '@prisma/client'
+import { redactChanges, diff, query } from './auditService'
 
 // The audit log is the most-read table during an incident and one of the least
 // guarded. A secret that lands here is a secret in every export and every
@@ -76,5 +77,25 @@ describe('diff', () => {
 
   it('ignores updatedAt by default', () => {
     expect(diff({ updatedAt: new Date(1) }, { updatedAt: new Date(2) })).toEqual({})
+  })
+})
+
+describe('query', () => {
+  it('always restricts audit reads to the acting organization', async () => {
+    const prisma = {
+      auditLog: {
+        findMany: vi.fn().mockResolvedValue([]),
+        count: vi.fn().mockResolvedValue(0),
+      },
+    } as unknown as PrismaClient
+
+    await query(prisma, 'org_1', { action: 'oor.manufacturer_mapping.update' })
+
+    expect(prisma.auditLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { orgId: 'org_1', action: 'oor.manufacturer_mapping.update' },
+    }))
+    expect(prisma.auditLog.count).toHaveBeenCalledWith({
+      where: { orgId: 'org_1', action: 'oor.manufacturer_mapping.update' },
+    })
   })
 })

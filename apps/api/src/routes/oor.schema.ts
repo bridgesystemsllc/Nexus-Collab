@@ -148,6 +148,15 @@ export const importQuerySchema = z.object({
   brandId: z.string().min(1, 'An import must name the brand it belongs to.'),
 })
 
+export const manufacturerMappingQuerySchema = z.object({
+  manufacturerName: z.string().trim().min(1).max(300),
+})
+
+export const upsertManufacturerMappingSchema = z.object({
+  manufacturerName: z.string().trim().min(1).max(300),
+  cmCode: z.string().trim().min(1).max(100),
+})
+
 // ─── Collaboration ───────────────────────────────────────────
 
 /** How long an author may edit their own comment before it sets. */
@@ -219,6 +228,20 @@ export const activityQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).default(50),
 })
+
+export function buildActivityAuditWhere(
+  orgId: string,
+  lineId: string,
+  nodeIds: string[],
+): Prisma.AuditLogWhereInput {
+  return {
+    orgId,
+    OR: [
+      { entityType: 'oor_line', entityId: lineId },
+      { entityType: 'oor_shortage_node', entityId: { in: nodeIds } },
+    ],
+  }
+}
 
 export const exportQuerySchema = z.object({
   reportType: z.enum(['customer_open_order', 'open_order_shortage']).default('customer_open_order'),

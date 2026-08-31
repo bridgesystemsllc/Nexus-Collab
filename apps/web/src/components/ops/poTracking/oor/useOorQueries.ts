@@ -90,6 +90,38 @@ export interface OorFilters {
   dir?: 'asc' | 'desc'
 }
 
+export interface ManufacturerMapping {
+  id: string
+  erpManufacturerName: string
+  cmCode: string
+  updatedAt: string
+}
+
+export function useManufacturerMapping(manufacturerName?: string) {
+  return useQuery({
+    queryKey: ['oor', 'manufacturer-mapping', manufacturerName],
+    enabled: Boolean(manufacturerName),
+    queryFn: async () => {
+      const { data } = await api.get(`${BASE}/manufacturer-mapping`, { params: { manufacturerName } })
+      return data as { mapping: ManufacturerMapping | null; cmCodes: string[]; canManage: boolean }
+    },
+  })
+}
+
+export function useSaveManufacturerMapping() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ manufacturerName, cmCode }: { manufacturerName: string; cmCode: string }) => {
+      const { data } = await api.put(`${BASE}/manufacturer-mapping`, { manufacturerName, cmCode })
+      return data as { mapping: ManufacturerMapping }
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['oor', 'manufacturer-mapping', variables.manufacturerName] })
+      qc.invalidateQueries({ queryKey: ['oor', 'lines'] })
+    },
+  })
+}
+
 function toParams(filters: OorFilters): Record<string, string | number> {
   const params: Record<string, string | number> = {}
   for (const [key, value] of Object.entries(filters)) {
@@ -99,13 +131,14 @@ function toParams(filters: OorFilters): Record<string, string | number> {
   return params
 }
 
-export function useOorLines(filters: OorFilters) {
+export function useOorLines(filters: OorFilters, enabled = true) {
   return useQuery({
     queryKey: ['oor', 'lines', filters],
     queryFn: async () => {
       const { data } = await api.get(`${BASE}/lines`, { params: toParams(filters) })
       return data as { rows: OorLineRow[]; total: number; page: number; pageSize: number; summary: OorSummary }
     },
+    enabled,
     // A page of rows the operator is reading should not vanish and reflow while
     // they are reading it.
     placeholderData: (prev) => prev,
@@ -206,7 +239,10 @@ export function useOorMutations(lineId?: string | null) {
         warnings: { rowNumber: number; column: string; rawValue: string; reason: string }[]
       }
     },
-    onSuccess: refresh,
+    onSuccess: () => {
+      refresh()
+      qc.invalidateQueries({ queryKey: ['oor', 'manufacturer-mapping'] })
+    },
   })
 
   return { patchLine, patchNode, addRecord, importReport }

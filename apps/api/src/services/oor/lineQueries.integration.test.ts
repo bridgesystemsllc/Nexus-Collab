@@ -8,7 +8,10 @@ import path from 'node:path'
 import { PrismaClient } from '@prisma/client'
 import { runImport } from './importRun'
 import { ExcelSourceAdapter } from './excel/excelSourceAdapter'
-import { listLines, getLine, getTree, updateLine, updateNode } from './lineQueries'
+import {
+  listLines, getLine, getTree, updateLine, updateNode,
+  getManufacturerMapping, upsertManufacturerMapping,
+} from './lineQueries'
 import { listLinesQuerySchema } from '../../routes/oor.schema'
 
 const prisma = new PrismaClient()
@@ -30,11 +33,19 @@ async function wipe() {
   }
   await prisma.oorLine.deleteMany({ where: { orgId: ORG_ID } })
   await prisma.oorReportRun.deleteMany({ where: { orgId: ORG_ID } })
+  await prisma.oorManufacturerMapping.deleteMany({ where: { orgId: ORG_ID } })
   await prisma.auditLog.deleteMany({ where: { orgId: ORG_ID } })
 }
 
 beforeAll(async () => {
   await wipe()
+  // This integration database can intentionally lag optional Organization
+  // columns; raw setup keeps an OOR query test independent of that drift.
+  await prisma.$executeRaw`
+    INSERT INTO "Organization" ("id", "name", "slug", "featureInterests", "onboardingComplete", "createdAt", "updatedAt")
+    VALUES (${ORG_ID}, 'OOR query test', ${ORG_ID}, ARRAY[]::TEXT[], false, NOW(), NOW())
+    ON CONFLICT ("slug") DO NOTHING
+  `
   const adapter = new ExcelSourceAdapter()
   for (const name of ['Acne_Free_Open_Order_Report_Week_of_08_17_2026.xls', 'AMBI_Open_Order_Shortage_Report_08_24_26.xlsx']) {
     await runImport(prisma, adapter, {
@@ -46,6 +57,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await wipe()
+  await prisma.$executeRaw`DELETE FROM "Organization" WHERE "id" = ${ORG_ID}`
   await prisma.$disconnect()
 })
 
@@ -215,5 +227,37 @@ describe('updateNode', () => {
     const after = await prisma.oorLine.findUniqueOrThrow({ where: { id: line.id } })
     expect(after.statusSource).toBe('manual')
     expect(after.lineStatus).toBe(line.lineStatus)
+  })
+})
+
+describe('manufacturer mappings', () => {
+  it('resolves case-insensitively, stays organization-scoped, and writes an audit entry', async () => {
+    await prisma.oorLine.create({
+      data: {
+        orgId: ORG_ID,
+        customerPoNumber: 'CM-MAPPING-PO',
+        salesOrderNumber: 'CM-MAPPING-SO',
+        itemNumber: 'CM-MAPPING-SKU',
+        fulfillmentType: 'CONTRACT_MFG',
+        cmCode: 'ACM',
+      },
+    })
+    const sourceCode = await prisma.oorLine.findFirstOrThrow({
+      where: { orgId: ORG_ID, fulfillmentType: 'CONTRACT_MFG', cmCode: { not: null } },
+      select: { cmCode: true },
+    })
+    const saved = await upsertManufacturerMapping(prisma, ORG_ID, ACTOR, 'Acme Labs', sourceCode.cmCode!)
+    expect(saved.cmCode).toBe(sourceCode.cmCode)
+
+    const resolved = await getManufacturerMapping(prisma, ORG_ID, '  ACME LABS ')
+    expect(resolved.mapping?.id).toBe(saved.id)
+    expect(resolved.cmCodes).toContain(sourceCode.cmCode)
+    expect((await getManufacturerMapping(prisma, 'someone_else', 'Acme Labs')).mapping).toBeNull()
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { orgId: ORG_ID, entityType: 'oor_manufacturer_mapping', entityId: saved.id },
+    })
+    expect(audit.action).toBe('oor.manufacturer_mapping.create')
+    expect(audit.actorEmailSnapshot).toBe(ACTOR.email)
   })
 })

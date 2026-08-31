@@ -14,7 +14,10 @@ import { requirePermission, type RbacRequest } from '../middleware/requirePermis
 import { getActingOrgId, NoActingOrgError } from '../middleware/billingContext'
 import { can } from '../services/rbac/resolve'
 import { UPLOAD_MAX_BYTES } from '../lib/uploadValidation'
-import { listLines, getLine, getTree, updateLine, updateNode } from '../services/oor/lineQueries'
+import {
+  listLines, getLine, getTree, updateLine, updateNode,
+  getManufacturerMapping, upsertManufacturerMapping,
+} from '../services/oor/lineQueries'
 import { runImport } from '../services/oor/importRun'
 import { ExcelSourceAdapter } from '../services/oor/excel/excelSourceAdapter'
 import { buildExportWorkbook } from '../services/oor/exportReport'
@@ -33,7 +36,10 @@ import {
   patchMeetingUpdateSchema,
   createEmailSchema,
   activityQuerySchema,
+  buildActivityAuditWhere,
   COMMENT_EDIT_WINDOW_MS,
+  manufacturerMappingQuerySchema,
+  upsertManufacturerMappingSchema,
 } from './oor.schema'
 import { parsePastedEmail, parseEmlBuffer } from '../services/oor/emailParse'
 import { buildActivityFeed, type ActivityKind, type FeedParts } from '../services/oor/activityFeed'
@@ -103,6 +109,33 @@ oorRoutes.get('/brands', requirePermission('oor:read'), async (req: RbacRequest,
       select: { id: true, name: true, color: true, icon: true },
     })
     res.json({ brands })
+  } catch (error) {
+    handleError(res, error)
+  }
+})
+
+oorRoutes.get('/manufacturer-mapping', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
+  try {
+    const orgId = orgIdOf(req)
+    const { manufacturerName } = manufacturerMappingQuerySchema.parse(req.query)
+    const result = await getManufacturerMapping(prisma, orgId, manufacturerName)
+    res.json({ ...result, canManage: canAdminister(req) })
+  } catch (error) {
+    handleError(res, error)
+  }
+})
+
+oorRoutes.put('/manufacturer-mapping', requirePermission('oor:admin'), async (req: RbacRequest, res: Response) => {
+  try {
+    const orgId = orgIdOf(req)
+    const { manufacturerName, cmCode } = upsertManufacturerMappingSchema.parse(req.body)
+    const codeExists = await prisma.oorLine.findFirst({
+      where: { orgId, fulfillmentType: 'CONTRACT_MFG', cmCode: { equals: cmCode, mode: 'insensitive' } },
+      select: { cmCode: true },
+    })
+    if (!codeExists?.cmCode) return fail(res, 422, 'Choose a CM code found in an imported report.')
+    const mapping = await upsertManufacturerMapping(prisma, orgId, actorOf(req), manufacturerName, codeExists.cmCode)
+    res.json({ mapping })
   } catch (error) {
     handleError(res, error)
   }
@@ -571,12 +604,7 @@ oorRoutes.get('/lines/:id/activity', requirePermission('oor:read'), async (req: 
       // The line's own events plus every event on a material beneath it: to the
       // reader, "an ETA moved" is something that happened to this PO.
       prisma.auditLog.findMany({
-        where: {
-          OR: [
-            { entityType: 'oor_line', entityId: lineId },
-            { entityType: 'oor_shortage_node', entityId: { in: nodeIds.map((n) => n.id) } },
-          ],
-        },
+        where: buildActivityAuditWhere(orgId, lineId, nodeIds.map((n) => n.id)),
         orderBy: { createdAt: 'desc' },
         take: 500,
       }),

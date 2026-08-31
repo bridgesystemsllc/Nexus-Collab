@@ -164,11 +164,11 @@ export interface AuditQuery {
   pageSize?: number
 }
 
-export async function query(prisma: PrismaClient, q: AuditQuery) {
+export async function query(prisma: PrismaClient, orgId: string, q: AuditQuery) {
   const page = Math.max(q.page ?? 1, 1)
   const pageSize = Math.min(Math.max(q.pageSize ?? 25, 1), 100)
 
-  const where: Record<string, unknown> = {}
+  const where: Record<string, unknown> = { orgId }
   if (q.entityType) where.entityType = q.entityType
   if (q.entityId) where.entityId = q.entityId
   if (q.actorId) where.actorId = q.actorId

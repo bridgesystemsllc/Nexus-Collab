@@ -140,6 +140,81 @@ interface Actor {
   email: string | null
 }
 
+const normalizeManufacturerName = (value: string) => value.trim().toLocaleLowerCase()
+
+export async function getManufacturerMapping(
+  prisma: PrismaClient,
+  orgId: string,
+  manufacturerName: string,
+) {
+  const [mapping, codes] = await Promise.all([
+    prisma.oorManufacturerMapping.findUnique({
+      where: {
+        orgId_erpManufacturerNameNormalized: {
+          orgId,
+          erpManufacturerNameNormalized: normalizeManufacturerName(manufacturerName),
+        },
+      },
+    }),
+    prisma.oorLine.findMany({
+      where: { orgId, fulfillmentType: 'CONTRACT_MFG', cmCode: { not: null } },
+      distinct: ['cmCode'],
+      orderBy: { cmCode: 'asc' },
+      select: { cmCode: true },
+    }),
+  ])
+  return { mapping, cmCodes: codes.flatMap((row) => row.cmCode ? [row.cmCode] : []) }
+}
+
+export async function upsertManufacturerMapping(
+  prisma: PrismaClient,
+  orgId: string,
+  actor: Actor,
+  manufacturerName: string,
+  cmCode: string,
+) {
+  const normalized = normalizeManufacturerName(manufacturerName)
+  return prisma.$transaction(async (tx) => {
+    // Serialize saves for one organization/manufacturer so the audit diff
+    // always describes the value that this write actually replaced.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${orgId}:${normalized}`}))`
+    const before = await tx.oorManufacturerMapping.findUnique({
+      where: { orgId_erpManufacturerNameNormalized: { orgId, erpManufacturerNameNormalized: normalized } },
+    })
+    const after = await tx.oorManufacturerMapping.upsert({
+      where: { orgId_erpManufacturerNameNormalized: { orgId, erpManufacturerNameNormalized: normalized } },
+      create: {
+        orgId,
+        erpManufacturerName: manufacturerName.trim(),
+        erpManufacturerNameNormalized: normalized,
+        cmCode: cmCode.trim(),
+        createdById: actor.id,
+        updatedById: actor.id,
+      },
+      update: {
+        erpManufacturerName: manufacturerName.trim(),
+        cmCode: cmCode.trim(),
+        updatedById: actor.id,
+      },
+    })
+    await tx.auditLog.create({
+      data: {
+        actorId: actor.id,
+        actorEmailSnapshot: actor.email,
+        action: before ? 'oor.manufacturer_mapping.update' : 'oor.manufacturer_mapping.create',
+        entityType: 'oor_manufacturer_mapping',
+        entityId: after.id,
+        orgId,
+        changes: {
+          erpManufacturerName: { from: before?.erpManufacturerName ?? null, to: after.erpManufacturerName },
+          cmCode: { from: before?.cmCode ?? null, to: after.cmCode },
+        },
+      },
+    })
+    return after
+  })
+}
+
 /**
  * Status events reuse AuditLog rather than a bespoke table: it already carries
  * actor, denormalised actor email (so a trail still names someone after they

@@ -13,6 +13,7 @@ import { effectivePermissions, canAssignRole } from '../services/rbac/resolve'
 import { loadSubject } from '../services/rbac/subject'
 import * as users from '../services/users/userService'
 import { query as queryAudit } from '../services/users/auditService'
+import { getActingOrgId } from '../middleware/billingContext'
 
 // ─── User directory and administration ───────────────────────
 // Thin. Every rule that could be got wrong lives in userService or resolve.ts;
@@ -195,7 +196,7 @@ userRoutes.get('/:id', requirePermission('users:read'), async (req: RbacRequest,
     if (!member) return sendError(res, 'NOT_FOUND', 'That user does not exist.')
 
     const subject = await loadSubject(prisma, id)
-    const recent = await queryAudit(prisma, { entityType: 'user', entityId: id, pageSize: 10 })
+    const recent = await queryAudit(prisma, getActingOrgId(req), { entityType: 'user', entityId: id, pageSize: 10 })
 
     return res.json({
       data: {

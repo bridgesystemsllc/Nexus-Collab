@@ -5,6 +5,9 @@ import {
   buildLineOrderBy,
   patchLineSchema,
   patchNodeSchema,
+  manufacturerMappingQuerySchema,
+  upsertManufacturerMappingSchema,
+  buildActivityAuditWhere,
   MAX_PAGE_SIZE,
 } from './oor.schema'
 
@@ -122,5 +125,30 @@ describe('patchNodeSchema', () => {
 
   it('rejects a shortage reason outside the vocabulary', () => {
     expect(() => patchNodeSchema.parse({ shortageReason: 'BECAUSE' })).toThrow()
+  })
+})
+
+describe('manufacturer mapping schemas', () => {
+  it('trims a manufacturer and CM code before saving', () => {
+    expect(upsertManufacturerMappingSchema.parse({
+      manufacturerName: '  Acme Manufacturing  ',
+      cmCode: '  ACM  ',
+    })).toEqual({ manufacturerName: 'Acme Manufacturing', cmCode: 'ACM' })
+  })
+
+  it('requires a real manufacturer name for lookup', () => {
+    expect(() => manufacturerMappingQuerySchema.parse({ manufacturerName: '   ' })).toThrow()
+  })
+})
+
+describe('buildActivityAuditWhere', () => {
+  it('keeps status history inside the acting organization', () => {
+    expect(buildActivityAuditWhere('org_1', 'line_1', ['node_1'])).toEqual({
+      orgId: 'org_1',
+      OR: [
+        { entityType: 'oor_line', entityId: 'line_1' },
+        { entityType: 'oor_shortage_node', entityId: { in: ['node_1'] } },
+      ],
+    })
   })
 })

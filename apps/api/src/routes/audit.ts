@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { requirePermission, sendError, type RbacRequest } from '../middleware/requirePermission'
 import { query } from '../services/users/auditService'
+import { getActingOrgId } from '../middleware/billingContext'
 
 // ─── Audit log (read) ────────────────────────────────────────
 // Read-only by design. There is no POST, PATCH or DELETE here and there never
@@ -31,7 +32,7 @@ auditRoutes.get('/', requirePermission('audit:read'), async (req: RbacRequest, r
   }
 
   try {
-    const result = await query(prisma, parsed.data)
+    const result = await query(prisma, getActingOrgId(req), parsed.data)
     return res.json({
       data: result.rows,
       page: result.page,
@@ -46,8 +47,12 @@ auditRoutes.get('/', requirePermission('audit:read'), async (req: RbacRequest, r
 })
 
 /** Distinct actions present, so the filter offers only what exists. */
-auditRoutes.get('/actions', requirePermission('audit:read'), async (_req, res: Response) => {
-  const rows = await prisma.auditLog.groupBy({ by: ['action'], _count: { action: true } })
+auditRoutes.get('/actions', requirePermission('audit:read'), async (req: RbacRequest, res: Response) => {
+  const rows = await prisma.auditLog.groupBy({
+    by: ['action'],
+    where: { orgId: getActingOrgId(req) },
+    _count: { action: true },
+  })
   return res.json({
     data: rows
       .map((r) => ({ action: r.action, count: r._count.action }))

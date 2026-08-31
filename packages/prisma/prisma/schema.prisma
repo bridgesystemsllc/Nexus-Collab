@@ -9,39 +9,40 @@ datasource db {
 
 // ─── Organization ───────────────────────────────────────────
 model Organization {
-  id                 String               @id @default(cuid())
-  name               String
-  slug               String               @unique
+  id                      String                   @id @default(cuid())
+  name                    String
+  slug                    String                   @unique
   /// The Entra (Azure AD) tenant this organization signs in from. This is the
   /// org key at login — it replaces picking the oldest Organization row, which
   /// silently put every new customer into the first workspace ever created.
   /// Nullable because the founding workspace predates it and is backfilled by
   /// ensureOrgTenantBackfill().
-  entraTenantId      String?              @unique
-  logoUrl            String?
-  color              String?
-  industry           String?
-  usageContext       String?
-  referralSource     String?
-  phoneNumber        String?
-  featureInterests   String[]
-  onboardingComplete Boolean              @default(false)
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  departments        Department[]
-  brands             Brand[]
-  members            Member[]
-  projects           Project[]
-  documents          Document[]
-  integrations       Integration[]
-  products           Product[]
-  transitionSkus     TransitionSku[]
-  invites            OrganizationInvite[]
-  subscription       BillingSubscription?
-  seatAssignments    SeatAssignment[]
-  paymentMethods     BillingPaymentMethod[]
-  invoices           BillingInvoice[]
-  automations        Automation[]
+  entraTenantId           String?                  @unique
+  logoUrl                 String?
+  color                   String?
+  industry                String?
+  usageContext            String?
+  referralSource          String?
+  phoneNumber             String?
+  featureInterests        String[]
+  onboardingComplete      Boolean                  @default(false)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  departments             Department[]
+  brands                  Brand[]
+  members                 Member[]
+  projects                Project[]
+  documents               Document[]
+  integrations            Integration[]
+  products                Product[]
+  transitionSkus          TransitionSku[]
+  invites                 OrganizationInvite[]
+  subscription            BillingSubscription?
+  seatAssignments         SeatAssignment[]
+  paymentMethods          BillingPaymentMethod[]
+  invoices                BillingInvoice[]
+  oorManufacturerMappings OorManufacturerMapping[]
+  automations             Automation[]
 }
 
 // ─── Session ────────────────────────────────────────────────
@@ -128,39 +129,39 @@ model Member {
   // ── User Management ──
   // `role` above stays the authority for the projects module. `roleId` is the
   // new permission system; Role.legacyRole keeps the two in step on write.
-  roleId             String?
-  roleRef            Role?               @relation(fields: [roleId], references: [id])
+  roleId                String?
+  roleRef               Role?     @relation(fields: [roleId], references: [id])
   /// invited | active | suspended | deactivated. Distinct from `status`, which
   /// is presence (AVAILABLE/FOCUSED/IN_MEETING/OOO).
-  lifecycleStatus    String              @default("active")
-  displayName        String?
-  jobTitle           String?
-  phone              String?
-  timezone           String              @default("America/New_York")
-  locale             String              @default("en-CA")
-  emailVerifiedAt    DateTime?
+  lifecycleStatus       String    @default("active")
+  displayName           String?
+  jobTitle              String?
+  phone                 String?
+  timezone              String    @default("America/New_York")
+  locale                String    @default("en-CA")
+  emailVerifiedAt       DateTime?
   /// Holds the new address during an email change; promoted on verification.
-  pendingEmail       String?
+  pendingEmail          String?
   /// SHA-256 of the verification token. The raw value only ever exists in the
   /// message sent to the NEW address — reading this table must not be enough
   /// to complete somebody else's email change.
   pendingEmailTokenHash String?
   pendingEmailExpiresAt DateTime?
-  lastLoginAt        DateTime?
-  deactivatedAt      DateTime?
-  createdById        String?
-  createdBy          Member?             @relation("MemberCreator", fields: [createdById], references: [id])
-  createdMembers     Member[]            @relation("MemberCreator")
+  lastLoginAt           DateTime?
+  deactivatedAt         DateTime?
+  createdById           String?
+  createdBy             Member?   @relation("MemberCreator", fields: [createdById], references: [id])
+  createdMembers        Member[]  @relation("MemberCreator")
 
-  preference           UserPreference?
-  notificationPrefs    NotificationPreference[]
-  permissionOverrides  UserPermissionOverride[] @relation("OverrideSubject")
-  overridesGranted     UserPermissionOverride[] @relation("OverrideGrantor")
-  invitationsSentNew   UserInvitation[]         @relation("InvitationSender")
-  auditEntries         AuditLog[]               @relation("AuditActor")
+  preference          UserPreference?
+  notificationPrefs   NotificationPreference[]
+  permissionOverrides UserPermissionOverride[] @relation("OverrideSubject")
+  overridesGranted    UserPermissionOverride[] @relation("OverrideGrantor")
+  invitationsSentNew  UserInvitation[]         @relation("InvitationSender")
+  auditEntries        AuditLog[]               @relation("AuditActor")
 
-  seatAssignments  SeatAssignment[]
-  seatsAssigned    SeatAssignment[]     @relation("SeatAssigner")
+  seatAssignments SeatAssignment[]
+  seatsAssigned   SeatAssignment[] @relation("SeatAssigner")
 
   @@index([orgId])
   @@index([clerkUserId])
@@ -349,20 +350,20 @@ model Project {
   // create; never reused, so a deleted #4 leaves a gap rather than colliding.
   taskCounter Int @default(0)
 
-  tasks       Task[]
-  coworkSpace CoworkSpace?
-  departments ProjectDepartment[]
-  members     ProjectMember[]
-  phases      ProjectPhase[]
-  milestones  ProjectMilestone[]
-  checkins    ProjectCheckin[]
-  reports     ProjectReport[]
+  tasks           Task[]
+  coworkSpace     CoworkSpace?
+  departments     ProjectDepartment[]
+  members         ProjectMember[]
+  phases          ProjectPhase[]
+  milestones      ProjectMilestone[]
+  checkins        ProjectCheckin[]
+  reports         ProjectReport[]
   healthSnapshots ProjectHealthSnapshot[]
-  risks       ProjectRisk[]
-  comments    ProjectComment[]
-  activity    ProjectActivity[]
-  moduleLinks ProjectModuleLink[]
-  collabLinks CollabProjectLink[]
+  risks           ProjectRisk[]
+  comments        ProjectComment[]
+  activity        ProjectActivity[]
+  moduleLinks     ProjectModuleLink[]
+  collabLinks     CollabProjectLink[]
 
   createdById String?
   createdAt   DateTime  @default(now())
@@ -417,15 +418,15 @@ model ProjectType {
 // table is what makes a project appear in a second department's Projects tab
 // without copying anything.
 model ProjectDepartment {
-  id           String     @id @default(cuid())
-  projectId    String
-  project      Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  departmentId String
-  department   Department @relation(fields: [departmentId], references: [id])
-  role         String     @default("CONTRIBUTOR") // OWNER | CONTRIBUTOR | REVIEWER | VIEWER
-  laneLeadId   String?
-  laneLead     Member?    @relation("LaneLead", fields: [laneLeadId], references: [id])
-  joinedAt     DateTime   @default(now())
+  id            String             @id @default(cuid())
+  projectId     String
+  project       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  departmentId  String
+  department    Department         @relation(fields: [departmentId], references: [id])
+  role          String             @default("CONTRIBUTOR") // OWNER | CONTRIBUTOR | REVIEWER | VIEWER
+  laneLeadId    String?
+  laneLead      Member?            @relation("LaneLead", fields: [laneLeadId], references: [id])
+  joinedAt      DateTime           @default(now())
   // Which collab link put this lane on the project, if any. Unlinking must
   // revoke the access it granted without touching lanes a person added
   // deliberately — without provenance the two are indistinguishable and unlink
@@ -440,17 +441,17 @@ model ProjectDepartment {
 
 // ─── Individual members (overrides + confidential projects) ─
 model ProjectMember {
-  id           String      @id @default(cuid())
-  projectId    String
-  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  memberId     String
-  member       Member      @relation(fields: [memberId], references: [id])
-  role         String      @default("CONTRIBUTOR")
+  id            String             @id @default(cuid())
+  projectId     String
+  project       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  memberId      String
+  member        Member             @relation(fields: [memberId], references: [id])
+  role          String             @default("CONTRIBUTOR")
   // PROJECT_MANAGER | LANE_LEAD | CONTRIBUTOR | REVIEWER | VIEWER | SPONSOR
-  departmentId String? // which lane they act in
-  department   Department? @relation(fields: [departmentId], references: [id])
-  isWatcher    Boolean     @default(false)
-  addedAt      DateTime    @default(now())
+  departmentId  String? // which lane they act in
+  department    Department?        @relation(fields: [departmentId], references: [id])
+  isWatcher     Boolean            @default(false)
+  addedAt       DateTime           @default(now())
   // Same provenance rule as ProjectDepartment: a membership granted by a collab
   // link is revoked when that link goes away, one added by hand is not.
   addedByLinkId String?
@@ -541,34 +542,34 @@ model CoworkSpace {
 // `departmentId` IS the lane. It is nullable for legacy/non-project tasks but
 // required by the service layer for any task attached to a project.
 model Task {
-  id           String        @id @default(cuid())
+  id           String         @id @default(cuid())
   // Per-project sequence (#17). Null for tasks with no project.
   taskNumber   Int?
   title        String
   description  String?
-  status       String        @default("NOT_STARTED")
+  status       String         @default("NOT_STARTED")
   // NOT_STARTED | IN_PROGRESS | IN_REVIEW | BLOCKED | COMPLETE | CANCELLED
   // (spec's TODO/DONE map onto NOT_STARTED/COMPLETE — the existing vocabulary wins)
-  priority     String        @default("MEDIUM") // CRITICAL, HIGH, MEDIUM, LOW
+  priority     String         @default("MEDIUM") // CRITICAL, HIGH, MEDIUM, LOW
   effort       String? // XS, S, M, L, XL
   startDate    DateTime?
   dueDate      DateTime?
   completedAt  DateTime?
   brandNames   String[]
   projectId    String?
-  project      Project?      @relation(fields: [projectId], references: [id])
+  project      Project?       @relation(fields: [projectId], references: [id])
   departmentId String?
-  department   Department?   @relation(fields: [departmentId], references: [id])
+  department   Department?    @relation(fields: [departmentId], references: [id])
   ownerId      String?
-  owner        Member?       @relation("TaskOwner", fields: [ownerId], references: [id])
-  coworkSpaces CoworkSpace[] @relation("CoworkTasks")
-  documents    Document[]    @relation("TaskDocs")
+  owner        Member?        @relation("TaskOwner", fields: [ownerId], references: [id])
+  coworkSpaces CoworkSpace[]  @relation("CoworkTasks")
+  documents    Document[]     @relation("TaskDocs")
   emails       EmailLink[]
   chatLinks    TaskChatLink[]
   notes        Note[]
   parentId     String?
-  parent       Task?         @relation("SubTasks", fields: [parentId], references: [id])
-  subtasks     Task[]        @relation("SubTasks")
+  parent       Task?          @relation("SubTasks", fields: [parentId], references: [id])
+  subtasks     Task[]         @relation("SubTasks")
 
   // ── Project scheduling ──
   phaseId         String?
@@ -1190,18 +1191,18 @@ model ProjectReport {
 // because it starts empty the trend endpoint reports how far back it actually
 // reaches rather than drawing a flat line over days it knows nothing about.
 model ProjectHealthSnapshot {
-  id        String   @id @default(cuid())
-  projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   // Midnight America/New_York for the day being recorded, so a day is a
   // business day rather than a UTC one.
-  day       DateTime
-  score     Int
-  band      String // GREEN | AMBER | RED
-  status    String
-  percentComplete Decimal @db.Decimal(5, 2)
-  orgId     String
-  createdAt DateTime @default(now())
+  day             DateTime
+  score           Int
+  band            String // GREEN | AMBER | RED
+  status          String
+  percentComplete Decimal  @db.Decimal(5, 2)
+  orgId           String
+  createdAt       DateTime @default(now())
 
   // One snapshot per project per day: the sweep is idempotent under re-runs.
   @@unique([projectId, day])
@@ -1414,15 +1415,15 @@ model Role {
 /// Seeded catalogue. Never user-created — a permission with no code behind it
 /// is a checkbox that lies.
 model Permission {
-  key         String   @id
+  key         String  @id
   resource    String
   action      String
   label       String
   description String?
-  sortOrder   Int      @default(0)
+  sortOrder   Int     @default(0)
 
-  roles       RolePermission[]
-  overrides   UserPermissionOverride[]
+  roles     RolePermission[]
+  overrides UserPermissionOverride[]
 
   @@index([resource])
 }
@@ -1461,24 +1462,24 @@ model UserPermissionOverride {
 /// Invitation to join. Separate from the older OrganizationInvite, which the
 /// onboarding flow still owns and which stores its token in plaintext.
 model UserInvitation {
-  id          String    @id @default(cuid())
-  email       String
-  firstName   String?
-  lastName    String?
-  roleId      String
-  role        Role      @relation(fields: [roleId], references: [id])
+  id           String    @id @default(cuid())
+  email        String
+  firstName    String?
+  lastName     String?
+  roleId       String
+  role         Role      @relation(fields: [roleId], references: [id])
   departmentId String?
-  message     String?
+  message      String?
   /// SHA-256 of the raw token. The raw value exists only in the email — a
   /// database read must never be enough to accept someone else's invitation.
-  tokenHash   String    @unique
-  invitedById String?
-  invitedBy   Member?   @relation("InvitationSender", fields: [invitedById], references: [id])
-  orgId       String
-  expiresAt   DateTime
-  acceptedAt  DateTime?
-  revokedAt   DateTime?
-  createdAt   DateTime  @default(now())
+  tokenHash    String    @unique
+  invitedById  String?
+  invitedBy    Member?   @relation("InvitationSender", fields: [invitedById], references: [id])
+  orgId        String
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
 
   @@index([email])
   @@index([orgId])
@@ -1577,9 +1578,9 @@ model BillingTier {
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
-  features               BillingTierFeature[]
-  subscriptions          BillingSubscription[] @relation("SubscriptionTier")
-  pendingSubscriptions   BillingSubscription[] @relation("SubscriptionPendingTier")
+  features             BillingTierFeature[]
+  subscriptions        BillingSubscription[] @relation("SubscriptionTier")
+  pendingSubscriptions BillingSubscription[] @relation("SubscriptionPendingTier")
 
   @@index([rank])
 }
@@ -1600,11 +1601,11 @@ model BillingTierFeature {
 }
 
 model BillingSubscription {
-  id                       String       @id @default(cuid())
-  orgId                    String       @unique
-  org                      Organization @relation(fields: [orgId], references: [id])
-  tierId                   String
-  tier                     BillingTier  @relation("SubscriptionTier", fields: [tierId], references: [id])
+  id     String       @id @default(cuid())
+  orgId  String       @unique
+  org    Organization @relation(fields: [orgId], references: [id])
+  tierId String
+  tier   BillingTier  @relation("SubscriptionTier", fields: [tierId], references: [id])
 
   /// @unique as of billing-02's webhook review: two rows sharing a Stripe
   /// customer id would let a webhook write one org's tier/status/seats onto
@@ -1615,16 +1616,16 @@ model BillingSubscription {
   stripeSubscriptionItemId String?
 
   /// trialing | active | past_due | canceled | incomplete | incomplete_expired | paused
-  status                   String
+  status          String
   /// monthly | annual
-  billingInterval          String
-  seatsPurchased           Int
+  billingInterval String
+  seatsPurchased  Int
 
-  currentPeriodStart       DateTime?
-  currentPeriodEnd         DateTime?
-  cancelAtPeriodEnd        Boolean      @default(false)
-  trialEndsAt              DateTime?
-  canceledAt               DateTime?
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean   @default(false)
+  trialEndsAt        DateTime?
+  canceledAt         DateTime?
 
   /// Scheduled, not yet effective. A downgrade or seat reduction lands here
   /// and takes effect at pendingChangeEffectiveAt. Entitlements are resolved
@@ -1636,34 +1637,34 @@ model BillingSubscription {
   pendingChangeEffectiveAt DateTime?
 
   /// Set when a payment fails. Full access until it passes, read-only after.
-  gracePeriodEndsAt        DateTime?
+  gracePeriodEndsAt DateTime?
 
   /// High-water mark for webhook ordering. Stripe delivers out of order and
   /// its objects carry no monotonic version, so an event created before this
   /// is stale and must be discarded rather than applied.
-  lastStripeEventAt        DateTime?
+  lastStripeEventAt DateTime?
 
-  createdAt                DateTime     @default(now())
-  updatedAt                DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // stripeCustomerId's index is now implied by its @unique above.
   @@index([status])
 }
 
 model SeatAssignment {
-  id                  String       @id @default(cuid())
-  orgId               String
-  org                 Organization @relation(fields: [orgId], references: [id])
-  memberId            String
-  member              Member       @relation(fields: [memberId], references: [id])
-  assignedAt          DateTime     @default(now())
-  assignedByMemberId  String?
-  assignedBy          Member?      @relation("SeatAssigner", fields: [assignedByMemberId], references: [id])
+  id                 String       @id @default(cuid())
+  orgId              String
+  org                Organization @relation(fields: [orgId], references: [id])
+  memberId           String
+  member             Member       @relation(fields: [memberId], references: [id])
+  assignedAt         DateTime     @default(now())
+  assignedByMemberId String?
+  assignedBy         Member?      @relation("SeatAssigner", fields: [assignedByMemberId], references: [id])
   /// Null means the seat is currently held. Releases are soft so the trail
   /// survives — who held which seat and when is a billing question.
-  releasedAt          DateTime?
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  releasedAt         DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   // The real guarantee — one ACTIVE assignment per member per org — is a
   // partial unique index, which Prisma 5 cannot express. It is created in
@@ -1832,6 +1833,25 @@ model OorLine {
   @@index([orgId, fulfillmentType, jobStatus])
   @@index([orgId, lineStatus])
   @@index([reportRunId])
+}
+
+/// Explicitly links the ERP's manufacturer label to the CM code used by
+/// imported open-order reports. The normalized label makes the lookup
+/// case-insensitive without relying on database-specific indexes.
+model OorManufacturerMapping {
+  id                            String       @id @default(cuid())
+  orgId                         String
+  organization                  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  erpManufacturerName           String
+  erpManufacturerNameNormalized String
+  cmCode                        String
+  createdAt                     DateTime     @default(now())
+  updatedAt                     DateTime     @updatedAt
+  createdById                   String?
+  updatedById                   String?
+
+  @@unique([orgId, erpManufacturerNameNormalized])
+  @@index([orgId, cmCode])
 }
 
 model OorShortageNode {
