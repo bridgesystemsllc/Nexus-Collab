@@ -188,7 +188,16 @@ export async function handleInvoicePaid(tx: Tx, event: ProviderEvent, ctx: Handl
     // A recovered payment must not leave a stale grace timestamp behind:
     // resolve.ts reports inGracePeriod from status AND this field together,
     // so an un-cleared value here is a dunning banner on a healthy account.
-    data: { gracePeriodEndsAt: null, lastStripeEventAt: event.createdAt },
+    //
+    // lastStripeEventAt is deliberately NOT touched here. That mark belongs
+    // to the subscription-ordering guard in webhookProcessor.ts, which only
+    // `customer.subscription.*` handlers own (this event type is
+    // `ordered: false` in that table) — an invoice event advancing a
+    // subscription's ordering mark previously let a same-second
+    // subscription.updated event with an earlier `createdAt` be discarded as
+    // `stale`, freezing `currentPeriodEnd` at last period's value even
+    // though the invoice for the NEW period had just been paid.
+    data: { gracePeriodEndsAt: null },
   })
 
   await appendWebhookAudit({
@@ -221,7 +230,9 @@ export async function handleInvoicePaymentFailed(tx: Tx, event: ProviderEvent, c
 
   await tx.billingSubscription.update({
     where: { id: subscription.id },
-    data: { gracePeriodEndsAt, lastStripeEventAt: event.createdAt },
+    // lastStripeEventAt untouched — see the identical note in
+    // handleInvoicePaid above; the same reasoning applies here.
+    data: { gracePeriodEndsAt },
   })
 
   await appendWebhookAudit({

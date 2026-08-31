@@ -383,7 +383,7 @@ describe('processEvent — exact redelivery', () => {
 describe('processEvent — redelivery of a failed event', () => {
   it('is retried and increments retryCount', async () => {
     const prisma = createFakePrisma()
-    eventHandlers['customer.updated'] = async () => { throw new Error('boom') }
+    eventHandlers['customer.updated'] = { handler: async () => { throw new Error('boom') }, ordered: false }
     const event = makeEvent({ id: 'evt_fail_1' })
 
     const first = await processEvent(prisma as any, event)
@@ -405,12 +405,15 @@ describe('processEvent — a handler throwing', () => {
     const prisma = createFakePrisma({
       subscriptions: [subscriptionFixture({ id: 'sub_row_1', orgId: 'org_1', stripeCustomerId: 'cus_1', lastStripeEventAt: null })],
     })
-    eventHandlers['customer.updated'] = async (tx) => {
-      await (tx as any).billingSubscription.update({
-        where: { id: 'sub_row_1' },
-        data: { lastStripeEventAt: new Date('2099-01-01T00:00:00Z') },
-      })
-      throw new Error('handler exploded')
+    eventHandlers['customer.updated'] = {
+      ordered: false,
+      handler: async (tx) => {
+        await (tx as any).billingSubscription.update({
+          where: { id: 'sub_row_1' },
+          data: { lastStripeEventAt: new Date('2099-01-01T00:00:00Z') },
+        })
+        throw new Error('handler exploded')
+      },
     }
     const event = makeEvent({ id: 'evt_rollback_1', data: { customer: 'cus_1' } })
 
@@ -425,7 +428,7 @@ describe('processEvent — a handler throwing', () => {
 })
 
 describe('processEvent — out-of-order guard', () => {
-  it('discards an event older than lastStripeEventAt as stale, applying nothing', async () => {
+  it('discards an ORDERED event older than lastStripeEventAt as stale, applying nothing', async () => {
     const prisma = createFakePrisma({
       subscriptions: [subscriptionFixture({
         id: 'sub_row_2', orgId: 'org_2', stripeCustomerId: 'cus_2',
@@ -433,7 +436,7 @@ describe('processEvent — out-of-order guard', () => {
       })],
     })
     let handlerRan = false
-    eventHandlers['customer.updated'] = async () => { handlerRan = true }
+    eventHandlers['customer.updated'] = { handler: async () => { handlerRan = true }, ordered: true }
 
     const event = makeEvent({
       id: 'evt_stale_1', data: { customer: 'cus_2' },
@@ -456,6 +459,108 @@ describe('processEvent — out-of-order guard', () => {
     const outcome = await processEvent(prisma as any, event)
     // Falls through to dispatch — an unrecognised type — not stale.
     expect(outcome).toEqual<ProcessOutcome>({ status: 'unhandled', eventId: 'evt_notstale_1' })
+  })
+
+  it('does NOT treat an equal-second event as stale — last writer wins', async () => {
+    const prisma = createFakePrisma({
+      subscriptions: [subscriptionFixture({
+        id: 'sub_row_3b', orgId: 'org_3b', stripeCustomerId: 'cus_3b',
+        lastStripeEventAt: new Date('2026-08-25T00:00:00.000Z'),
+      })],
+    })
+    let handlerRan = false
+    eventHandlers['customer.updated'] = { handler: async () => { handlerRan = true }, ordered: true }
+
+    const event = makeEvent({
+      id: 'evt_equal_1', data: { customer: 'cus_3b' },
+      createdAt: new Date('2026-08-25T00:00:00.000Z'), // exactly equal, not older
+    })
+    const outcome = await processEvent(prisma as any, event)
+    expect(outcome.status).toBe('processed') // dispatched and applied, not stale
+    expect(handlerRan).toBe(true)
+  })
+
+  it('does NOT gate an unordered (invoice/payment-method/trial) type, even when older than lastStripeEventAt', async () => {
+    const prisma = createFakePrisma({
+      subscriptions: [subscriptionFixture({
+        id: 'sub_row_3c', orgId: 'org_3c', stripeCustomerId: 'cus_3c',
+        lastStripeEventAt: new Date('2026-08-25T00:00:00Z'),
+      })],
+    })
+    let handlerRan = false
+    eventHandlers['customer.updated'] = { handler: async () => { handlerRan = true }, ordered: false }
+
+    const event = makeEvent({
+      id: 'evt_unordered_old_1', data: { customer: 'cus_3c' },
+      createdAt: new Date('2020-01-01T00:00:00Z'), // far older than the subscription mark
+    })
+    const outcome = await processEvent(prisma as any, event)
+    expect(outcome.status).toBe('processed')
+    expect(handlerRan).toBe(true)
+  })
+})
+
+describe('processEvent — the ordering guard is scoped, not global (C1 regression)', () => {
+  it('an invoice.paid landing before an OLDER-created subscription.updated does not cause it to be dropped as stale', async () => {
+    // Reproduces the exact race: Stripe fires both at renewal, order not
+    // guaranteed. invoice.paid (created a moment later than the
+    // subscription event, but delivered first) must not advance
+    // lastStripeEventAt — if it did, the subscription.updated below (created
+    // BEFORE it) would be wrongly discarded as stale and currentPeriodEnd
+    // would never advance.
+    const prisma = createFakePrisma({
+      subscriptions: [subscriptionFixture({
+        id: 'sub_row_race1', orgId: 'org_race1', stripeCustomerId: 'cus_race1',
+        tierId: 'tier_growth', currentPeriodEnd: new Date('2026-08-01T00:00:00Z'),
+      })],
+    })
+    const subUpdatedCreatedAt = new Date('2026-09-01T00:00:00.000Z')
+    const invoicePaidCreatedAt = new Date('2026-09-01T00:00:01.000Z') // one second later
+
+    const invoiceOutcome = await processEvent(prisma as any, makeEvent({
+      id: 'evt_race1_invoice', type: 'invoice.paid', createdAt: invoicePaidCreatedAt,
+      data: stripeInvoiceData({ customer: 'cus_race1' }),
+    }))
+    expect(invoiceOutcome.status).toBe('processed')
+    // The invoice handler must not have touched the ordering mark.
+    expect(prisma._subscriptions.get('sub_row_race1')!.lastStripeEventAt).toBeNull()
+
+    const subOutcome = await processEvent(prisma as any, makeEvent({
+      id: 'evt_race1_sub', type: 'customer.subscription.updated', createdAt: subUpdatedCreatedAt,
+      data: stripeSubscriptionData({
+        customer: 'cus_race1',
+        current_period_end: Math.floor(new Date('2026-10-01T00:00:00Z').getTime() / 1000),
+      }),
+    }))
+    expect(subOutcome.status).toBe('processed') // NOT stale
+    expect(prisma._subscriptions.get('sub_row_race1')!.currentPeriodEnd).toEqual(new Date('2026-10-01T00:00:00Z'))
+  })
+
+  it('an ordered subscription mark does not cause a later-arriving, older-created invoice.paid to be dropped', async () => {
+    const prisma = createFakePrisma({
+      subscriptions: [subscriptionFixture({
+        id: 'sub_row_race2', orgId: 'org_race2', stripeCustomerId: 'cus_race2',
+        status: 'past_due', gracePeriodEndsAt: new Date('2026-09-05T00:00:00Z'),
+      })],
+    })
+    const subOutcome = await processEvent(prisma as any, makeEvent({
+      id: 'evt_race2_sub', type: 'customer.subscription.updated',
+      createdAt: new Date('2026-09-01T00:00:02.000Z'),
+      data: stripeSubscriptionData({ customer: 'cus_race2' }),
+    }))
+    expect(subOutcome.status).toBe('processed')
+    expect(prisma._subscriptions.get('sub_row_race2')!.lastStripeEventAt).toEqual(new Date('2026-09-01T00:00:02.000Z'))
+
+    // Older createdAt than the mark subscription.updated just stamped — an
+    // ordered guard would have discarded this as stale, leaving the account
+    // stuck past_due until day 14 despite having just paid.
+    const invoiceOutcome = await processEvent(prisma as any, makeEvent({
+      id: 'evt_race2_invoice', type: 'invoice.paid',
+      createdAt: new Date('2026-09-01T00:00:01.000Z'),
+      data: stripeInvoiceData({ customer: 'cus_race2' }),
+    }))
+    expect(invoiceOutcome.status).toBe('processed') // NOT stale
+    expect(prisma._subscriptions.get('sub_row_race2')!.gracePeriodEndsAt).toBeNull()
   })
 })
 

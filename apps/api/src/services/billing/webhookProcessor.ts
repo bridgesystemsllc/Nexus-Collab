@@ -72,16 +72,37 @@ async function unhandledHandler(): Promise<void> {
 /// below (rather than deleted) so a type this table drops back to stubbing —
 /// or a type nobody has wired up yet — still returns `unhandled` instead of
 /// silently claiming `processed`.
-export const eventHandlers: Record<string, EventHandler> = {
-  'customer.subscription.created': handleSubscriptionCreated,
-  'customer.subscription.updated': handleSubscriptionUpdated,
-  'customer.subscription.deleted': handleSubscriptionDeleted,
-  'invoice.paid': handleInvoicePaid,
-  'invoice.payment_failed': handleInvoicePaymentFailed,
-  'invoice.upcoming': handleInvoiceUpcoming,
-  'payment_method.attached': handlePaymentMethodAttached,
-  'payment_method.detached': handlePaymentMethodDetached,
-  'customer.subscription.trial_will_end': handleTrialWillEnd,
+///
+/// `ordered: true` is ONLY for a handler whose write is what
+/// `BillingSubscription.lastStripeEventAt` protects — i.e. one that writes
+/// the subscription fields the out-of-order guard exists for, and which
+/// therefore also advances that same mark (see webhookHandlers.ts). That is
+/// exactly the three `customer.subscription.*` handlers below.
+///
+/// Every other handler is `ordered: false` DELIBERATELY, not by omission:
+/// `lastStripeEventAt` is a per-subscription mark, not a global one, and
+/// invoice/payment-method/trial events do not own it. Gating them on it was
+/// the exact bug this table's shape now prevents by construction — a
+/// same-second `invoice.paid` landing before `customer.subscription.updated`
+/// used to stamp the mark and cause the (older-by-a-second, but real)
+/// subscription event to be discarded as stale, silently freezing
+/// `currentPeriodEnd` at last period's value. Conversely an ordered event
+/// advancing the mark used to cause a genuinely-current but older-stamped
+/// `invoice.paid`/`payment_method.attached` to be dropped outright. Invoices
+/// and payment methods have no ordering requirement of their own here — each
+/// write (upsert-by-id, or a grace-period field guarded by its own
+/// already-set check) is idempotent regardless of delivery order — so they
+/// simply never entered the guard's scope at all.
+export const eventHandlers: Record<string, { handler: EventHandler; ordered: boolean }> = {
+  'customer.subscription.created': { handler: handleSubscriptionCreated, ordered: true },
+  'customer.subscription.updated': { handler: handleSubscriptionUpdated, ordered: true },
+  'customer.subscription.deleted': { handler: handleSubscriptionDeleted, ordered: true },
+  'invoice.paid': { handler: handleInvoicePaid, ordered: false },
+  'invoice.payment_failed': { handler: handleInvoicePaymentFailed, ordered: false },
+  'invoice.upcoming': { handler: handleInvoiceUpcoming, ordered: false },
+  'payment_method.attached': { handler: handlePaymentMethodAttached, ordered: false },
+  'payment_method.detached': { handler: handlePaymentMethodDetached, ordered: false },
+  'customer.subscription.trial_will_end': { handler: handleTrialWillEnd, ordered: false },
 }
 
 /// Stripe's convention: every object type this table cares about (a
@@ -89,7 +110,10 @@ export const eventHandlers: Record<string, EventHandler> = {
 /// customer it belongs to, either as a bare string or `{ id }`. That id is
 /// how an event is linked back to a BillingSubscription row without any
 /// event-type-specific logic — the same lookup works for every type above.
-function extractCustomerId(data: Record<string, unknown>): string | null {
+/// Exported so webhookHandlers.ts can reuse the exact same duck-typing on
+/// `previous_attributes.customer` for `payment_method.detached`, whose
+/// top-level `customer` is null post-detachment — see that handler.
+export function extractCustomerId(data: Record<string, unknown>): string | null {
   const customer = (data as { customer?: unknown }).customer
   if (typeof customer === 'string') return customer
   if (customer && typeof customer === 'object' && typeof (customer as { id?: unknown }).id === 'string') {
@@ -121,17 +145,29 @@ function errorMessage(err: unknown): string {
  *  3. A row that exists WITHOUT `processedAt` means a previous attempt failed
  *     or is in flight; bump `retryCount` and continue — that's what a retry
  *     is for.
- *  4. Before applying anything that touches BillingSubscription, compare
- *     `event.createdAt` against that row's `lastStripeEventAt`. Older →
- *     `stale`, nothing applied. A not-yet-set high-water mark is never stale
- *     — there is nothing to be older than.
+ *  4. For an `ordered: true` handler ONLY, compare `event.createdAt` against
+ *     that subscription's `lastStripeEventAt`. Strictly older → `stale`,
+ *     nothing applied. A not-yet-set high-water mark is never stale — there
+ *     is nothing to be older than. Equal-second is NOT stale and is applied
+ *     — Stripe's `created` is second-granularity, so two events in the same
+ *     second are common, and last-writer-wins is the right call: refusing
+ *     the second would mean refusing a real, later event forever whenever
+ *     two land in the same second. `ordered: false` handlers (invoice,
+ *     payment-method, trial) skip this check entirely — see the contract
+ *     comment on `eventHandlers` for why gating them on a per-subscription
+ *     mark was itself the bug.
  *  5. Dispatch to the handler table inside a transaction. Success sets
  *     `processedAt`. A throw records `processingError`, bumps `retryCount`
  *     again (this attempt itself failed, distinct from #3's redelivery bump),
  *     and rolls back every write the handler made this attempt.
  *  6. `invalidateEntitlements(orgId)` runs last, after the transaction
  *     commits — invalidating from inside it could publish a cache miss that
- *     then reads pre-commit state.
+ *     then reads pre-commit state. Wrapped in try/catch: it is a best-effort
+ *     cache-freshness step on an event that has already committed, not part
+ *     of the event's own correctness (the 60s TTL is the backstop) — letting
+ *     a Redis blip turn a fully-applied event into an HTTP 500 would make
+ *     Stripe retry it, land on the `processedAt`-is-set branch, and return
+ *     `duplicate` forever without ever getting another invalidation attempt.
  */
 export async function processEvent(prisma: PrismaClient, event: ProviderEvent): Promise<ProcessOutcome> {
   const customerId = extractCustomerId(event.data)
@@ -167,10 +203,19 @@ export async function processEvent(prisma: PrismaClient, event: ProviderEvent): 
     })
   }
 
-  // Step 4: the out-of-order guard. `lastStripeEventAt == null` means this
-  // subscription has never had an event applied — nothing for "older" to be
-  // relative to, so it is explicitly NOT stale.
-  if (subscription?.lastStripeEventAt && event.createdAt < subscription.lastStripeEventAt) {
+  const entry = eventHandlers[event.type]
+
+  // Step 4: the out-of-order guard — ONLY for a handler that owns
+  // lastStripeEventAt (see the contract comment on `eventHandlers`).
+  // `lastStripeEventAt == null` means this subscription has never had an
+  // ordered event applied — nothing for "older" to be relative to, so it is
+  // explicitly NOT stale. Strictly `<`, not `<=`: an equal-second event
+  // still applies (last writer wins — see the doc comment above).
+  if (
+    entry?.ordered &&
+    subscription?.lastStripeEventAt &&
+    event.createdAt < subscription.lastStripeEventAt
+  ) {
     await prisma.billingEvent.update({
       where: { stripeEventId: event.id },
       data: { processedAt: new Date() },
@@ -180,8 +225,7 @@ export async function processEvent(prisma: PrismaClient, event: ProviderEvent): 
 
   // Step 5: dispatch. An unrecognised type, or one still pointing at the
   // stub, is a deliberate no-op — recorded and acknowledged, never retried.
-  const handler = eventHandlers[event.type]
-  if (!handler || handler === unhandledHandler) {
+  if (!entry || entry.handler === unhandledHandler) {
     await prisma.billingEvent.update({
       where: { stripeEventId: event.id },
       data: { processedAt: new Date() },
@@ -191,7 +235,7 @@ export async function processEvent(prisma: PrismaClient, event: ProviderEvent): 
 
   try {
     await prisma.$transaction(async (tx) => {
-      await handler(tx, event, { orgId, subscription })
+      await entry.handler(tx, event, { orgId, subscription })
       await tx.billingEvent.update({
         where: { stripeEventId: event.id },
         data: { processedAt: new Date() },
@@ -207,6 +251,14 @@ export async function processEvent(prisma: PrismaClient, event: ProviderEvent): 
   }
 
   // Step 6: last, and outside the transaction — see the contract note above.
-  if (orgId) await invalidateEntitlements(orgId)
+  // Best-effort: a cache-invalidation failure must not turn an already-
+  // committed event into a retry (see the doc comment on step 6).
+  if (orgId) {
+    try {
+      await invalidateEntitlements(orgId)
+    } catch (err) {
+      console.error(`[billing webhook] entitlement cache invalidation failed for ${orgId} after event ${event.id} committed:`, errorMessage(err))
+    }
+  }
   return { status: 'processed', eventId: event.id }
 }
