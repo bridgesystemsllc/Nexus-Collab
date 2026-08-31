@@ -83,6 +83,27 @@ function handleError(res: Response, error: unknown) {
   return fail(res, 500, 'Something went wrong handling that request.')
 }
 
+// ─── Brands ──────────────────────────────────────────────────
+// The Brand table is not exposed anywhere else in the API, and the report is
+// scoped by brand at every level — import, filter, export. A small scoped
+// endpoint here beats inventing a global brands API as a side effect of this
+// feature.
+
+oorRoutes.get('/brands', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {
+  try {
+    const orgId = await orgIdOf(req)
+    if (!orgId) return fail(res, 400, 'No organization found')
+    const brands = await prisma.brand.findMany({
+      where: { orgId },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, color: true, icon: true },
+    })
+    res.json({ brands })
+  } catch (error) {
+    handleError(res, error)
+  }
+})
+
 // ─── Lines ───────────────────────────────────────────────────
 
 oorRoutes.get('/lines', requirePermission('oor:read'), async (req: RbacRequest, res: Response) => {

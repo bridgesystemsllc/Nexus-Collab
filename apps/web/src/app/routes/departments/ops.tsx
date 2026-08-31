@@ -24,6 +24,7 @@ import {
   Table2,
   TrendingUp,
   Users,
+  ClipboardCheck,
 } from 'lucide-react'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { api } from '@/lib/api'
@@ -40,6 +41,7 @@ import { ProductionOrderDrawer } from '@/components/ops/production/ProductionOrd
 import { CMTab } from '@/components/cm/CMTab'
 import { ComponentsTab } from '@/components/ops/ComponentsTab'
 import { BOMTab } from '@/components/ops/BOMTab'
+import { PoTrackingTab } from '@/components/ops/poTracking/PoTrackingTab'
 import { brandLabel } from '@/components/ops/brandLabel'
 import { useAppStore } from '@/stores/appStore'
 
@@ -58,13 +60,14 @@ function relativeTime(dateStr: string): string {
 }
 
 // ─── Types ─────────────────────────────────────────────────
-type OpsTab = 'projects' | 'sku' | 'inventory' | 'production' | 'brand' | 'components' | 'bom' | 'cm'
+type OpsTab = 'projects' | 'sku' | 'inventory' | 'production' | 'poTracking' | 'brand' | 'components' | 'bom' | 'cm'
 
 const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'projects', label: 'Projects', icon: FolderKanban },
   { key: 'sku', label: 'SKU Pipeline', icon: Package },
   { key: 'inventory', label: 'Inventory Health', icon: Box },
   { key: 'production', label: 'Production Tracking', icon: Factory },
+  { key: 'poTracking', label: 'Purchase Order Tracking', icon: ClipboardCheck },
   { key: 'brand', label: 'Brand Transition', icon: TrendingUp },
   { key: 'components', label: 'Components', icon: Boxes },
   { key: 'bom', label: 'Bill of Materials', icon: ClipboardList },
@@ -1331,6 +1334,7 @@ const MODULE_TYPE_BY_TAB: Record<OpsTab, string> = {
   sku: 'SKU_PIPELINE',
   inventory: 'INVENTORY_HEALTH',
   production: 'PRODUCTION_TRACKING',
+  poTracking: 'OPEN_ORDER_REPORT',
   brand: 'BRAND_TRANSITION',
   components: 'COMPONENTS',
   bom: 'BILL_OF_MATERIALS',
@@ -1514,6 +1518,8 @@ export function OpsPage() {
             <InventoryHealthTab items={moduleData.inventory} geodisItems={moduleData.geodisInventory} moduleId={moduleIds.inventory} geodisModuleId={moduleIds.geodisInventory} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
           ) : activeTab === 'production' ? (
             <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} openOrders={moduleData.openOrders} openOrderModuleId={moduleIds.openOrders} onRefresh={() => refetchDept()} />
+          ) : activeTab === 'poTracking' ? (
+            <PoTrackingTab />
           ) : activeTab === 'components' ? (
             <ComponentsTab items={moduleData.components} moduleId={moduleIds.components} departmentId={deptId} onRefresh={() => refetchDept()} />
           ) : activeTab === 'bom' ? (
