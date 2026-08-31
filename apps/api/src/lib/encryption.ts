@@ -1,13 +1,17 @@
 import crypto from 'crypto'
+import { isLocalDevelopment } from './devOnly'
 
 const ALGORITHM = 'aes-256-gcm'
 
 function getKey(): Buffer {
   const key = process.env.TOKEN_ENCRYPTION_KEY
   if (!key) {
-    // In development, use a deterministic fallback so the app doesn't crash
-    // In production, TOKEN_ENCRYPTION_KEY must be set
-    if (process.env.NODE_ENV === 'production') {
+    // In genuine local development, use a deterministic fallback so the app
+    // doesn't crash. Everywhere else — including a deployment, where
+    // `.replit` sets NODE_ENV="development" too — TOKEN_ENCRYPTION_KEY must
+    // be set, or this throws rather than silently encrypting OAuth tokens
+    // and API credentials with a key published in this repository.
+    if (!isLocalDevelopment()) {
       throw new Error('TOKEN_ENCRYPTION_KEY environment variable is required in production')
     }
     return crypto.createHash('sha256').update('nexus-dev-key-not-for-production').digest()

@@ -19,14 +19,14 @@ const upload = multer({
 })
 
 // Mirrors the role gate used by the integrations routing endpoint: inventory
-// is operational data, so writes require ADMIN or OPS_MANAGER, with an
-// unauthenticated escape hatch for local development only.
+// is operational data, so writes require ADMIN or OPS_MANAGER. This route
+// sits behind isAuthenticated, so `member` should always be resolved here;
+// local development authenticates via /api/dev-login, not a bypass in this check.
 function requirePrivileged(req: Request, res: Response): boolean {
   const member = (req as any).member as { role?: string } | undefined
   const role = member?.role
   const privileged = role === 'ADMIN' || role === 'OPS_MANAGER'
-  const devUnauthenticated = !member && process.env.NODE_ENV !== 'production'
-  if (!privileged && !devUnauthenticated) {
+  if (!privileged) {
     res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
     return false
   }

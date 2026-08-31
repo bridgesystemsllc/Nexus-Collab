@@ -8,6 +8,9 @@
 // key outside local dev): a preview environment is still a shared, reachable
 // deployment, not a laptop.
 //
+// `.replit` sets NODE_ENV="development" for the deployed service too, so
+// NODE_ENV alone is not evidence of anything.
+//
 // Mirrors the two-signal check `auth/session.ts` already uses to gate the
 // dev-login shortcut: NODE_ENV must be non-production AND the process must
 // not be running under Replit's deployment infrastructure. Either signal

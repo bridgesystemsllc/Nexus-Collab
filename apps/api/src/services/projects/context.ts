@@ -1,6 +1,7 @@
 import type { Request } from 'express'
 import type { PrismaClient } from '@prisma/client'
 import type { PolicyActor, PolicyProject } from './policy'
+import { isLocalDevelopment } from '../../lib/devOnly'
 
 // ─── Request context for project routes ──────────────────────
 // Resolves the acting member and loads a project in the exact shape the
@@ -45,10 +46,15 @@ export class ConflictError extends Error {
 }
 
 /**
- * The acting member. In non-production a request with no session resolves to
- * the first admin so local development and the dev-login flow work, mirroring
- * the escape hatch the integrations routes already use. In production a
- * missing session is always a 401 — the fallback is explicitly gated.
+ * The acting member. In genuine local development a request with no session
+ * resolves to the first admin so local development and the dev-login flow
+ * work, mirroring the escape hatch the integrations routes used to use. Every
+ * route that reaches here is mounted behind isAuthenticated, and the one
+ * exception to that (`/jobs`) never calls resolveActor — its handlers run
+ * directly against prisma with no Express `req`. So in a real deployment a
+ * missing session is always a 401 — the fallback is gated on isLocalDevelopment(),
+ * not merely NODE_ENV, because `.replit` sets NODE_ENV="development" for the
+ * deployed service too.
  */
 export async function resolveActor(
   prisma: PrismaClient,
@@ -67,7 +73,7 @@ export async function resolveActor(
     }
   }
 
-  if (process.env.NODE_ENV === 'production') throw new UnauthenticatedError()
+  if (!isLocalDevelopment()) throw new UnauthenticatedError()
 
   const fallback =
     (await prisma.member.findFirst({ where: { role: 'ADMIN' } })) ??
