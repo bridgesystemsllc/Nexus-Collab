@@ -274,6 +274,8 @@ export function OorGrid({
       onKeyDown={onKeyDown}
       onCopy={onCopy}
       tabIndex={0}
+      role="region"
+      aria-label="Open order lines. Arrow keys move between rows, Enter opens a line, Space expands its materials."
     >
       <table style={{ borderCollapse: 'separate', borderSpacing: 0, width: '100%' }}>
         <thead style={{ position: 'sticky', top: 0, zIndex: 3 }}>
@@ -302,6 +304,8 @@ export function OorGrid({
                   }}
                   onClick={() => col.sortKey && onSort(col.sortKey)}
                   title={col.sortKey ? `Sort by ${col.header}` : undefined}
+                  scope="col"
+                  aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : undefined}
                 >
                   <span className="inline-flex items-center gap-1">
                     {col.header}

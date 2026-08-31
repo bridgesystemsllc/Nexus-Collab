@@ -822,7 +822,13 @@ function ProductionTab({
   openOrders,
   openOrderModuleId,
   onRefresh,
-}: TabProps & { openOrders: any[]; openOrderModuleId: string | null; onRefresh: () => void }) {
+  onOpenPoTracking,
+}: TabProps & {
+  openOrders: any[]
+  openOrderModuleId: string | null
+  onRefresh: () => void
+  onOpenPoTracking?: () => void
+}) {
   const [view, setView] = useState<ViewMode>('table')
   const [mode, setMode] = useState<'production' | 'openOrders'>('production')
   const [mfrFilter, setMfrFilter] = useState('All')
@@ -966,7 +972,33 @@ function ProductionTab({
       </div>
 
       {mode === 'openOrders' ? (
-        <OpenOrdersView items={openOrders} moduleId={openOrderModuleId} onRefresh={onRefresh} />
+        <>
+          {/* The Open Order Report supersedes this view: it holds the same open
+              lines plus their shortage tree, status and history, and it is fed
+              by the same data through a source adapter. This view stays for one
+              release so a rollback is a single line, and points at its
+              replacement in the meantime rather than quietly disagreeing with
+              it about what is open. */}
+          <div
+            className="mb-3 rounded-xl px-4 py-3 flex items-start gap-3"
+            style={{ background: 'var(--accent-secondary-light)', border: '1px solid var(--accent-secondary)' }}
+          >
+            <div className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>
+              <strong style={{ color: 'var(--text-primary)' }}>This view has moved.</strong>{' '}
+              Open orders now live under{' '}
+              <button
+                type="button"
+                onClick={() => onOpenPoTracking?.()}
+                className="underline font-medium"
+                style={{ color: 'var(--accent-secondary)' }}
+              >
+                Purchase Order Tracking → Open Order Report
+              </button>
+              , with the shortage tree, status and history for each line. This copy stays for now and still works.
+            </div>
+          </div>
+          <OpenOrdersView items={openOrders} moduleId={openOrderModuleId} onRefresh={onRefresh} />
+        </>
       ) : (
         <div className="space-y-5">
           {/* KPI strip */}
@@ -1517,7 +1549,7 @@ export function OpsPage() {
           ) : activeTab === 'inventory' ? (
             <InventoryHealthTab items={moduleData.inventory} geodisItems={moduleData.geodisInventory} moduleId={moduleIds.inventory} geodisModuleId={moduleIds.geodisInventory} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
           ) : activeTab === 'production' ? (
-            <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} openOrders={moduleData.openOrders} openOrderModuleId={moduleIds.openOrders} onRefresh={() => refetchDept()} />
+            <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} openOrders={moduleData.openOrders} openOrderModuleId={moduleIds.openOrders} onRefresh={() => refetchDept()} onOpenPoTracking={() => setActiveTab('poTracking')} />
           ) : activeTab === 'poTracking' ? (
             <PoTrackingTab />
           ) : activeTab === 'components' ? (

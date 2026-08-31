@@ -211,7 +211,7 @@ export function OorModal({ lineId, onClose }: { lineId: string; onClose: () => v
             </div>
           </div>
 
-          <div className="mt-3 flex gap-1 flex-wrap">
+          <div className="mt-3 flex gap-1 flex-wrap" role="tablist" aria-label="Line detail sections">
             {TABS.map((t) => {
               const active = tab === t.key
               const count =
@@ -225,6 +225,8 @@ export function OorModal({ lineId, onClose }: { lineId: string; onClose: () => v
                   key={t.key}
                   type="button"
                   onClick={() => setTab(t.key)}
+                  role="tab"
+                  aria-selected={active}
                   className="rounded-lg px-3 py-1.5 text-[12px] font-medium"
                   style={{
                     background: active ? 'var(--accent-secondary)' : 'transparent',
