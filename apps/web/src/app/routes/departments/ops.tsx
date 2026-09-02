@@ -47,13 +47,12 @@ import { useAppStore } from '@/stores/appStore'
 
 
 // ─── Types ─────────────────────────────────────────────────
-type OpsTab = 'projects' | 'inventory' | 'production' | 'brand' | 'components' | 'bom' | 'cm'
+type OpsTab = 'projects' | 'inventory' | 'production' | 'components' | 'bom' | 'cm'
 
 const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'projects', label: 'Projects', icon: FolderKanban },
   { key: 'inventory', label: 'Inventory Health', icon: Box },
   { key: 'production', label: 'Production Tracking', icon: Factory },
-  { key: 'brand', label: 'Brand Transition', icon: TrendingUp },
   { key: 'components', label: 'Components', icon: Boxes },
   { key: 'bom', label: 'Bill of Materials', icon: ClipboardList },
   { key: 'cm', label: 'CM Productivity', icon: Users },
@@ -128,6 +127,30 @@ function RemovedTabFrame({ onBack, onCatalog }: { onBack: () => void; onCatalog:
           Open Product Catalog
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── Removed Brand Transition Frame ────────────────────────
+function RemovedBrandFrame({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center mb-6">
+        <TrendingUp size={32} className="text-[var(--text-tertiary)]" />
+      </div>
+      <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
+        Brand Transition has been removed
+      </h2>
+      <p className="text-sm text-[var(--text-secondary)] max-w-md mb-8">
+        Brand records stay.
+      </p>
+      <button
+        onClick={onBack}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+      >
+        <ArrowLeft size={16} />
+        Back to Operations
+      </button>
     </div>
   )
 }
@@ -1105,7 +1128,6 @@ const MODULE_TYPE_BY_TAB: Record<OpsTab, string> = {
   projects: '',
   inventory: 'INVENTORY_HEALTH',
   production: 'PRODUCTION_TRACKING',
-  brand: 'BRAND_TRANSITION',
   components: 'COMPONENTS',
   bom: 'BILL_OF_MATERIALS',
   cm: 'CM_PRODUCTIVITY',
@@ -1133,20 +1155,32 @@ export function OpsPage() {
   const [activeTab, setActiveTab] = useState<OpsTab>('projects')
   const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
   const [showRemovedFrame, setShowRemovedFrame] = useState(false)
+  const [showRemovedBrandFrame, setShowRemovedBrandFrame] = useState(false)
   const openForm = useAppStore((s) => s.openForm)
   const setPage = useAppStore((s) => s.setPage)
 
-  // Handle legacy ?tab=sku URL param
+  // Handle legacy ?tab=sku and ?tab=brand URL params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const tabParam = params.get('tab')?.toLowerCase()
     if (tabParam === 'sku' || tabParam === 'sku-pipeline') {
       setShowRemovedFrame(true)
     }
+    if (tabParam === 'brand' || tabParam === 'opsbrand') {
+      setShowRemovedBrandFrame(true)
+    }
   }, [])
 
   const dismissRemovedFrame = () => {
     setShowRemovedFrame(false)
+    // Clean up URL param
+    const url = new URL(window.location.href)
+    url.searchParams.delete('tab')
+    window.history.replaceState({}, '', url.pathname + url.search)
+  }
+
+  const dismissRemovedBrandFrame = () => {
+    setShowRemovedBrandFrame(false)
     // Clean up URL param
     const url = new URL(window.location.href)
     url.searchParams.delete('tab')
@@ -1300,6 +1334,8 @@ export function OpsPage() {
         <div>
           {showRemovedFrame ? (
             <RemovedTabFrame onBack={dismissRemovedFrame} onCatalog={goToProductCatalog} />
+          ) : showRemovedBrandFrame ? (
+            <RemovedBrandFrame onBack={dismissRemovedBrandFrame} />
           ) : activeTab === 'projects' ? (
             <DepartmentProjectsTab
               departmentId={deptId}
@@ -1316,10 +1352,8 @@ export function OpsPage() {
             <ComponentsTab items={moduleData.components} moduleId={moduleIds.components} departmentId={deptId} onRefresh={() => refetchDept()} />
           ) : activeTab === 'bom' ? (
             <BOMTab items={moduleData.bom} moduleId={moduleIds.bom} departmentId={deptId} onRefresh={() => refetchDept()} components={moduleData.components} skuItems={moduleData.sku} />
-          ) : activeTab === 'cm' ? (
-            <CMTab items={cmModule?.items || []} moduleId={cmModule?.id ?? null} departmentId={rdDept?.id ?? null} onRefresh={() => refetchRd()} productionItems={moduleData.production} />
           ) : (
-            <BrandTransitionTab items={moduleData.brand} moduleId={moduleIds.brand} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'BRAND_TRANSITION' })} />
+            <CMTab items={cmModule?.items || []} moduleId={cmModule?.id ?? null} departmentId={rdDept?.id ?? null} onRefresh={() => refetchRd()} productionItems={moduleData.production} />
           )}
         </div>
       </div>
