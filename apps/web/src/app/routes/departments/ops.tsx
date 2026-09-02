@@ -2,18 +2,19 @@ import { useState, useMemo, useEffect, Fragment } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
+  ArrowLeft,
   Box,
   Boxes,
+  ChevronRight,
+  ChevronDown,
   ClipboardList,
   Cog,
   DollarSign,
-  ChevronRight,
-  ChevronDown,
   Eye,
   Factory,
   FolderKanban,
+  LayoutDashboard,
   LayoutGrid,
-  Loader2,
   Mail,
   Package,
   Pencil,
@@ -44,26 +45,12 @@ import { PoTrackingOverlay, type PoTrackingScope } from '@/components/ops/poTrac
 import { brandLabel } from '@/components/ops/brandLabel'
 import { useAppStore } from '@/stores/appStore'
 
-// Relative "synced 5m ago" label for ERP-sourced rows.
-function relativeTime(dateStr: string): string {
-  const then = new Date(dateStr).getTime()
-  if (!Number.isFinite(then)) return ''
-  const diffMs = Date.now() - then
-  if (diffMs < 60_000) return 'just now'
-  const mins = Math.floor(diffMs / 60_000)
-  if (mins < 60) return `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
 
 // ─── Types ─────────────────────────────────────────────────
-type OpsTab = 'projects' | 'sku' | 'inventory' | 'production' | 'brand' | 'components' | 'bom' | 'cm'
+type OpsTab = 'projects' | 'inventory' | 'production' | 'brand' | 'components' | 'bom' | 'cm'
 
 const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'projects', label: 'Projects', icon: FolderKanban },
-  { key: 'sku', label: 'SKU Pipeline', icon: Package },
   { key: 'inventory', label: 'Inventory Health', icon: Box },
   { key: 'production', label: 'Production Tracking', icon: Factory },
   { key: 'brand', label: 'Brand Transition', icon: TrendingUp },
@@ -108,6 +95,39 @@ function CardsSkeleton({ count = 3 }: { count?: number }) {
           <div className="skeleton h-2 w-full" />
         </div>
       ))}
+    </div>
+  )
+}
+
+// ─── Removed Tab Frame ─────────────────────────────────────
+function RemovedTabFrame({ onBack, onCatalog }: { onBack: () => void; onCatalog: () => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center mb-6">
+        <Package size={32} className="text-[var(--text-tertiary)]" />
+      </div>
+      <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
+        SKU Pipeline has been removed
+      </h2>
+      <p className="text-sm text-[var(--text-secondary)] max-w-md mb-8">
+        This Operations tab is no longer part of Nexus. SKU records are still in the workspace.
+      </p>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+        >
+          <ArrowLeft size={16} />
+          Back to Operations
+        </button>
+        <button
+          onClick={onCatalog}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] transition-colors"
+        >
+          <LayoutDashboard size={16} />
+          Open Product Catalog
+        </button>
+      </div>
     </div>
   )
 }
@@ -210,271 +230,7 @@ function BrandBadge({ brand }: { brand?: string }) {
   return <span className="badge badge-accent whitespace-nowrap">{brandLabel(brand)}</span>
 }
 
-function isErp(d: any): boolean {
-  return d?.source === 'ERP_KAREVE'
-}
 
-/** Compact On-Hand / Available + "ERP · synced …" chip. Hidden when no ERP data. */
-function ErpCell({ d }: { d: any }) {
-  const hasStock = d?.onHand != null || d?.available != null
-  if (!isErp(d) && !hasStock) return <span className="text-[var(--text-tertiary)]">—</span>
-  return (
-    <div className="flex flex-col gap-0.5">
-      {hasStock && (
-        <span className="text-xs tabular-nums text-[var(--text-secondary)]">
-          {d.onHand != null && <>OH <strong className="text-[var(--text-primary)]">{Number(d.onHand).toLocaleString()}</strong></>}
-          {d.onHand != null && d.available != null && <span className="text-[var(--text-tertiary)]"> · </span>}
-          {d.available != null && <>Avail <strong className="text-[var(--text-primary)]">{Number(d.available).toLocaleString()}</strong></>}
-        </span>
-      )}
-      {isErp(d) && (
-        <span className="inline-flex items-center gap-1 text-[10px] text-[var(--text-tertiary)]">
-          <span className="badge badge-info px-1.5 py-0">ERP</span>
-          {d.lastSyncedAt && <span>synced {relativeTime(d.lastSyncedAt)}</span>}
-        </span>
-      )}
-    </div>
-  )
-}
-
-function SyncFromErpButton({ departmentId }: { departmentId: string | null }) {
-  const qc = useQueryClient()
-  const [syncing, setSyncing] = useState(false)
-  const [note, setNote] = useState('')
-
-  const onSync = async () => {
-    setSyncing(true)
-    setNote('')
-    try {
-      const res = await api.post('/integrations/ERP_KAREVE_SYNC/sync')
-      // The sync runs asynchronously on the server (records are written a beat
-      // after the request returns), so poll the log until it completes before
-      // invalidating — otherwise the refetch races ahead of the fresh data and
-      // the table keeps showing the pre-sync snapshot.
-      const logId: string | undefined = res?.data?.syncLogId
-      if (logId) {
-        for (let i = 0; i < 15; i++) {
-          await new Promise((r) => setTimeout(r, 700))
-          try {
-            const logs = await api.get('/integrations/ERP_KAREVE_SYNC/logs')
-            const log = (logs?.data || []).find((l: any) => l.id === logId)
-            if (log && log.status !== 'RUNNING') break
-          } catch {
-            break
-          }
-        }
-      }
-      if (departmentId) await qc.invalidateQueries({ queryKey: ['department', departmentId] })
-      setNote('Synced from ERP')
-      setTimeout(() => setNote(''), 4000)
-    } catch (err: any) {
-      const status = err?.response?.status
-      setNote(status === 404 || status === 400 ? 'ERP not configured' : 'Sync failed')
-      setTimeout(() => setNote(''), 4000)
-    } finally {
-      setSyncing(false)
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      {note && <span className="text-xs text-[var(--text-tertiary)] whitespace-nowrap">{note}</span>}
-      <button
-        onClick={onSync}
-        disabled={syncing}
-        title="Pull on-hand / availability from the KarEve ERP"
-        className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50 w-fit"
-      >
-        {syncing ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
-        Sync from ERP
-      </button>
-    </div>
-  )
-}
-
-// ─── SKU Pipeline Tab ──────────────────────────────────────
-function SKUPipelineTab({ items, moduleId, departmentId, onSelect }: TabProps) {
-  const openForm = useAppStore((s) => s.openForm)
-  const [view, setView] = useState<ViewMode>('table')
-  const [brandFilter, setBrandFilter] = useState('All')
-  const [pageSize, setPageSize] = useState(50)
-  const [page, setPage] = useState(1)
-
-  const brands = ['All', ...Array.from(new Set(items.map((i: any) => i.data?.brand).filter(Boolean)))]
-  const filtered = brandFilter === 'All' ? items : items.filter((i: any) => i.data?.brand === brandFilter)
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
-  // Clamp the current page when the list or page size shrinks (e.g. after
-  // changing the brand filter or per-page count) so we never land past the end.
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages)
-  }, [page, totalPages])
-  // Reset to the first page whenever the filtered set changes.
-  useEffect(() => {
-    setPage(1)
-  }, [brandFilter, pageSize])
-
-  const pageStart = (page - 1) * pageSize
-  const paged = filtered.slice(pageStart, pageStart + pageSize)
-
-  const openCreate = () =>
-    openForm({ formType: 'opsSku', mode: 'create', context: { moduleId, departmentId } })
-  const openEdit = (item: any) =>
-    openForm({ formType: 'opsSku', mode: 'edit', recordId: item.id, context: { moduleId, departmentId, initialData: item.data } })
-
-  const cowork = (d: any, id: string): AddToCoworkItem => ({
-    name: d.name || d.sku || 'SKU',
-    type: 'SKU',
-    id,
-    description: `SKU ${d.sku || ''} — ${d.status || ''}`.trim(),
-  })
-
-  return (
-    <div className="space-y-4">
-      <TabHeader title="SKUs in pipeline" count={filtered.length} view={view} onView={setView} onNew={openCreate} newLabel="New SKU">
-        <SyncFromErpButton departmentId={departmentId} />
-      </TabHeader>
-
-      {brands.length > 1 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {brands.map((brand) => (
-            <button
-              key={brand}
-              onClick={() => setBrandFilter(brand)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                brandFilter === brand
-                  ? 'bg-[var(--accent)] text-white border-transparent'
-                  : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              {brand === 'All' ? 'All' : brandLabel(brand)}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {filtered.length > 0 && (
-        <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-[var(--text-secondary)]">
-          <span>
-            Showing {pageStart + 1}–{Math.min(pageStart + pageSize, filtered.length)} of {filtered.length}
-            {' · '}Page {page} of {totalPages}
-          </span>
-          <label className="flex items-center gap-2">
-            <span>Per page</span>
-            <select
-              value={pageSize}
-              onChange={(e) => setPageSize(Number(e.target.value))}
-              className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-1 text-xs text-[var(--text-primary)]"
-            >
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value={200}>200</option>
-            </select>
-          </label>
-        </div>
-      )}
-
-      {filtered.length === 0 ? (
-        <EmptyState text="No SKUs in pipeline." />
-      ) : view === 'table' ? (
-        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
-          <table className="nexus-table">
-            <thead>
-              <tr>
-                <th>Product</th>
-                <th>Brand</th>
-                <th>SKU</th>
-                <th>UPC</th>
-                <th>Status</th>
-                <th>Progress</th>
-                <th>ERP</th>
-                <th>Owner</th>
-                <th className="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paged.map((item: any) => {
-                const d = item.data
-                return (
-                  <tr key={item.id} className="clickable-row" onClick={() => onSelect(item)}>
-                    <td className="font-medium text-[var(--text-primary)]">{d.name}</td>
-                    <td><BrandBadge brand={d.brand} /></td>
-                    <td className="font-mono text-xs text-[var(--text-secondary)]">{d.sku}</td>
-                    <td className="font-mono text-xs text-[var(--text-tertiary)]">{d.upc}</td>
-                    <td><span className="badge badge-info">{d.status}</span></td>
-                    <td><StepProgression step={d.step} total={d.totalSteps} /></td>
-                    <td><ErpCell d={d} /></td>
-                    <td className="text-[var(--text-secondary)]">{d.owner}</td>
-                    <td><div className="flex justify-end"><RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} /></div></td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {paged.map((item: any) => {
-            const d = item.data
-            return (
-              <div key={item.id} className="data-cell space-y-3 cursor-pointer hover:border-[var(--accent)] transition-colors" onClick={() => onSelect(item)}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <h3 className="font-medium text-sm text-[var(--text-primary)]">{d.name}</h3>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-[var(--text-tertiary)]">
-                      <span className="font-mono">{d.sku}</span>
-                      <span className="font-mono">{d.upc}</span>
-                    </div>
-                  </div>
-                  <RowActions cowork={cowork(d, item.id)} onEdit={() => openEdit(item)} />
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <BrandBadge brand={d.brand} />
-                    <span className="badge badge-info">{d.status}</span>
-                  </div>
-                  <span className="text-xs text-[var(--text-tertiary)]">{d.owner}</span>
-                </div>
-                <StepProgression step={d.step} total={d.totalSteps} />
-                {(isErp(d) || d.onHand != null || d.available != null) && (
-                  <div className="pt-1 border-t border-[var(--border-subtle)]">
-                    <ErpCell d={d} />
-                  </div>
-                )}
-                {d.blocker && (
-                  <div className="flex items-start gap-2 p-2 rounded-lg bg-[var(--danger-light)] border border-[var(--danger)]">
-                    <AlertTriangle size={13} className="text-[var(--danger)] mt-0.5 flex-shrink-0" />
-                    <span className="text-xs text-[var(--danger)]">{d.blocker}</span>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {filtered.length > 0 && totalPages > 1 && (
-        <div className="flex items-center justify-between gap-2 pt-1">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Previous
-          </button>
-          <span className="text-xs text-[var(--text-tertiary)]">Page {page} of {totalPages}</span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Next
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ─── Inventory Health Tab ──────────────────────────────────
 // A row's warehouse, plus the one piece of state that only exists for feed-fed
@@ -1347,7 +1103,6 @@ const MODULE_TYPE_BY_TAB: Record<OpsTab, string> = {
   // Projects is not a DepartmentModule — it owns its own tables and fetches
   // its own data, so it has no module type to resolve.
   projects: '',
-  sku: 'SKU_PIPELINE',
   inventory: 'INVENTORY_HEALTH',
   production: 'PRODUCTION_TRACKING',
   brand: 'BRAND_TRANSITION',
@@ -1375,9 +1130,33 @@ const COWORK_TYPE_BY_MODULE: Record<string, string> = {
 }
 
 export function OpsPage() {
-  const [activeTab, setActiveTab] = useState<OpsTab>('sku')
+  const [activeTab, setActiveTab] = useState<OpsTab>('projects')
   const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
+  const [showRemovedFrame, setShowRemovedFrame] = useState(false)
   const openForm = useAppStore((s) => s.openForm)
+  const setPage = useAppStore((s) => s.setPage)
+
+  // Handle legacy ?tab=sku URL param
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const tabParam = params.get('tab')?.toLowerCase()
+    if (tabParam === 'sku' || tabParam === 'sku-pipeline') {
+      setShowRemovedFrame(true)
+    }
+  }, [])
+
+  const dismissRemovedFrame = () => {
+    setShowRemovedFrame(false)
+    // Clean up URL param
+    const url = new URL(window.location.href)
+    url.searchParams.delete('tab')
+    window.history.replaceState({}, '', url.pathname + url.search)
+  }
+
+  const goToProductCatalog = () => {
+    setShowRemovedFrame(false)
+    setPage('product-catalog')
+  }
 
   const { data: departments, isLoading: deptsLoading } = useDepartments()
 
@@ -1519,7 +1298,9 @@ export function OpsPage() {
       {/* Tab Content */}
       <div className="stagger">
         <div>
-          {activeTab === 'projects' ? (
+          {showRemovedFrame ? (
+            <RemovedTabFrame onBack={dismissRemovedFrame} onCatalog={goToProductCatalog} />
+          ) : activeTab === 'projects' ? (
             <DepartmentProjectsTab
               departmentId={deptId}
               departmentName="Operations"
@@ -1527,8 +1308,6 @@ export function OpsPage() {
             />
           ) : isLoading ? (
             activeTab === 'inventory' ? <TableSkeleton /> : <CardsSkeleton />
-          ) : activeTab === 'sku' ? (
-            <SKUPipelineTab items={moduleData.sku} moduleId={moduleIds.sku} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'SKU_PIPELINE' })} />
           ) : activeTab === 'inventory' ? (
             <InventoryHealthTab items={moduleData.inventory} geodisItems={moduleData.geodisInventory} moduleId={moduleIds.inventory} geodisModuleId={moduleIds.geodisInventory} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
           ) : activeTab === 'production' ? (
