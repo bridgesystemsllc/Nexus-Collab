@@ -14,6 +14,8 @@ import { coworkRoutes } from './routes/cowork'
 import { documentRoutes } from './routes/documents'
 import { everythingRoutes } from './routes/everything'
 import { integrationRoutes, webhookRoutes } from './routes/integrations'
+import { automationRoutes } from './routes/automations'
+import { connectorWebhookRoutes } from './routes/connectorWebhooks'
 import { microsoftGraphRoutes } from './routes/microsoftGraph'
 import { aiRoutes } from './routes/ai'
 import { pulseRoutes } from './routes/pulse'
@@ -177,6 +179,8 @@ api.use('/everything', everythingRoutes)
 // public allowlist above (and before this one, so /microsoft still takes
 // precedence over this base's own paths).
 api.use('/integrations', integrationRoutes)
+// Org-level automations. ADMIN/OPS_MANAGER required for mutating operations.
+api.use('/automations', automationRoutes)
 api.use('/ai', aiRoutes)
 api.use('/pulse', pulseRoutes)
 // OnboardingGuard (the only consumer of /onboarding/status) renders inside
@@ -308,6 +312,9 @@ async function start() {
 
   app.use('/api/v1', api)
   app.use('/api/v1/webhooks', webhookRoutes)
+  // Connector webhooks (GENERIC_WEBHOOK automations). Public like Zapier;
+  // authentication is via webhook signature verification.
+  app.use('/api/v1/webhooks/connectors', connectorWebhookRoutes)
 
   // ─── Serve Frontend (Replit / Production) ─────────────────
   if (isReplit || process.env.NODE_ENV === 'production') {

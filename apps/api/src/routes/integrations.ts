@@ -23,9 +23,52 @@ import {
 } from '../lib/erpRouting'
 import { pushErp, pushToErp } from '../lib/erpPush'
 import { mapOpenOrderForErp } from '../lib/erpOpenOrders'
+import { getActingOrgId, NoActingOrgError } from '../middleware/billingContext'
+import {
+  getCatalog,
+  listConnectors,
+  getConnector,
+  createConnector,
+  updateConnector,
+  testConnector,
+  pauseConnector,
+  resumeConnector,
+  deleteConnector,
+  getConnectorByType,
+  getWebhookUrl,
+} from '../services/connectors/connectorService'
+import {
+  sanitizeIntegration,
+  sanitizeIntegrations,
+} from '../lib/connectors/mask'
+import { isGenericType, isSingletonType } from '../lib/connectors/catalog'
 
 export const integrationRoutes: ReturnType<typeof Router> = Router()
 export const webhookRoutes: ReturnType<typeof Router> = Router()
+
+function requirePrivileged(req: Request, res: Response): boolean {
+  const member = (req as any).member as { role?: string } | undefined
+  const role = member?.role
+  if (role !== 'ADMIN' && role !== 'OPS_MANAGER') {
+    res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
+    return false
+  }
+  return true
+}
+
+function handleServiceError(res: Response, error: unknown): void {
+  if (error instanceof NoActingOrgError) {
+    res.status(401).json({ error: 'Authentication required' })
+    return
+  }
+  if (typeof error === 'object' && error !== null && 'status' in error) {
+    const svcError = error as { code: string; message: string; status: number }
+    res.status(svcError.status).json({ error: svcError.message, code: svcError.code })
+    return
+  }
+  console.error('[integrations] error:', error)
+  res.status(500).json({ error: 'Internal server error' })
+}
 
 const FRONTEND_URL = () => process.env.FRONTEND_URL || 'http://localhost:5173'
 
@@ -116,8 +159,10 @@ function erpProbeError(probe: ErpProbeResult, base: string): string {
 // Persist the live-verification outcome onto the integration config (non-secret
 // metadata) so the UI can honestly show "live verified" vs "sample data mode"
 // without re-probing on every render.
-async function persistErpLiveResult(probe: ErpProbeResult, base: string): Promise<void> {
-  const integration = await prisma.integration.findFirst({ where: { type: 'ERP_KAREVE_SYNC' } })
+async function persistErpLiveResult(probe: ErpProbeResult, base: string, orgId: string): Promise<void> {
+  const integration = await prisma.integration.findFirst({
+    where: { type: 'ERP_KAREVE_SYNC', orgId },
+  })
   if (!integration) return
   const existing = (integration.config ?? {}) as Record<string, unknown>
   await prisma.integration.update({
@@ -132,19 +177,192 @@ async function persistErpLiveResult(probe: ErpProbeResult, base: string): Promis
         // unknown>` is not one of its members. The values here are all JSON
         // scalars, so the assertion states a fact rather than hiding one.
       } as Prisma.InputJsonObject,
+      lastTestAt: new Date(),
+      lastTestOk: probe.ok,
+      lastError: probe.ok ? null : erpProbeError(probe, base),
     },
   })
 }
 
-integrationRoutes.get('/', async (_req: Request, res: Response) => {
+// ─── Connector catalog ──────────────────────────────────────
+// Returns the list of available connector types. No secrets exposed.
+integrationRoutes.get('/catalog', async (_req: Request, res: Response) => {
   try {
-    const integrations = await prisma.integration.findMany({
-      orderBy: { createdAt: 'asc' },
-    })
+    const catalog = await getCatalog()
+    res.json(catalog)
+  } catch (error) {
+    console.error('[integrations] GET /catalog error:', error)
+    res.status(500).json({ error: 'Failed to fetch catalog' })
+  }
+})
+
+// ─── List all integrations (org-scoped) ─────────────────────
+integrationRoutes.get('/', async (req: Request, res: Response) => {
+  try {
+    const orgId = getActingOrgId(req)
+    const integrations = await listConnectors(prisma, orgId)
     res.json(integrations)
   } catch (error) {
-    console.error('[integrations] GET / error:', error)
-    res.status(500).json({ error: 'Failed to fetch integrations' })
+    handleServiceError(res, error)
+  }
+})
+
+// ─── Create GENERIC_* connector ─────────────────────────────
+integrationRoutes.post('/', async (req: Request, res: Response) => {
+  try {
+    if (!requirePrivileged(req, res)) return
+    const orgId = getActingOrgId(req)
+
+    const { type, name, authType, config, secrets } = req.body
+
+    if (!type || !name) {
+      return res.status(400).json({ error: 'type and name are required' })
+    }
+
+    if (!isGenericType(type)) {
+      return res.status(400).json({
+        error: `Use POST /:type/connect for non-generic integrations. Only GENERIC_* types can be created here.`,
+      })
+    }
+
+    const connector = await createConnector(prisma, orgId, {
+      type,
+      name,
+      authType,
+      config: config || {},
+      secrets: secrets || {},
+    })
+
+    let webhookUrl: string | null = null
+    if (type === 'GENERIC_WEBHOOK') {
+      const baseUrl = `${req.protocol}://${req.get('host')}`
+      webhookUrl = await getWebhookUrl(prisma, orgId, connector.id, baseUrl)
+    }
+
+    res.status(201).json({ ...connector, webhookUrl })
+  } catch (error) {
+    handleServiceError(res, error)
+  }
+})
+
+// ─── Get single integration by ID (org-scoped) ──────────────
+integrationRoutes.get('/:id', async (req: Request, res: Response) => {
+  try {
+    const orgId = getActingOrgId(req)
+    const { id } = req.params
+
+    // Skip if this looks like a type-based route
+    if (id.includes('_') && !id.startsWith('c')) {
+      return res.status(404).json({ error: 'Integration not found' })
+    }
+
+    const connector = await getConnector(prisma, orgId, id)
+    res.json(connector)
+  } catch (error) {
+    handleServiceError(res, error)
+  }
+})
+
+// ─── Update integration by ID (org-scoped) ──────────────────
+integrationRoutes.patch('/:id', async (req: Request, res: Response) => {
+  try {
+    if (!requirePrivileged(req, res)) return
+    const orgId = getActingOrgId(req)
+    const { id } = req.params
+
+    // Skip if this looks like a type-based route
+    if (id.includes('_') && !id.startsWith('c')) {
+      return res.status(404).json({ error: 'Integration not found' })
+    }
+
+    const { name, authType, config, secrets } = req.body
+
+    const connector = await updateConnector(prisma, orgId, id, {
+      name,
+      authType,
+      config,
+      secrets,
+    })
+
+    res.json(connector)
+  } catch (error) {
+    handleServiceError(res, error)
+  }
+})
+
+// ─── Test integration by ID ─────────────────────────────────
+integrationRoutes.post('/:id/test', async (req: Request, res: Response) => {
+  try {
+    const orgId = getActingOrgId(req)
+    const { id } = req.params
+
+    // Skip if this looks like a type-based route
+    if (id.includes('_') && !id.startsWith('c')) {
+      return res.status(404).json({ error: 'Integration not found' })
+    }
+
+    const result = await testConnector(prisma, orgId, id)
+    if (result.ok) {
+      res.json(result)
+    } else {
+      res.status(502).json(result)
+    }
+  } catch (error) {
+    handleServiceError(res, error)
+  }
+})
+
+// ─── Pause integration by ID ────────────────────────────────
+integrationRoutes.post('/:id/pause', async (req: Request, res: Response) => {
+  try {
+    if (!requirePrivileged(req, res)) return
+    const orgId = getActingOrgId(req)
+    const { id } = req.params
+
+    if (id.includes('_') && !id.startsWith('c')) {
+      return res.status(404).json({ error: 'Integration not found' })
+    }
+
+    const connector = await pauseConnector(prisma, orgId, id)
+    res.json(connector)
+  } catch (error) {
+    handleServiceError(res, error)
+  }
+})
+
+// ─── Resume integration by ID ───────────────────────────────
+integrationRoutes.post('/:id/resume', async (req: Request, res: Response) => {
+  try {
+    if (!requirePrivileged(req, res)) return
+    const orgId = getActingOrgId(req)
+    const { id } = req.params
+
+    if (id.includes('_') && !id.startsWith('c')) {
+      return res.status(404).json({ error: 'Integration not found' })
+    }
+
+    const connector = await resumeConnector(prisma, orgId, id)
+    res.json(connector)
+  } catch (error) {
+    handleServiceError(res, error)
+  }
+})
+
+// ─── Delete integration by ID ───────────────────────────────
+integrationRoutes.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    if (!requirePrivileged(req, res)) return
+    const orgId = getActingOrgId(req)
+    const { id } = req.params
+
+    if (id.includes('_') && !id.startsWith('c')) {
+      return res.status(404).json({ error: 'Integration not found' })
+    }
+
+    await deleteConnector(prisma, orgId, id)
+    res.status(204).send()
+  } catch (error) {
+    handleServiceError(res, error)
   }
 })
 
@@ -250,6 +468,7 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
 
     // ── ERP KarEve Sync ──────────────────────────────────────
     if (type === 'ERP_KAREVE_SYNC') {
+      const orgId = getActingOrgId(req)
       const { apiUrl, apiKey } = req.body
 
       if (!apiUrl || !apiKey) {
@@ -261,7 +480,7 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
       // Preserve any existing routing AND outbound config while rewriting the
       // creds blob, so reconnecting / rotating credentials never clobbers the
       // admin's inbound routing or outbound push settings.
-      const existing = await prisma.integration.findFirst({ where: { type } })
+      const existing = await prisma.integration.findFirst({ where: { type, orgId } })
       const existingConfig =
         (existing?.config as
           | {
@@ -280,20 +499,32 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
       // The integration stays CONNECTED so the routing UI and sample-data sync
       // remain available; whether LIVE ERP data is reachable is tracked
       // separately by the probe below and surfaced honestly in the UI.
-      await prisma.integration.updateMany({
-        where: { type },
-        data: {
-          status: 'CONNECTED',
-          config,
-        },
-      })
+      if (existing) {
+        await prisma.integration.update({
+          where: { id: existing.id },
+          data: {
+            status: 'CONNECTED',
+            config,
+          },
+        })
+      } else {
+        await prisma.integration.create({
+          data: {
+            type,
+            name: 'ERP Sync',
+            status: 'CONNECTED',
+            orgId,
+            config,
+          },
+        })
+      }
 
       // Validate the saved credentials against the real data endpoints and
       // record the outcome, so the response (and the UI) tells the user the
       // truth instead of a blanket "connected".
       const base = apiUrl.replace(/\/+$/, '')
       const probe = await probeErpLive(apiUrl, apiKey)
-      await persistErpLiveResult(probe, base)
+      await persistErpLiveResult(probe, base, orgId)
 
       return res.json({
         connected: true,
@@ -325,9 +556,10 @@ integrationRoutes.post('/:type/connect', async (req: Request, res: Response) => 
 integrationRoutes.post('/:type/test', async (req: Request, res: Response) => {
   try {
     const { type } = req.params
+    const orgId = getActingOrgId(req)
 
     if (type === 'ERP_KAREVE_SYNC') {
-      const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+      const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
       if (!configured || !apiUrl || !apiKey) {
         return res.status(400).json({
           ok: false,
@@ -339,7 +571,7 @@ integrationRoutes.post('/:type/test', async (req: Request, res: Response) => {
       // /connect) and persist the outcome so the UI reflects live vs sample mode.
       const base = apiUrl.replace(/\/+$/, '')
       const probe = await probeErpLive(apiUrl, apiKey)
-      await persistErpLiveResult(probe, base)
+      await persistErpLiveResult(probe, base, orgId)
 
       if (probe.ok) {
         return res.json({
@@ -353,12 +585,15 @@ integrationRoutes.post('/:type/test', async (req: Request, res: Response) => {
     }
 
     // Generic integrations: treat a CONNECTED status as a passing test.
-    const integration = await prisma.integration.findFirst({ where: { type } })
+    const integration = await prisma.integration.findFirst({ where: { type, orgId } })
     if (!integration || integration.status !== 'CONNECTED') {
       return res.status(400).json({ ok: false, error: 'This integration is not connected yet.' })
     }
     return res.json({ ok: true, message: 'Connection is active.' })
   } catch (error) {
+    if (error instanceof NoActingOrgError) {
+      return res.status(401).json({ ok: false, error: 'Authentication required' })
+    }
     console.error('[integrations] POST /:type/test error:', error)
     res.status(500).json({ ok: false, error: 'Failed to test connection.' })
   }
@@ -469,8 +704,9 @@ integrationRoutes.get('/:type/routing', async (req: Request, res: Response) => {
     if (req.params.type !== 'ERP_KAREVE_SYNC') {
       return res.status(404).json({ error: 'Routing is only available for ERP_KAREVE_SYNC' })
     }
+    const orgId = getActingOrgId(req)
     const integration = await prisma.integration.findFirst({
-      where: { type: req.params.type as string },
+      where: { type: req.params.type as string, orgId },
     })
     if (!integration) return res.status(404).json({ error: 'Integration not found' })
 
@@ -479,6 +715,9 @@ integrationRoutes.get('/:type/routing', async (req: Request, res: Response) => {
       connected: integration.status === 'CONNECTED',
     })
   } catch (error) {
+    if (error instanceof NoActingOrgError) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
     console.error('[integrations] GET /:type/routing error:', error)
     res.status(500).json({ error: 'Failed to fetch routing' })
   }
@@ -491,15 +730,9 @@ integrationRoutes.patch('/:type/routing', async (req: Request, res: Response) =>
       return res.status(404).json({ error: 'Routing is only available for ERP_KAREVE_SYNC' })
     }
 
-    // Role gate: allow ADMIN / OPS_MANAGER only. This route sits behind
-    // isAuthenticated, so `member` should always be resolved here; local
-    // development authenticates via /api/dev-login, not a bypass in this check.
-    const member = (req as any).member as { role?: string } | undefined
-    const role = member?.role
-    const privileged = role === 'ADMIN' || role === 'OPS_MANAGER'
-    if (!privileged) {
-      return res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
-    }
+    if (!requirePrivileged(req, res)) return
+
+    const orgId = getActingOrgId(req)
 
     const body = (req.body ?? {}) as { routing?: Record<string, Partial<RouteEntry>> }
     const patch = body.routing
@@ -527,7 +760,7 @@ integrationRoutes.patch('/:type/routing', async (req: Request, res: Response) =>
     }
 
     const integration = await prisma.integration.findFirst({
-      where: { type: req.params.type as string },
+      where: { type: req.params.type as string, orgId },
     })
     if (!integration) return res.status(404).json({ error: 'Integration not found' })
 
@@ -543,6 +776,9 @@ integrationRoutes.patch('/:type/routing', async (req: Request, res: Response) =>
       connected: updated?.status === 'CONNECTED',
     })
   } catch (error) {
+    if (error instanceof NoActingOrgError) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
     console.error('[integrations] PATCH /:type/routing error:', error)
     res.status(500).json({ error: 'Failed to update routing' })
   }
@@ -588,18 +824,22 @@ integrationRoutes.get('/:type/outbound', async (req: Request, res: Response) => 
     if (req.params.type !== 'ERP_KAREVE_SYNC') {
       return res.status(404).json({ error: 'Outbound is only available for ERP_KAREVE_SYNC' })
     }
+    const orgId = getActingOrgId(req)
     const integration = await prisma.integration.findFirst({
-      where: { type: req.params.type as string },
+      where: { type: req.params.type as string, orgId },
     })
     if (!integration) return res.status(404).json({ error: 'Integration not found' })
 
-    const { configured } = await getErpConfig(prisma)
+    const { configured } = await getErpConfig(prisma, orgId)
     res.json({
       connected: integration.status === 'CONNECTED',
       configured,
       feeds: await feedOutboundResponse(integration),
     })
   } catch (error) {
+    if (error instanceof NoActingOrgError) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
     console.error('[integrations] GET /:type/outbound error:', error)
     res.status(500).json({ error: 'Failed to fetch outbound config' })
   }
@@ -612,15 +852,9 @@ integrationRoutes.patch('/:type/outbound', async (req: Request, res: Response) =
       return res.status(404).json({ error: 'Outbound is only available for ERP_KAREVE_SYNC' })
     }
 
-    // Role gate: allow ADMIN / OPS_MANAGER only. This route sits behind
-    // isAuthenticated, so `member` should always be resolved here; local
-    // development authenticates via /api/dev-login, not a bypass in this check.
-    const member = (req as any).member as { role?: string } | undefined
-    const role = member?.role
-    const privileged = role === 'ADMIN' || role === 'OPS_MANAGER'
-    if (!privileged) {
-      return res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
-    }
+    if (!requirePrivileged(req, res)) return
+
+    const orgId = getActingOrgId(req)
 
     const body = (req.body ?? {}) as { outbound?: Record<string, Partial<OutboundEntry>> }
     const patch = body.outbound
@@ -636,7 +870,7 @@ integrationRoutes.patch('/:type/outbound', async (req: Request, res: Response) =
     }
 
     const integration = await prisma.integration.findFirst({
-      where: { type: req.params.type as string },
+      where: { type: req.params.type as string, orgId },
     })
     if (!integration) return res.status(404).json({ error: 'Integration not found' })
 
@@ -647,13 +881,16 @@ integrationRoutes.patch('/:type/outbound', async (req: Request, res: Response) =
     })
 
     const updated = await prisma.integration.findUnique({ where: { id: integration.id } })
-    const { configured } = await getErpConfig(prisma)
+    const { configured } = await getErpConfig(prisma, orgId)
     res.json({
       connected: updated?.status === 'CONNECTED',
       configured,
       feeds: await feedOutboundResponse(updated),
     })
   } catch (error) {
+    if (error instanceof NoActingOrgError) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
     console.error('[integrations] PATCH /:type/outbound error:', error)
     res.status(500).json({ error: 'Failed to update outbound config' })
   }
@@ -668,13 +905,9 @@ integrationRoutes.post('/:type/push', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Push is only available for ERP_KAREVE_SYNC' })
     }
 
-    // Role gate: same as routing/outbound PATCH.
-    const member = (req as any).member as { role?: string } | undefined
-    const role = member?.role
-    const privileged = role === 'ADMIN' || role === 'OPS_MANAGER'
-    if (!privileged) {
-      return res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
-    }
+    if (!requirePrivileged(req, res)) return
+
+    const orgId = getActingOrgId(req)
 
     const body = (req.body ?? {}) as { feeds?: string[] }
     let feedKeys: string[] | undefined
@@ -695,12 +928,12 @@ integrationRoutes.post('/:type/push', async (req: Request, res: Response) => {
     }
 
     const integration = await prisma.integration.findFirst({
-      where: { type: req.params.type as string },
+      where: { type: req.params.type as string, orgId },
     })
     if (!integration) return res.status(404).json({ error: 'Integration not found' })
 
     const syncLog = await prisma.syncLog.create({
-      data: { integrationId: integration.id, status: 'RUNNING' },
+      data: { integrationId: integration.id, status: 'RUNNING', orgId },
     })
 
     try {
@@ -783,12 +1016,25 @@ integrationRoutes.post('/erp/push-open-order/:itemId', async (req: Request, res:
 // ─── Disconnect integration ─────────────────────────────────
 integrationRoutes.post('/:type/disconnect', async (req: Request, res: Response) => {
   try {
-    await prisma.integration.updateMany({
-      where: { type: req.params.type as string },
+    if (!requirePrivileged(req, res)) return
+    const orgId = getActingOrgId(req)
+
+    const integration = await prisma.integration.findFirst({
+      where: { type: req.params.type as string, orgId },
+    })
+    if (!integration) {
+      return res.status(404).json({ error: 'Integration not found' })
+    }
+
+    await prisma.integration.update({
+      where: { id: integration.id },
       data: { status: 'DISCONNECTED', config: {} },
     })
     res.json({ success: true })
   } catch (error) {
+    if (error instanceof NoActingOrgError) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
     console.error('[integrations] POST /:type/disconnect error:', error)
     res.status(500).json({ error: 'Failed to disconnect integration' })
   }
@@ -797,7 +1043,10 @@ integrationRoutes.post('/:type/disconnect', async (req: Request, res: Response) 
 // ─── Manual sync trigger ────────────────────────────────────
 integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
   try {
-    const integration = await prisma.integration.findFirst({ where: { type: req.params.type as string } })
+    const orgId = getActingOrgId(req)
+    const integration = await prisma.integration.findFirst({
+      where: { type: req.params.type as string, orgId },
+    })
     if (!integration) return res.status(404).json({ error: 'Integration not found' })
 
     // Create sync log
@@ -805,6 +1054,7 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
       data: {
         integrationId: integration.id,
         status: 'RUNNING',
+        orgId,
       },
     })
 
@@ -826,7 +1076,7 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
       try {
         let recordsProcessed = Math.floor(Math.random() * 100)
         if (integration.type === 'ERP_KAREVE_SYNC') {
-          const result = await syncErp(prisma)
+          const result = await syncErp(prisma, orgId)
           recordsProcessed = result.recordsProcessed
         }
         await prisma.syncLog.update({
@@ -866,6 +1116,9 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
 
     res.json({ success: true, syncLogId: syncLog.id })
   } catch (error) {
+    if (error instanceof NoActingOrgError) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
     console.error('[integrations] POST /:type/sync error:', error)
     res.status(500).json({ error: 'Failed to trigger sync' })
   }
@@ -874,10 +1127,24 @@ integrationRoutes.post('/:type/sync', async (req: Request, res: Response) => {
 // ─── Get sync status ────────────────────────────────────────
 integrationRoutes.get('/:type/status', async (req: Request, res: Response) => {
   try {
-    const integration = await prisma.integration.findFirst({ where: { type: req.params.type as string } })
+    const orgId = getActingOrgId(req)
+    const integration = await prisma.integration.findFirst({
+      where: { type: req.params.type as string, orgId },
+    })
     if (!integration) return res.status(404).json({ error: 'Integration not found' })
-    res.json({ status: integration.status, lastSyncAt: integration.lastSyncAt, syncCount: integration.syncCount })
+    res.json({
+      status: integration.status,
+      lastSyncAt: integration.lastSyncAt,
+      syncCount: integration.syncCount,
+      paused: integration.paused,
+      lastTestAt: integration.lastTestAt,
+      lastTestOk: integration.lastTestOk,
+      lastError: integration.lastError,
+    })
   } catch (error) {
+    if (error instanceof NoActingOrgError) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
     console.error('[integrations] GET /:type/status error:', error)
     res.status(500).json({ error: 'Failed to get integration status' })
   }
@@ -886,7 +1153,10 @@ integrationRoutes.get('/:type/status', async (req: Request, res: Response) => {
 // ─── Get sync logs ──────────────────────────────────────────
 integrationRoutes.get('/:type/logs', async (req: Request, res: Response) => {
   try {
-    const integration = await prisma.integration.findFirst({ where: { type: req.params.type as string } })
+    const orgId = getActingOrgId(req)
+    const integration = await prisma.integration.findFirst({
+      where: { type: req.params.type as string, orgId },
+    })
     if (!integration) return res.status(404).json({ error: 'Integration not found' })
 
     const logs = await prisma.syncLog.findMany({
@@ -896,6 +1166,9 @@ integrationRoutes.get('/:type/logs', async (req: Request, res: Response) => {
     })
     res.json(logs)
   } catch (error) {
+    if (error instanceof NoActingOrgError) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
     console.error('[integrations] GET /:type/logs error:', error)
     res.status(500).json({ error: 'Failed to fetch sync logs' })
   }
