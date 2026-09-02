@@ -1996,3 +1996,29 @@ model ComponentProductLink {
   @@index([orgId, componentId])
   @@index([productId])
 }
+
+// ─── Component Attachments ──────────────────────────────────
+// NX-ATTACH: Compatibility reports and spec sheets attached to components.
+// Bytes go to S3; this table stores metadata only. Same (orgId, componentId,
+// kind) increments version and keeps prior rows + S3 objects.
+enum ComponentAttachmentKind {
+  COMPATIBILITY_REPORT
+  SPEC_SHEET
+}
+
+model ComponentAttachment {
+  id           String                  @id @default(cuid())
+  orgId        String
+  componentId  String
+  kind         ComponentAttachmentKind
+  version      Int
+  filename     String
+  contentType  String
+  sizeBytes    Int
+  s3Key        String                  @unique
+  uploadedById String?
+  createdAt    DateTime                @default(now())
+
+  @@unique([orgId, componentId, kind, version])
+  @@index([orgId, componentId, kind])
+}

@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { getActingOrgId } from '../middleware/billingContext'
+import { isS3Configured, createPresignedPutUrl, createPresignedGetUrl, headObject } from '../lib/s3'
+import { ComponentAttachmentKind } from '@prisma/client'
 
 export const componentRoutes: ReturnType<typeof Router> = Router()
 
@@ -270,3 +272,218 @@ componentRoutes.delete('/:componentId/products/:upc', async (req: Request, res: 
     res.status(500).json({ error: 'Failed to unassign product' })
   }
 })
+
+// ═══════════════════════════════════════════════════════════════
+// NX-ATTACH: Component Attachments (Compatibility Reports & Spec Sheets)
+// ═══════════════════════════════════════════════════════════════
+
+const ALLOWED_MIME_TYPES = ['application/pdf', 'image/png', 'image/jpeg']
+const ATTACHMENT_KIND_DISPLAY: Record<ComponentAttachmentKind, string> = {
+  COMPATIBILITY_REPORT: 'Compatibility report',
+  SPEC_SHEET: 'Spec sheet',
+}
+
+const createAttachmentSchema = z.object({
+  kind: z.enum(['COMPATIBILITY_REPORT', 'SPEC_SHEET']),
+  filename: z.string().min(1).max(255),
+  contentType: z.string().min(1),
+  sizeBytes: z.number().int().positive(),
+})
+
+function requirePrivilegedRole(req: Request, res: Response): boolean {
+  const member = (req as any).member as { role?: string } | undefined
+  const role = member?.role
+  if (role !== 'ADMIN' && role !== 'OPS_MANAGER') {
+    res.status(403).json({ error: 'Forbidden: requires ADMIN or OPS_MANAGER' })
+    return false
+  }
+  return true
+}
+
+function sanitizeFilename(filename: string): string {
+  return filename
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .replace(/__+/g, '_')
+    .slice(0, 200)
+}
+
+// ─── POST /api/v1/components/:componentId/attachments ───────
+// Request a presigned PUT URL for uploading an attachment.
+// Requires ADMIN or OPS_MANAGER role.
+componentRoutes.post('/:componentId/attachments', async (req: Request, res: Response) => {
+  try {
+    if (!requirePrivilegedRole(req, res)) return
+
+    const orgId = getActingOrgId(req)
+    const { componentId } = req.params
+    const memberId = (req as any).member?.id as string | undefined
+
+    const parsed = createAttachmentSchema.safeParse(req.body)
+    if (!parsed.success) {
+      const firstError = parsed.error.errors[0]
+      if (firstError?.path[0] === 'kind') {
+        return res.status(400).json({ error: 'Invalid attachment kind' })
+      }
+      return res.status(400).json({ error: firstError?.message || 'Invalid request' })
+    }
+
+    const { kind, filename, contentType, sizeBytes } = parsed.data
+
+    if (!ALLOWED_MIME_TYPES.includes(contentType)) {
+      return res.status(400).json({ error: 'Invalid content type. Allowed: PDF, PNG, JPEG' })
+    }
+
+    const ownership = await verifyComponentOwnership(componentId, orgId)
+    if (!ownership.valid) {
+      return res.status(404).json({ error: ownership.error })
+    }
+
+    if (!isS3Configured()) {
+      return res.status(503).json({ error: 'File storage is not configured.' })
+    }
+
+    const existingVersions = await prisma.componentAttachment.findMany({
+      where: { orgId, componentId, kind },
+      select: { version: true },
+      orderBy: { version: 'desc' },
+      take: 1,
+    })
+
+    const nextVersion = (existingVersions[0]?.version ?? 0) + 1
+    const safeFilename = sanitizeFilename(filename)
+    const s3Key = `orgs/${orgId}/components/${componentId}/${kind}/v${nextVersion}/${safeFilename}`
+
+    let uploadUrl: string
+    try {
+      uploadUrl = await createPresignedPutUrl(s3Key, contentType, 900)
+    } catch (err) {
+      console.error('[components] Failed to create presigned PUT URL:', err)
+      return res.status(503).json({ error: 'File storage is not configured.' })
+    }
+
+    let attachment
+    try {
+      attachment = await prisma.componentAttachment.create({
+        data: {
+          orgId,
+          componentId,
+          kind,
+          version: nextVersion,
+          filename,
+          contentType,
+          sizeBytes,
+          s3Key,
+          uploadedById: memberId,
+        },
+      })
+    } catch (err: any) {
+      console.error('[components] Failed to create attachment row:', err)
+      return res.status(500).json({ error: 'Failed to create attachment' })
+    }
+
+    res.status(201).json({
+      id: attachment.id,
+      kind: attachment.kind,
+      kindDisplay: ATTACHMENT_KIND_DISPLAY[attachment.kind],
+      version: attachment.version,
+      filename: attachment.filename,
+      contentType: attachment.contentType,
+      sizeBytes: attachment.sizeBytes,
+      uploadUrl,
+      createdAt: attachment.createdAt.toISOString(),
+    })
+  } catch (error) {
+    console.error('[components] POST /:componentId/attachments error:', error)
+    res.status(500).json({ error: 'Failed to create attachment' })
+  }
+})
+
+// ─── GET /api/v1/components/:componentId/attachments ────────
+// List all attachments for a component.
+componentRoutes.get('/:componentId/attachments', async (req: Request, res: Response) => {
+  try {
+    const orgId = getActingOrgId(req)
+    const { componentId } = req.params
+
+    const ownership = await verifyComponentOwnership(componentId, orgId)
+    if (!ownership.valid) {
+      return res.status(404).json({ error: ownership.error })
+    }
+
+    const attachments = await prisma.componentAttachment.findMany({
+      where: { orgId, componentId },
+      orderBy: [{ kind: 'asc' }, { version: 'desc' }],
+      select: {
+        id: true,
+        kind: true,
+        version: true,
+        filename: true,
+        contentType: true,
+        sizeBytes: true,
+        createdAt: true,
+      },
+    })
+
+    const result = attachments.map((att) => ({
+      id: att.id,
+      kind: att.kind,
+      kindDisplay: ATTACHMENT_KIND_DISPLAY[att.kind],
+      version: att.version,
+      filename: att.filename,
+      contentType: att.contentType,
+      sizeBytes: att.sizeBytes,
+      createdAt: att.createdAt.toISOString(),
+    }))
+
+    res.json(result)
+  } catch (error) {
+    console.error('[components] GET /:componentId/attachments error:', error)
+    res.status(500).json({ error: 'Failed to fetch attachments' })
+  }
+})
+
+// ─── GET /api/v1/components/:componentId/attachments/:attachmentId/download-url ─
+// Get a presigned download URL for an attachment.
+componentRoutes.get(
+  '/:componentId/attachments/:attachmentId/download-url',
+  async (req: Request, res: Response) => {
+    try {
+      const orgId = getActingOrgId(req)
+      const { componentId, attachmentId } = req.params
+
+      const ownership = await verifyComponentOwnership(componentId, orgId)
+      if (!ownership.valid) {
+        return res.status(404).json({ error: ownership.error })
+      }
+
+      const attachment = await prisma.componentAttachment.findFirst({
+        where: { id: attachmentId, orgId, componentId },
+      })
+
+      if (!attachment) {
+        return res.status(404).json({ error: 'Attachment not found' })
+      }
+
+      if (!isS3Configured()) {
+        return res.status(503).json({ error: 'File storage is not configured.' })
+      }
+
+      const exists = await headObject(attachment.s3Key)
+      if (!exists) {
+        return res.status(409).json({ error: 'File is not available yet. Retry the upload.' })
+      }
+
+      const downloadUrl = await createPresignedGetUrl(attachment.s3Key, 900)
+
+      res.json({
+        downloadUrl,
+        filename: attachment.filename,
+        contentType: attachment.contentType,
+        sizeBytes: attachment.sizeBytes,
+      })
+    } catch (error) {
+      console.error('[components] GET /:componentId/attachments/:attachmentId/download-url error:', error)
+      res.status(500).json({ error: 'Failed to generate download URL' })
+    }
+  }
+)

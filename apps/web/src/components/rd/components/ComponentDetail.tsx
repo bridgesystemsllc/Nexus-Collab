@@ -21,6 +21,7 @@ import {
   Layers,
 } from 'lucide-react'
 import { UpcAProductSearch } from './UpcAProductSearch'
+import { ComponentAttachmentsPanel } from './ComponentAttachmentsPanel'
 import type {
   Component,
   FeasibilityStatus,
@@ -1035,6 +1036,15 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
           </div>
         )}
 
+        {/* Compatibility Reports (NX-ATTACH) */}
+        {component?.id && (
+          <ComponentAttachmentsPanel
+            componentId={component.id}
+            kind="COMPATIBILITY_REPORT"
+            label="Compatibility report"
+          />
+        )}
+
         {/* Log Test Form */}
         <div className="flex items-center justify-between">
           <h4 className="text-[12px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">Log Test Result</h4>
@@ -1137,6 +1147,16 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
   const renderFiles = () => (
     <div className="space-y-6">
       <SectionHeader icon={FileText} label="Files & Specs" />
+
+      {/* Spec Sheets (NX-ATTACH) */}
+      {component?.id && (
+        <ComponentAttachmentsPanel
+          componentId={component.id}
+          kind="SPEC_SHEET"
+          label="Spec sheet"
+        />
+      )}
+
       {FILE_CATEGORIES.map((cat) => {
         const catFiles = files.filter((f) => f.category === cat)
         return (
