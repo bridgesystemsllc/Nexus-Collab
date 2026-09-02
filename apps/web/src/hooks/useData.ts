@@ -379,43 +379,48 @@ export function useDeleteConnector() {
 }
 
 // ─── Automations ────────────────────────────────────────────
+// §5.2: Automation interface aligned with new schema
 export interface Automation {
   id: string
   name: string
   description: string | null
-  integrationId: string
-  integration?: { id: string; name: string; type: string }
+  orgId: string
+  connectorId: string // §5.2: renamed from integrationId
+  connector?: { id: string; name: string; type: string }
   triggerType: 'SCHEDULE' | 'WEBHOOK' | 'MANUAL'
-  cronExpression: string | null
-  webhookId: string | null
-  webhookUrl?: string | null
-  status: 'ACTIVE' | 'PAUSED' | 'ERROR' | 'DISABLED'
-  retryPolicy: { maxRetries: number; backoffMs: number } | null
-  config: Record<string, unknown>
+  triggerConfig: { everyMinutes?: number; timezone?: string } | null // §5.2
+  actionType: 'HTTP_REQUEST' | 'MCP_CALL' | 'WEBHOOK_FORWARD' // §5.2
+  actionConfig: { method?: string; path?: string; headers?: Record<string, string>; body?: unknown } | null // §5.2
+  status: 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ERROR' // §5.2: added DRAFT
+  retryPolicy: { maxAttempts?: number; baseDelayMs?: number; maxBackoffMs?: number } | null // §5.2
   nextRunAt: string | null
   lastRunAt: string | null
-  lastRunStatus: string | null
+  lastRunOk: boolean | null
+  lastError: string | null
   consecutiveFailures: number
-  circuitOpenUntil: string | null
   createdAt: string
   updatedAt: string
 }
 
+// §5.2: AutomationRun interface aligned with new schema
 export interface AutomationRun {
   id: string
   automationId: string
-  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'
-  triggeredBy: 'SCHEDULE' | 'WEBHOOK' | 'MANUAL'
-  requestId: string
-  startedAt: string | null
-  completedAt: string | null
-  durationMs: number | null
+  orgId: string
+  trigger: 'SCHEDULE' | 'WEBHOOK' | 'MANUAL'
+  idempotencyKey: string | null // §5.2: renamed from requestId
+  status: 'QUEUED' | 'RUNNING' | 'SUCCESS' | 'PARTIAL' | 'FAILED' | 'SKIPPED' // §5.2
+  error: { code: string; message: string; retryable: boolean } | null // §5.2
+  requestSummary: { method: string; host: string; path: string } | null // §5.2
+  recordsProcessed: number // §5.2
+  recordsFailed: number // §5.2
+  inputSnapshot: Record<string, unknown> | null
+  outputSnapshot: Record<string, unknown> | null
   httpStatus: number | null
-  responseBody: string | null
-  error: string | null
-  requestSnapshot: Record<string, unknown>
-  responseSnapshot: Record<string, unknown> | null
-  createdAt: string
+  durationMs: number | null
+  retryCount: number
+  startedAt: string
+  completedAt: string | null
 }
 
 export function useAutomations() {
@@ -437,17 +442,19 @@ export function useAutomation(id: string) {
   })
 }
 
+// §5.2: Automations use connectorId, triggerType+triggerConfig, actionType+actionConfig
 export function useCreateAutomation() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: {
       name: string
       description?: string
-      integrationId: string
+      connectorId: string // §5.2: not integrationId
       triggerType: 'SCHEDULE' | 'WEBHOOK' | 'MANUAL'
-      cronExpression?: string
-      config: Record<string, unknown>
-      retryPolicy?: { maxRetries: number; backoffMs: number }
+      triggerConfig?: { everyMinutes?: number; timezone?: string }
+      actionType?: 'HTTP_REQUEST' | 'MCP_CALL' | 'WEBHOOK_FORWARD'
+      actionConfig?: { method?: string; path?: string; headers?: Record<string, string>; body?: unknown }
+      retryPolicy?: { maxAttempts?: number; baseDelayMs?: number; maxBackoffMs?: number }
     }) => api.post('/automations', data).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['automations'] }),
   })
@@ -460,10 +467,10 @@ export function useUpdateAutomation() {
       id: string
       name?: string
       description?: string
-      triggerType?: 'SCHEDULE' | 'WEBHOOK' | 'MANUAL'
-      cronExpression?: string | null
-      config?: Record<string, unknown>
-      retryPolicy?: { maxRetries: number; backoffMs: number } | null
+      triggerConfig?: { everyMinutes?: number; timezone?: string }
+      actionConfig?: { method?: string; path?: string; headers?: Record<string, string>; body?: unknown }
+      retryPolicy?: { maxAttempts?: number; baseDelayMs?: number; maxBackoffMs?: number } | null
+      status?: string
     }) => api.patch(`/automations/${id}`, data).then(r => r.data),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['automations'] })
@@ -496,10 +503,20 @@ export function useResumeAutomation() {
   })
 }
 
-export function useTriggerAutomation() {
+// §5.2: POST /:id/activate transitions DRAFT → ACTIVE
+export function useActivateAutomation() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (id: string) => api.post(`/automations/${id}/trigger`).then(r => r.data),
+    mutationFn: (id: string) => api.post(`/automations/${id}/activate`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['automations'] }),
+  })
+}
+
+// §5.2: POST /:id/run executes immediately via the same executor
+export function useRunAutomation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/automations/${id}/run`).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['automations'] }),
   })
 }
@@ -511,7 +528,8 @@ export function useAutomationRuns(automationId: string, limit = 20) {
     enabled: !!automationId,
     refetchInterval: (query) => {
       const list = query.state.data as AutomationRun[] | undefined
-      return Array.isArray(list) && list.some(r => r.status === 'PENDING' || r.status === 'RUNNING') ? 2000 : false
+      // §5.2: Status is QUEUED|RUNNING|SUCCESS|PARTIAL|FAILED|SKIPPED
+      return Array.isArray(list) && list.some(r => r.status === 'QUEUED' || r.status === 'RUNNING') ? 2000 : false
     },
   })
 }

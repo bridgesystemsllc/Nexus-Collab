@@ -1,6 +1,6 @@
 // ─── Automation service ──────────────────────────────────────
 // Business logic for creating, updating, and managing automations.
-// All operations are org-scoped.
+// All operations are org-scoped. §5.2 compliant.
 
 import type { PrismaClient, Automation, AutomationRun } from '@prisma/client'
 import { Prisma } from '@prisma/client'
@@ -8,60 +8,96 @@ import {
   sanitizeAutomation,
   sanitizeAutomationRun,
   type SanitizedAutomation,
+  type SanitizedAutomationRun,
 } from '../../lib/connectors/mask'
-import {
-  encryptSecrets,
-  decryptSecrets,
-  type ConnectorSecrets,
-} from '../../lib/connectors/secrets'
-import {
-  generateWebhookId,
-  generateWebhookSecret,
-  generateRequestId,
-} from '../../lib/connectors/idempotency'
 import { parseRetryPolicy, DEFAULT_RETRY_POLICY, type RetryPolicy } from '../../lib/connectors/retry'
 import { serviceError, type ConnectorServiceError } from '../connectors/connectorService'
-import { CronExpressionParser } from 'cron-parser'
 
-export type AutomationTrigger = 'SCHEDULE' | 'WEBHOOK' | 'MANUAL'
-export type AutomationStatus = 'ACTIVE' | 'PAUSED' | 'ERROR' | 'DISABLED'
+// §5.2: Trigger types
+export type TriggerType = 'SCHEDULE' | 'WEBHOOK' | 'MANUAL'
+
+// §5.2: Action types
+export type ActionType = 'HTTP_REQUEST' | 'MCP_CALL' | 'WEBHOOK_FORWARD'
+
+// §5.2: Status (default DRAFT)
+export type AutomationStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'ERROR'
+
+// §5.2: TriggerConfig for SCHEDULE
+export interface ScheduleTriggerConfig {
+  everyMinutes: 15 | 60 | 1440
+  timezone?: string
+}
+
+// §5.2: ActionConfig for HTTP_REQUEST
+export interface HttpActionConfig {
+  method: string
+  path: string
+  headers?: Record<string, string>
+  body?: unknown
+}
+
+// §5.2: ActionConfig for MCP_CALL
+export interface McpActionConfig {
+  tool: string
+  arguments?: Record<string, unknown>
+}
+
+// §5.2: ActionConfig for WEBHOOK_FORWARD
+export interface WebhookForwardConfig {
+  targetUrl: string
+  headers?: Record<string, string>
+}
 
 export interface CreateAutomationInput {
-  integrationId: string
+  connectorId: string
   name: string
   description?: string
-  trigger: AutomationTrigger
-  schedule?: string
-  config?: Record<string, unknown>
-  retryPolicy?: Partial<typeof DEFAULT_RETRY_POLICY>
+  triggerType: TriggerType
+  triggerConfig?: ScheduleTriggerConfig | Record<string, unknown>
+  actionType?: ActionType
+  actionConfig?: HttpActionConfig | McpActionConfig | WebhookForwardConfig | Record<string, unknown>
+  retryPolicy?: Partial<RetryPolicy>
 }
 
 export interface UpdateAutomationInput {
   name?: string
   description?: string
-  schedule?: string
-  config?: Record<string, unknown>
-  retryPolicy?: Partial<typeof DEFAULT_RETRY_POLICY>
+  triggerConfig?: ScheduleTriggerConfig | Record<string, unknown>
+  actionConfig?: HttpActionConfig | McpActionConfig | WebhookForwardConfig | Record<string, unknown>
+  retryPolicy?: Partial<RetryPolicy>
   status?: AutomationStatus
 }
 
-function computeNextRunAt(schedule: string | null, now: Date = new Date()): Date | null {
-  if (!schedule) return null
-  try {
-    const expr = CronExpressionParser.parse(schedule, { currentDate: now })
-    return expr.next().toDate()
-  } catch {
-    return null
+/**
+ * Compute next run time for SCHEDULE triggers based on everyMinutes.
+ */
+function computeNextRunAt(
+  triggerConfig: Record<string, unknown> | null,
+  now: Date = new Date()
+): Date | null {
+  if (!triggerConfig) return null
+  const everyMinutes = triggerConfig.everyMinutes as number
+  if (!everyMinutes || typeof everyMinutes !== 'number') return null
+
+  const minutes = now.getMinutes()
+  const nextSlot = Math.ceil(minutes / everyMinutes) * everyMinutes
+  const next = new Date(now)
+  next.setMinutes(nextSlot, 0, 0)
+
+  if (next <= now) {
+    next.setMinutes(next.getMinutes() + everyMinutes)
   }
+
+  return next
 }
 
 export async function listAutomations(
   prisma: PrismaClient,
   orgId: string,
-  integrationId?: string
+  connectorId?: string
 ): Promise<SanitizedAutomation[]> {
   const where: Prisma.AutomationWhereInput = { orgId }
-  if (integrationId) where.integrationId = integrationId
+  if (connectorId) where.connectorId = connectorId
 
   const automations = await prisma.automation.findMany({
     where,
@@ -89,37 +125,43 @@ export async function createAutomation(
   orgId: string,
   input: CreateAutomationInput
 ): Promise<SanitizedAutomation> {
-  const { integrationId, name, description, trigger, schedule, config, retryPolicy } = input
+  const {
+    connectorId,
+    name,
+    description,
+    triggerType,
+    triggerConfig,
+    actionType,
+    actionConfig,
+    retryPolicy,
+  } = input
 
-  const integration = await prisma.integration.findFirst({
-    where: { id: integrationId, orgId },
+  // Verify connector exists and belongs to org
+  const connector = await prisma.integration.findFirst({
+    where: { id: connectorId, orgId },
   })
-  if (!integration) {
-    throw serviceError('NOT_FOUND', 'Integration not found', 404)
-  }
-
-  let webhookId: string | undefined
-  let webhookSecret: string | undefined
-  if (trigger === 'WEBHOOK') {
-    webhookId = generateWebhookId()
-    webhookSecret = generateWebhookSecret()
+  if (!connector) {
+    throw serviceError('NOT_FOUND', 'Connector not found', 404)
   }
 
   const now = new Date()
-  const nextRunAt = trigger === 'SCHEDULE' ? computeNextRunAt(schedule ?? null, now) : null
+  const nextRunAt =
+    triggerType === 'SCHEDULE'
+      ? computeNextRunAt((triggerConfig as Record<string, unknown>) ?? null, now)
+      : null
 
   const automation = await prisma.automation.create({
     data: {
       orgId,
-      integrationId,
+      connectorId,
       name,
       description: description ?? null,
-      trigger,
-      schedule: schedule ?? null,
-      webhookId: webhookId ?? null,
-      webhookSecret: webhookSecret ?? null,
-      config: (config ?? {}) as Prisma.InputJsonObject,
-      status: 'ACTIVE',
+      triggerType,
+      triggerConfig: (triggerConfig ?? {}) as Prisma.InputJsonObject,
+      actionType: actionType ?? 'HTTP_REQUEST',
+      actionConfig: (actionConfig ?? {}) as Prisma.InputJsonObject,
+      // §5.2: status default DRAFT
+      status: 'DRAFT',
       nextRunAt,
       retryPolicy: retryPolicy
         ? (parseRetryPolicy(retryPolicy) as unknown as Prisma.InputJsonObject)
@@ -143,19 +185,27 @@ export async function updateAutomation(
     throw serviceError('NOT_FOUND', 'Automation not found', 404)
   }
 
-  const schedule = input.schedule ?? existing.schedule
   const now = new Date()
   let nextRunAt = existing.nextRunAt
 
-  if (input.schedule !== undefined || input.status === 'ACTIVE') {
-    nextRunAt = existing.trigger === 'SCHEDULE' ? computeNextRunAt(schedule, now) : null
+  // Recompute nextRunAt if triggerConfig changes or status becomes ACTIVE
+  if (input.triggerConfig !== undefined || input.status === 'ACTIVE') {
+    const triggerConfig = input.triggerConfig ?? (existing.triggerConfig as Record<string, unknown>)
+    nextRunAt =
+      existing.triggerType === 'SCHEDULE'
+        ? computeNextRunAt(triggerConfig as Record<string, unknown>, now)
+        : null
   }
 
   const data: Prisma.AutomationUpdateInput = {}
   if (input.name !== undefined) data.name = input.name
   if (input.description !== undefined) data.description = input.description
-  if (input.schedule !== undefined) data.schedule = input.schedule
-  if (input.config !== undefined) data.config = input.config as Prisma.InputJsonObject
+  if (input.triggerConfig !== undefined) {
+    data.triggerConfig = input.triggerConfig as Prisma.InputJsonObject
+  }
+  if (input.actionConfig !== undefined) {
+    data.actionConfig = input.actionConfig as Prisma.InputJsonObject
+  }
   if (input.retryPolicy !== undefined) {
     data.retryPolicy = parseRetryPolicy(input.retryPolicy) as unknown as Prisma.InputJsonObject
   }
@@ -174,6 +224,32 @@ export async function updateAutomation(
   })
 
   return sanitizeAutomation(automation)
+}
+
+/**
+ * §5.2: POST /:id/activate - Activate a DRAFT automation
+ */
+export async function activateAutomation(
+  prisma: PrismaClient,
+  orgId: string,
+  automationId: string
+): Promise<SanitizedAutomation> {
+  const existing = await prisma.automation.findFirst({
+    where: { id: automationId, orgId },
+  })
+  if (!existing) {
+    throw serviceError('NOT_FOUND', 'Automation not found', 404)
+  }
+
+  if (existing.status !== 'DRAFT') {
+    throw serviceError(
+      'INVALID_STATE',
+      `Cannot activate automation in ${existing.status} state`,
+      400
+    )
+  }
+
+  return updateAutomation(prisma, orgId, automationId, { status: 'ACTIVE' })
 }
 
 export async function deleteAutomation(
@@ -209,47 +285,12 @@ export async function resumeAutomation(
   return updateAutomation(prisma, orgId, automationId, { status: 'ACTIVE' })
 }
 
-export async function triggerAutomation(
-  prisma: PrismaClient,
-  orgId: string,
-  automationId: string
-): Promise<{ runId: string; status: string }> {
-  const automation = await prisma.automation.findFirst({
-    where: { id: automationId, orgId },
-  })
-  if (!automation) {
-    throw serviceError('NOT_FOUND', 'Automation not found', 404)
-  }
-
-  if (automation.status !== 'ACTIVE') {
-    throw serviceError(
-      'AUTOMATION_NOT_ACTIVE',
-      `Automation is ${automation.status.toLowerCase()}, cannot trigger`,
-      400
-    )
-  }
-
-  const requestId = generateRequestId()
-
-  const run = await prisma.automationRun.create({
-    data: {
-      automationId,
-      orgId,
-      trigger: 'MANUAL',
-      requestId,
-      status: 'PENDING',
-    },
-  })
-
-  return { runId: run.id, status: run.status }
-}
-
 export async function listAutomationRuns(
   prisma: PrismaClient,
   orgId: string,
   automationId: string,
   limit: number = 20
-): Promise<ReturnType<typeof sanitizeAutomationRun>[]> {
+): Promise<SanitizedAutomationRun[]> {
   const automation = await prisma.automation.findFirst({
     where: { id: automationId, orgId },
   })
@@ -270,7 +311,7 @@ export async function getAutomationRun(
   prisma: PrismaClient,
   orgId: string,
   runId: string
-): Promise<ReturnType<typeof sanitizeAutomationRun>> {
+): Promise<SanitizedAutomationRun> {
   const run = await prisma.automationRun.findFirst({
     where: { id: runId, orgId },
   })
@@ -289,25 +330,55 @@ export async function getRawAutomation(
   })
 }
 
-export async function getRawAutomationByWebhookId(
+/**
+ * §5.8: Lookup automation by webhookId stored in the connector's config.
+ * GENERIC_WEBHOOK connectors store webhookId in Integration.config.webhookId
+ */
+export async function getAutomationByWebhookId(
   prisma: PrismaClient,
   webhookId: string
 ): Promise<Automation | null> {
-  return prisma.automation.findFirst({
-    where: { webhookId },
+  // Find the integration with this webhookId in its config
+  const integrations = await prisma.integration.findMany({
+    where: {
+      type: 'GENERIC_WEBHOOK',
+    },
   })
+
+  for (const integration of integrations) {
+    const config = integration.config as Record<string, unknown>
+    if (config?.webhookId === webhookId) {
+      // Find an active automation for this connector
+      return prisma.automation.findFirst({
+        where: {
+          connectorId: integration.id,
+          status: 'ACTIVE',
+          triggerType: 'WEBHOOK',
+        },
+      })
+    }
+  }
+
+  return null
 }
 
-export async function getAutomationWebhookUrl(
+/**
+ * Get the webhook URL for a GENERIC_WEBHOOK connector's automation.
+ */
+export async function getConnectorWebhookUrl(
   prisma: PrismaClient,
   orgId: string,
-  automationId: string,
+  connectorId: string,
   baseUrl: string
 ): Promise<string | null> {
-  const automation = await prisma.automation.findFirst({
-    where: { id: automationId, orgId, trigger: 'WEBHOOK' },
+  const connector = await prisma.integration.findFirst({
+    where: { id: connectorId, orgId, type: 'GENERIC_WEBHOOK' },
   })
-  if (!automation?.webhookId) return null
+  if (!connector) return null
 
-  return `${baseUrl}/api/v1/webhooks/connectors/${automation.webhookId}`
+  const config = connector.config as Record<string, unknown>
+  const webhookId = config?.webhookId as string
+  if (!webhookId) return null
+
+  return `${baseUrl}/api/v1/webhooks/connectors/${webhookId}`
 }
