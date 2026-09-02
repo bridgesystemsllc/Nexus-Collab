@@ -15,16 +15,23 @@ export const onboardingRoutes: ReturnType<typeof Router> = Router()
 // Strict mode rejects unknown keys — the server never reads orgId/entraTenantId
 // from the body; those come exclusively from session.pendingOnboarding.
 const onboardingSchema = z.object({
-  name: z.string().trim().min(1, 'Company name is required').max(100),
+  name: z.string().trim().min(2, 'Company name must be at least 2 characters').max(80, 'Company name must be at most 80 characters'),
   industry: z.string().trim().min(1, 'Industry is required').max(100),
-  brands: z.array(z.string().trim().min(1)).min(1, 'At least one brand is required'),
-}).strict()
+  brands: z.array(z.string().trim().min(1)).min(1, 'At least one brand is required').max(20, 'Maximum 20 brands allowed'),
+}).strict().refine(
+  (data) => {
+    // Check for duplicate brands (case-insensitive)
+    const lowerBrands = data.brands.map((b) => b.toLowerCase())
+    return new Set(lowerBrands).size === lowerBrands.length
+  },
+  { message: 'Brand names must be unique', path: ['brands'] }
+)
 
-// Builtin departments created for every new workspace
+// Builtin departments created for every new workspace (no code field per spec)
 const BUILTIN_DEPARTMENTS = [
-  { name: 'R&D', code: 'R_AND_D', type: 'BUILTIN_RD', icon: 'flask-conical', color: '#7C3AED' },
-  { name: 'Operations', code: 'OPERATIONS', type: 'BUILTIN_OPS', icon: 'settings', color: '#FF9F0A' },
-  { name: 'Finance', code: 'FINANCE', type: 'BUILTIN_FINANCE', icon: 'dollar-sign', color: '#00C7FF' },
+  { name: 'R&D', type: 'BUILTIN_RD', icon: 'flask-conical', color: '#7C3AED' },
+  { name: 'Operations', type: 'BUILTIN_OPS', icon: 'settings', color: '#FF9F0A' },
+  { name: 'Finance', type: 'BUILTIN_FINANCE', icon: 'dollar-sign', color: '#00C7FF' },
 ] as const
 
 // Default brand colors (cycle through for multiple brands)
@@ -119,18 +126,29 @@ onboardingRoutes.post('/', async (req: Request, res: Response) => {
         })
       }
 
-      // 5. Create builtin departments
+      // 5. Create builtin departments (no code per spec)
       for (const dept of BUILTIN_DEPARTMENTS) {
-        await tx.department.create({
+        const createdDept = await tx.department.create({
           data: {
             name: dept.name,
-            code: dept.code,
             type: dept.type,
             icon: dept.icon,
             color: dept.color,
             orgId: org.id,
           },
         })
+
+        // Add FINANCE_COSTING module for the Finance department
+        if (dept.type === 'BUILTIN_FINANCE') {
+          await tx.departmentModule.create({
+            data: {
+              name: 'Costing',
+              type: 'FINANCE_COSTING',
+              departmentId: createdDept.id,
+              sortOrder: 0,
+            },
+          })
+        }
       }
 
       // 6. Create user preferences
