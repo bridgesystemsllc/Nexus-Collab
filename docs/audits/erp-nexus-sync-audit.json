@@ -1,0 +1,169 @@
+{
+  "kind": "ERP_NEXUS_SYNC_AUDIT",
+  "version": "1.0.0",
+  "auditedAt": "2026-09-02T16:54:30.573Z",
+  "verdict": "AUDIT_COMPLETE",
+  "blocked": false,
+  "scannedFiles": [
+    "packages/prisma/prisma/schema.prisma",
+    "apps/api/src/lib/erpRouting.ts",
+    "apps/api/src/lib/erpOpenOrders.ts",
+    "apps/api/src/lib/erpPush.ts",
+    "apps/api/src/lib/erpClient.ts",
+    "apps/api/src/lib/erpSync.ts",
+    "apps/api/src/lib/inventoryStatus.ts",
+    "apps/api/src/routes/integrations.ts"
+  ],
+  "missingFiles": [],
+  "findings": {
+    "productionTracker": {
+      "found": false,
+      "note": "No standalone ProductionTracker model/service. PRODUCTION_TRACKING is a DepartmentModule type (UI module, not a dedicated tracker entity).",
+      "moduleTypeExists": false,
+      "searchedPatterns": [
+        "productionTracker",
+        "ProductionTracker",
+        "PRODUCTION_TRACKER",
+        "production-tracker",
+        "trackerStatus",
+        "productionStatus"
+      ]
+    },
+    "departmentModuleTypes": [
+      "BILL_OF_MATERIALS",
+      "BRIEFS",
+      "BUILTIN_FINANCE",
+      "BUILTIN_OPS",
+      "BUILTIN_RD",
+      "CM_PRODUCTIVITY",
+      "COMPONENTS",
+      "DOCUMENT",
+      "ERP_KAREVE_SYNC",
+      "FINANCE_COSTING",
+      "FORMULATIONS",
+      "GENERIC_HTTP",
+      "GENERIC_MCP",
+      "GENERIC_WEBHOOK",
+      "GEODIS_INVENTORY_FEED",
+      "INITIATIVE",
+      "INVENTORY_HEALTH",
+      "NPD_PIPELINE",
+      "OPEN_ORDERS",
+      "PRODUCTION_TRACKING",
+      "PROJECT",
+      "SKU_PIPELINE",
+      "SLACK",
+      "TASK",
+      "TECH_TRANSFERS",
+      "UPDATE",
+      "ZAPIER"
+    ],
+    "statusFields": {
+      "inbound": {
+        "note": "ERP overwrites these fields in Nexus via mergeOpenOrderIntoData",
+        "fields": [
+          "poStatus",
+          "urgency",
+          "qtyOrdered",
+          "qtyReceived",
+          "qtyRemaining",
+          "orderDate",
+          "deliveryDue",
+          "eta",
+          "lines",
+          "manufacturer"
+        ]
+      },
+      "outbound": {
+        "note": "Nexus sends these to ERP via mapOpenOrderForErp (only when openOrders.enabled = true, default false)",
+        "fields": [
+          "erpPoId",
+          "poNumber",
+          "poStatus",
+          "urgency",
+          "qtyReceived",
+          "eta",
+          "lines",
+          "notes"
+        ],
+        "defaultEnabled": false
+      }
+    },
+    "barcodeFields": {
+      "note": "Barcode/product-id field names found. No single join key chosen — the ERP supports multiple identifier types.",
+      "fields": [
+        "sku",
+        "upc",
+        "gtin",
+        "barcode",
+        "partNumber",
+        "fgPartNumber"
+      ],
+      "details": {
+        "sku": {
+          "occurrences": 150,
+          "files": [
+            "apps/api/src/lib/erpClient.ts",
+            "apps/api/src/lib/erpOpenOrders.ts",
+            "apps/api/src/lib/erpSync.ts",
+            "apps/api/src/routes/ai.ts",
+            "apps/api/src/routes/brandTransition.ts"
+          ]
+        },
+        "upc": {
+          "occurrences": 26,
+          "files": [
+            "apps/api/src/lib/erpClient.ts",
+            "apps/api/src/lib/erpSync.ts",
+            "apps/api/src/routes/departments.ts",
+            "apps/api/src/routes/products.ts"
+          ]
+        },
+        "gtin": {
+          "occurrences": 1,
+          "files": [
+            "apps/api/src/lib/erpClient.ts"
+          ]
+        },
+        "barcode": {
+          "occurrences": 1,
+          "files": [
+            "apps/api/src/lib/erpClient.ts"
+          ]
+        },
+        "partNumber": {
+          "occurrences": 54,
+          "files": [
+            "apps/api/src/lib/erpClient.ts",
+            "apps/api/src/lib/erpPush.ts",
+            "apps/api/src/lib/erpSync.ts",
+            "apps/api/src/lib/financeCost.ts",
+            "apps/api/src/routes/finance.ts"
+          ]
+        },
+        "fgPartNumber": {
+          "occurrences": 26,
+          "files": [
+            "apps/api/src/lib/erpClient.ts",
+            "apps/api/src/lib/erpPush.ts",
+            "apps/api/src/lib/erpSync.ts",
+            "apps/api/src/routes/finance.ts"
+          ]
+        }
+      }
+    },
+    "tenancy": {
+      "usesOrgId": true,
+      "usesTenantId": false,
+      "orgIdInSchema": true,
+      "orgIdInErpFiles": [
+        "apps/api/src/lib/erpRouting.ts",
+        "apps/api/src/lib/erpPush.ts",
+        "apps/api/src/lib/erpSync.ts",
+        "apps/api/src/lib/erpClient.ts"
+      ],
+      "tenantIdInErpFiles": [],
+      "note": "Tenancy is correctly scoped by orgId. No tenant_id field found."
+    }
+  }
+}
