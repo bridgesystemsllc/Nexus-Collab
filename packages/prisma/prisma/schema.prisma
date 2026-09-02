@@ -41,6 +41,7 @@ model Organization {
   seatAssignments    SeatAssignment[]
   paymentMethods     BillingPaymentMethod[]
   invoices           BillingInvoice[]
+  oorManufacturerMappings OorManufacturerMapping[]
   automations        Automation[]
 }
 
@@ -232,6 +233,7 @@ model ModuleItem {
   sortOrder Int              @default(0)
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
+  oorLines  OorLine[]
 
   @@index([moduleId])
 }
@@ -1785,6 +1787,13 @@ model OorLine {
   brandId              String?
   reportRunId          String?
   reportRun            OorReportRun?      @relation(fields: [reportRunId], references: [id])
+  /// Stable link to the ERP-backed OPEN_ORDERS module item. One module item is
+  /// a PO header; erpLineNumber identifies the individual SKU line beneath it.
+  productionOrderItemId String?
+  productionOrderItem   ModuleItem?        @relation(fields: [productionOrderItemId], references: [id], onDelete: SetNull)
+  erpPoId               String?
+  erpLineNumber         Int?
+  erpManufacturerName   String?
   customerPoNumber     String?
   /// The suffix after '>' — AMZ, Retail, CMLEX LOI. It identifies the channel,
   /// so it is split out rather than normalised away.
@@ -1836,10 +1845,32 @@ model OorLine {
   meetingUpdates       OorMeetingUpdate[]
 
   @@unique([orgId, brandId, customerPoNumber, salesOrderNumber, itemNumber])
+  @@unique([orgId, productionOrderItemId, erpLineNumber])
   @@index([orgId, brandId, isOpen, requiredDeliveryDate])
+  @@index([orgId, customerPoNumber, itemNumber])
+  @@index([orgId, erpManufacturerName])
   @@index([orgId, fulfillmentType, jobStatus])
   @@index([orgId, lineStatus])
   @@index([reportRunId])
+}
+
+/// Explicitly links the ERP's manufacturer label to the CM code used by
+/// imported open-order reports. The normalized label makes the lookup
+/// case-insensitive without relying on database-specific indexes.
+model OorManufacturerMapping {
+  id                            String       @id @default(cuid())
+  orgId                         String
+  organization                  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  erpManufacturerName           String
+  erpManufacturerNameNormalized String
+  cmCode                        String
+  createdAt                     DateTime     @default(now())
+  updatedAt                     DateTime     @updatedAt
+  createdById                   String?
+  updatedById                   String?
+
+  @@unique([orgId, erpManufacturerNameNormalized])
+  @@index([orgId, cmCode])
 }
 
 model OorShortageNode {
