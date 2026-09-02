@@ -70,7 +70,19 @@ export interface ErpPricing {
 
 /** A contract-manufacturer / vendor record from the ERP. */
 export interface ErpCm {
+  /** ERP's unique identifier for the CM (maps to id in ERP response). */
+  erpId: string
   name: string
+  /** Short code for the CM (e.g. "PAKLAB", "ACTLABS"). */
+  cmCode?: string
+  /** Full legal entity name. */
+  legalName?: string
+  /** Classification (e.g. "FULL_SERVICE", "PACKAGING_ONLY", "FILL_FINISH"). */
+  cmType?: string
+  /** ERP vendor/supplier id when CM is also a vendor. */
+  vendorId?: string
+  /** Primary location / HQ. */
+  headquarters?: string
   brands: string[]
   status: string
   avgLeadTime: string
@@ -676,7 +688,13 @@ export async function fetchErpPricing(
 
 // ─── Contract Manufacturers / Vendors ───────────────────────
 interface SyntheticCm {
+  erpId: string
   name: string
+  cmCode?: string
+  legalName?: string
+  cmType?: string
+  vendorId?: string
+  headquarters?: string
   brands: string[]
   status: string
   avgLeadTime: string
@@ -686,34 +704,75 @@ interface SyntheticCm {
 }
 
 const SYNTHETIC_ERP_CMS: SyntheticCm[] = [
-  { name: 'Paklab', brands: ['Ambi', 'AcneFree'], status: 'active', avgLeadTime: '6-8 wks', onTime: 84, quality: 95, activePOs: 9 },
-  { name: 'ACT Labs', brands: ["Carol's Daughter"], status: 'active', avgLeadTime: '8-10 wks', onTime: 92, quality: 97, activePOs: 5 },
-  { name: 'TricorBraun', brands: ["Carol's Daughter", 'Ambi'], status: 'attention', avgLeadTime: '4-6 wks', onTime: 77, quality: 89, activePOs: 3 },
-  { name: 'Jansy', brands: ["Carol's Daughter"], status: 'active', avgLeadTime: '3-5 wks', onTime: 96, quality: 96, activePOs: 2 },
+  { erpId: 'cm-001', name: 'Paklab', cmCode: 'PAKLAB', legalName: 'Paklab Cosmetics Inc.', cmType: 'FULL_SERVICE', vendorId: 'v-101', headquarters: 'Toronto, ON', brands: ['Ambi', 'AcneFree'], status: 'active', avgLeadTime: '6-8 wks', onTime: 84, quality: 95, activePOs: 9 },
+  { erpId: 'cm-002', name: 'ACT Labs', cmCode: 'ACTLABS', legalName: 'ACT Laboratories LLC', cmType: 'FULL_SERVICE', vendorId: 'v-102', headquarters: 'Chatsworth, CA', brands: ["Carol's Daughter"], status: 'active', avgLeadTime: '8-10 wks', onTime: 92, quality: 97, activePOs: 5 },
+  { erpId: 'cm-003', name: 'TricorBraun', cmCode: 'TRICOR', legalName: 'TricorBraun Holdings Inc.', cmType: 'PACKAGING_ONLY', vendorId: 'v-103', headquarters: 'St. Louis, MO', brands: ["Carol's Daughter", 'Ambi'], status: 'attention', avgLeadTime: '4-6 wks', onTime: 77, quality: 89, activePOs: 3 },
+  { erpId: 'cm-004', name: 'Jansy', cmCode: 'JANSY', legalName: 'Jansy Packaging LLC', cmType: 'PACKAGING_ONLY', vendorId: 'v-104', headquarters: 'Edison, NJ', brands: ["Carol's Daughter"], status: 'active', avgLeadTime: '3-5 wks', onTime: 96, quality: 96, activePOs: 2 },
   // CMs that exist in the ERP but not yet in Nexus — these get created on sync.
-  { name: 'Kolmar Korea', brands: ['Ambi', "Carol's Daughter"], status: 'active', avgLeadTime: '10-12 wks', onTime: 88, quality: 93, activePOs: 4 },
-  { name: 'Cosmetic Solutions', brands: ['AcneFree'], status: 'active', avgLeadTime: '5-7 wks', onTime: 90, quality: 94, activePOs: 3 },
-  { name: 'Mana Products', brands: ["Carol's Daughter"], status: 'attention', avgLeadTime: '6-9 wks', onTime: 81, quality: 91, activePOs: 2 },
+  { erpId: 'cm-005', name: 'Kolmar Korea', cmCode: 'KOLMAR', legalName: 'Kolmar Korea Co., Ltd.', cmType: 'FULL_SERVICE', vendorId: 'v-105', headquarters: 'Seoul, KR', brands: ['Ambi', "Carol's Daughter"], status: 'active', avgLeadTime: '10-12 wks', onTime: 88, quality: 93, activePOs: 4 },
+  { erpId: 'cm-006', name: 'Cosmetic Solutions', cmCode: 'COSSOL', legalName: 'Cosmetic Solutions Inc.', cmType: 'FILL_FINISH', vendorId: 'v-106', headquarters: 'Boca Raton, FL', brands: ['AcneFree'], status: 'active', avgLeadTime: '5-7 wks', onTime: 90, quality: 94, activePOs: 3 },
+  { erpId: 'cm-007', name: 'Mana Products', cmCode: 'MANA', legalName: 'Mana Products Inc.', cmType: 'FULL_SERVICE', vendorId: 'v-107', headquarters: 'Long Island City, NY', brands: ["Carol's Daughter"], status: 'attention', avgLeadTime: '6-9 wks', onTime: 81, quality: 91, activePOs: 2 },
 ]
 
 function syntheticCms(): ErpCm[] {
-  return SYNTHETIC_ERP_CMS.map((c) => ({ ...c, brands: [...c.brands], source: 'ERP_KAREVE' }))
+  return SYNTHETIC_ERP_CMS.map((c) => ({
+    erpId: c.erpId,
+    name: c.name,
+    cmCode: c.cmCode,
+    legalName: c.legalName,
+    cmType: c.cmType,
+    vendorId: c.vendorId,
+    headquarters: c.headquarters,
+    brands: [...c.brands],
+    status: c.status,
+    avgLeadTime: c.avgLeadTime,
+    onTime: c.onTime,
+    quality: c.quality,
+    activePOs: c.activePOs,
+    source: 'ERP_KAREVE',
+  }))
 }
 
-function mapErpCm(raw: Record<string, any>): ErpCm {
+/** Known CM status values accepted by Nexus. Unknown values are logged and skipped. */
+const VALID_CM_STATUSES = new Set(['active', 'attention', 'inactive', 'pending', 'onboarding'])
+
+function mapErpCm(raw: Record<string, any>): ErpCm | null {
+  // erpId is mandatory — the spec requires matching by ERP id
+  const erpId = raw.id ?? raw.erpId ?? raw.cmId ?? raw.contractManufacturerId
+  if (erpId == null || String(erpId).trim() === '') {
+    console.warn('[erpClient] CM record missing id, skipping:', raw.companyName ?? raw.name ?? 'unknown')
+    return null
+  }
+
   const brandsRaw = raw.brands ?? raw.brandList
   const brands = Array.isArray(brandsRaw)
     ? brandsRaw.map((b) => String(b))
     : typeof brandsRaw === 'string'
       ? brandsRaw.split(',').map((b) => b.trim()).filter(Boolean)
       : []
+
+  // Normalize status; skip row if unknown enum value (per spec: skip row, do not abort page)
+  const rawStatus = String(raw.status ?? 'active').toLowerCase().trim()
+  if (!VALID_CM_STATUSES.has(rawStatus)) {
+    console.warn(`[erpClient] CM "${raw.companyName ?? raw.name}" has unknown status "${rawStatus}", skipping`)
+    return null
+  }
+
   const onTime = raw.onTime ?? raw.onTimePct ?? raw.on_time
   const quality = raw.quality ?? raw.qualityScore
   const activePOs = raw.activePOs ?? raw.openPOs ?? raw.poCount
+
   return {
-    name: String(raw.name ?? raw.vendorName ?? raw.cmName ?? ''),
+    erpId: String(erpId),
+    // Spec: name←companyName (primary), fallback to name/vendorName/cmName
+    name: String(raw.companyName ?? raw.name ?? raw.vendorName ?? raw.cmName ?? ''),
+    cmCode: raw.cmCode ?? raw.code ?? raw.vendorCode ?? undefined,
+    legalName: raw.legalName ?? raw.legalEntityName ?? raw.fullName ?? undefined,
+    cmType: raw.cmType ?? raw.type ?? raw.manufacturerType ?? undefined,
+    vendorId: raw.vendorId ?? raw.vendor_id ?? undefined,
+    headquarters: raw.headquarters ?? raw.hq ?? raw.location ?? raw.address?.city ?? undefined,
     brands,
-    status: String(raw.status ?? 'active'),
+    status: rawStatus,
     avgLeadTime: String(raw.avgLeadTime ?? raw.leadTime ?? raw.lead_time ?? ''),
     onTime: onTime != null ? Number(onTime) || 0 : undefined,
     quality: quality != null ? Number(quality) || 0 : undefined,
@@ -724,8 +783,10 @@ function mapErpCm(raw: Record<string, any>): ErpCm {
 
 /**
  * Fetch contract-manufacturer / vendor data from the ERP. Returns the real
- * feed when configured (trying `path` then `/vendors` then `/cms`), otherwise
- * a labelled synthetic dev feed.
+ * feed when configured, otherwise a labelled synthetic dev feed.
+ *
+ * Targets GET {erpBaseUrl}/api/v1/contract-manufacturers per spec NX-CM.
+ * Envelope: { success, data, meta }. Same Bearer helper as fetchErpSkus.
  */
 export async function fetchErpCms(prisma: PrismaClient, path?: string, orgId?: string): Promise<ErpCm[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
@@ -735,10 +796,14 @@ export async function fetchErpCms(prisma: PrismaClient, path?: string, orgId?: s
   const records = await fetchErpRecords(
     apiUrl,
     apiKey,
-    candidatePaths(path, '/vendors', '/cms'),
-    ['vendors', 'cms'],
+    candidatePaths(path, '/contract-manufacturers'),
+    ['data', 'contractManufacturers', 'contract_manufacturers'],
   )
-  return records.map(mapErpCm).filter((r) => r.name)
+  // mapErpCm returns null for rows with unknown enum values or missing id
+  const mapped = records.map(mapErpCm).filter((r): r is ErpCm => r !== null && r.name !== '')
+  // Spec: empty ERP response is NOT an error — it just means no CMs to sync
+  // (unlike SKU/inventory where zero records is likely a misconfiguration).
+  return mapped
 }
 
 // ─── Open Orders / Purchase Orders ──────────────────────────
