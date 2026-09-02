@@ -1,207 +1,243 @@
-import { Router } from 'express'
+import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
+import { normaliseEmail } from '@nexus/shared'
 import { prisma } from '../index'
-import crypto from 'crypto'
+import {
+  getPendingOnboarding,
+  clearPendingOnboarding,
+  stampLastLogin,
+} from '../auth/session'
 
 export const onboardingRoutes: ReturnType<typeof Router> = Router()
 
 // ─── Validation Schema ──────────────────────────────────────
+// Strict mode rejects unknown keys — the server never reads orgId/entraTenantId
+// from the body; those come exclusively from session.pendingOnboarding.
 const onboardingSchema = z.object({
-  usageContext: z.enum(['work', 'personal', 'school', 'other']),
-  industry: z.string().min(1).max(100),
-  departments: z.array(z.string()).min(1),
-  integrations: z.array(z.string()).default([]),
-  featureInterests: z.array(z.string()).default([]),
-  workspaceName: z.string().min(2).max(50),
-  workspaceSlug: z.string().min(2).max(50).regex(/^[a-z0-9-]+$/, 'Slug must be lowercase letters, numbers, and hyphens only'),
-  workspaceColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-  workspaceLogoUrl: z.string().url().optional(),
-  invites: z.array(z.object({
-    email: z.string().email(),
-    role: z.enum(['admin', 'member', 'viewer']),
-  })).default([]),
-  phoneNumber: z.string().max(20).optional(),
-  referralSource: z.string().max(100).optional(),
-})
+  name: z.string().trim().min(1, 'Company name is required').max(100),
+  industry: z.string().trim().min(1, 'Industry is required').max(100),
+  brands: z.array(z.string().trim().min(1)).min(1, 'At least one brand is required'),
+}).strict()
 
-// ─── Integration name → type mapping ────────────────────────
-const INTEGRATION_TYPE_MAP: Record<string, string> = {
-  'Microsoft Outlook': 'MICROSOFT_OUTLOOK',
-  'Microsoft Teams': 'MICROSOFT_TEAMS',
-  'Google Workspace': 'GOOGLE_WORKSPACE',
-  'Slack': 'SLACK',
-  'Zoom': 'ZOOM',
-  'Asana': 'ASANA',
-  'Notion': 'NOTION',
-  'HubSpot': 'HUBSPOT',
-  'Salesforce': 'SALESFORCE',
-  'QuickBooks': 'QUICKBOOKS',
-  'Shopify': 'SHOPIFY',
+// Builtin departments created for every new workspace
+const BUILTIN_DEPARTMENTS = [
+  { name: 'R&D', code: 'R_AND_D', type: 'BUILTIN_RD', icon: 'flask-conical', color: '#7C3AED' },
+  { name: 'Operations', code: 'OPERATIONS', type: 'BUILTIN_OPS', icon: 'settings', color: '#FF9F0A' },
+  { name: 'Finance', code: 'FINANCE', type: 'BUILTIN_FINANCE', icon: 'dollar-sign', color: '#00C7FF' },
+] as const
+
+// Default brand colors (cycle through for multiple brands)
+const BRAND_COLORS = ['#7C3AED', '#0A84FF', '#32D74B', '#FF9F0A', '#BF5AF2', '#FF453A']
+const BRAND_ICONS = ['tag', 'star', 'sparkles', 'heart', 'zap', 'award']
+
+function generateSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 50) || 'workspace'
 }
 
-// ─── Department icon/color defaults ─────────────────────────
-const DEPT_DEFAULTS: Record<string, { icon: string; color: string }> = {
-  'Sales': { icon: 'trending-up', color: '#32D74B' },
-  'Operations': { icon: 'settings', color: '#FF9F0A' },
-  'Marketing': { icon: 'megaphone', color: '#BF5AF2' },
-  'Finance & Accounting': { icon: 'dollar-sign', color: '#00C7FF' },
-  'Human Resources': { icon: 'users', color: '#E8948A' },
-  'Product Development': { icon: 'lightbulb', color: '#7C3AED' },
-  'Supply Chain / Procurement': { icon: 'truck', color: '#FF9F0A' },
-  'Customer Service': { icon: 'headphones', color: '#0A84FF' },
-  'IT / Technology': { icon: 'cpu', color: '#64D2FF' },
-  'Legal & Compliance': { icon: 'shield', color: '#636366' },
-  'Executive / Leadership': { icon: 'crown', color: '#E8E8EC' },
-}
-
-// ─── POST /onboarding — Complete onboarding ─────────────────
-onboardingRoutes.post('/', async (req, res) => {
-  try {
-    const data = onboardingSchema.parse(req.body)
-
-    // Check slug uniqueness
-    const existingOrg = await prisma.organization.findUnique({
-      where: { slug: data.workspaceSlug },
+// ─── POST /onboarding — Provision workspace ─────────────────
+// Creates Organization + ADMIN Member + Brands + Departments + UserPreference
+// in a single transaction. Requires session.pendingOnboarding from OAuth flow.
+onboardingRoutes.post('/', async (req: Request, res: Response) => {
+  const pending = getPendingOnboarding(req.session)
+  if (!pending) {
+    return res.status(401).json({
+      error: 'Not in onboarding flow',
+      message: 'Please sign in with Microsoft to start onboarding.',
     })
-    if (existingOrg) {
-      return res.status(409).json({ error: 'Slug already taken', field: 'workspaceSlug' })
-    }
+  }
 
-    // Run all DB operations in a transaction
+  const parsed = onboardingSchema.safeParse(req.body)
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string> = {}
+    for (const issue of parsed.error.issues) {
+      const field = issue.path[0]?.toString() || 'unknown'
+      fieldErrors[field] = issue.message
+    }
+    return res.status(400).json({
+      error: 'Validation failed',
+      fields: fieldErrors,
+    })
+  }
+
+  const { name, industry, brands } = parsed.data
+  const { clerkUserId, email, entraTenantId, name: userName } = pending
+
+  try {
     const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Generate a unique slug for the organization
+      let slug = generateSlug(name)
+      let slugSuffix = 0
+      while (await tx.organization.findUnique({ where: { slug } })) {
+        slugSuffix++
+        slug = `${generateSlug(name)}-${slugSuffix}`
+      }
+
       // 1. Create the organization
       const org = await tx.organization.create({
         data: {
-          name: data.workspaceName,
-          slug: data.workspaceSlug,
-          logoUrl: data.workspaceLogoUrl || null,
-          color: data.workspaceColor || '#7C3AED',
-          industry: data.industry,
-          usageContext: data.usageContext,
-          featureInterests: data.featureInterests,
-          referralSource: data.referralSource || null,
-          phoneNumber: data.phoneNumber || null,
+          name,
+          slug,
+          entraTenantId,
+          industry,
           onboardingComplete: true,
         },
       })
 
-      // 2. Create the owner member
-      // Using a placeholder clerkUserId until Clerk is integrated
-      const owner = await tx.member.create({
+      // 2. Get the Owner role for assignment
+      const ownerRole = await tx.role.findUnique({ where: { key: 'owner' } })
+      if (!ownerRole) {
+        throw new Error('Owner role not found — RBAC may not be seeded')
+      }
+
+      // 3. Create the founding member as ADMIN with Owner role
+      const member = await tx.member.create({
         data: {
-          clerkUserId: `user_${crypto.randomUUID().slice(0, 8)}`,
-          email: `owner@${data.workspaceSlug}.nexus`,
-          name: 'Workspace Owner',
+          clerkUserId,
+          email: normaliseEmail(email),
+          name: userName,
           role: 'ADMIN',
+          roleId: ownerRole.id,
+          lifecycleStatus: 'active',
           orgId: org.id,
         },
       })
 
-      // 3. Create departments
-      for (const deptName of data.departments) {
-        const defaults = DEPT_DEFAULTS[deptName] || { icon: 'circle', color: '#0A84FF' }
+      // 4. Create brands
+      for (let i = 0; i < brands.length; i++) {
+        await tx.brand.create({
+          data: {
+            name: brands[i],
+            color: BRAND_COLORS[i % BRAND_COLORS.length],
+            icon: BRAND_ICONS[i % BRAND_ICONS.length],
+            orgId: org.id,
+          },
+        })
+      }
+
+      // 5. Create builtin departments
+      for (const dept of BUILTIN_DEPARTMENTS) {
         await tx.department.create({
           data: {
-            name: deptName,
-            icon: defaults.icon,
-            color: defaults.color,
-            type: 'CUSTOM',
+            name: dept.name,
+            code: dept.code,
+            type: dept.type,
+            icon: dept.icon,
+            color: dept.color,
             orgId: org.id,
           },
         })
       }
 
-      // 4. Create integration stubs
-      for (const integrationName of data.integrations) {
-        if (integrationName === 'None of the above') continue
-        const intType = INTEGRATION_TYPE_MAP[integrationName] || integrationName.toUpperCase().replace(/\s+/g, '_')
-        await tx.integration.create({
-          data: {
-            type: intType,
-            name: integrationName,
-            status: 'DISCONNECTED',
-            orgId: org.id,
-          },
-        })
-      }
-
-      // 5. Create invites with unique tokens
-      const invites = []
-      for (const invite of data.invites) {
-        if (!invite.email) continue
-        const token = crypto.randomUUID()
-        const created = await tx.organizationInvite.create({
-          data: {
-            orgId: org.id,
-            invitedEmail: invite.email,
-            role: invite.role,
-            invitedBy: owner.id,
-            token,
-            status: 'pending',
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-          },
-        })
-        invites.push(created)
-      }
-
-      return { org, owner, invites }
-    })
-
-    // TODO: Queue invite emails via BullMQ after transaction succeeds
-    // for (const invite of result.invites) {
-    //   await emailQueue.add('send-invite', { invite })
-    // }
-
-    res.status(201).json({
-      orgId: result.org.id,
-      slug: result.org.slug,
-      redirectUrl: '/dashboard',
-    })
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return res.status(400).json({
-        error: 'Validation failed',
-        details: err.errors.map((e) => ({ path: e.path.join('.'), message: e.message })),
+      // 6. Create user preferences
+      await tx.userPreference.create({
+        data: { memberId: member.id },
       })
-    }
-    console.error('[Onboarding] Error:', err)
-    res.status(500).json({ error: 'Failed to create workspace. Please try again.' })
-  }
-})
 
-// ─── GET /onboarding/check-slug/:slug ───────────────────────
-onboardingRoutes.get('/check-slug/:slug', async (req, res) => {
-  try {
-    const { slug } = req.params
-    const existing = await prisma.organization.findUnique({
-      where: { slug },
-      select: { id: true },
+      return { org, member }
     })
-    res.json({ available: !existing })
-  } catch (err) {
-    console.error('[Onboarding] Slug check error:', err)
-    res.status(500).json({ error: 'Failed to check slug availability' })
+
+    // Clear pending state and establish the authenticated session
+    clearPendingOnboarding(req.session)
+    ;(req.session as any).userId = result.member.id
+    stampLastLogin(result.member.id)
+
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) reject(err)
+        else resolve()
+      })
+    })
+
+    return res.status(201).json({
+      orgId: result.org.id,
+      memberId: result.member.id,
+      redirectUrl: '/',
+    })
+  } catch (err: any) {
+    // P2002 = unique constraint violation — likely a race condition where
+    // another request already provisioned this tenant. Re-read and join.
+    if (err?.code === 'P2002') {
+      const existingOrg = await prisma.organization.findUnique({
+        where: { entraTenantId },
+      })
+      if (existingOrg) {
+        // Org was created by a concurrent request. Check if member exists.
+        const existingMember = await prisma.member.findFirst({
+          where: { orgId: existingOrg.id, clerkUserId },
+        })
+        if (existingMember) {
+          // Already fully provisioned — establish session and return success
+          clearPendingOnboarding(req.session)
+          ;(req.session as any).userId = existingMember.id
+          stampLastLogin(existingMember.id)
+          await new Promise<void>((resolve, reject) => {
+            req.session.save((err) => (err ? reject(err) : resolve()))
+          })
+          return res.status(200).json({
+            orgId: existingOrg.id,
+            memberId: existingMember.id,
+            redirectUrl: '/',
+          })
+        }
+        // Org exists but member doesn't — this shouldn't happen in normal flow
+        // but handle it by creating the member
+        const ownerRole = await prisma.role.findUnique({ where: { key: 'owner' } })
+        const member = await prisma.member.create({
+          data: {
+            clerkUserId,
+            email: normaliseEmail(email),
+            name: userName,
+            role: 'ADMIN',
+            roleId: ownerRole?.id,
+            lifecycleStatus: 'active',
+            orgId: existingOrg.id,
+          },
+        })
+        await prisma.userPreference.create({ data: { memberId: member.id } })
+        clearPendingOnboarding(req.session)
+        ;(req.session as any).userId = member.id
+        stampLastLogin(member.id)
+        await new Promise<void>((resolve, reject) => {
+          req.session.save((err) => (err ? reject(err) : resolve()))
+        })
+        return res.status(200).json({
+          orgId: existingOrg.id,
+          memberId: member.id,
+          redirectUrl: '/',
+        })
+      }
+    }
+    console.error('[onboarding] provision failed:', err)
+    return res.status(500).json({
+      error: 'Failed to create workspace',
+      message: 'Something went wrong. Please try again.',
+    })
   }
 })
 
 // ─── GET /onboarding/status — Check if onboarding is complete ─
-onboardingRoutes.get('/status', async (_req, res) => {
-  try {
-    // Find the first org (since auth isn't integrated yet)
-    // When Clerk is integrated, this will use the authenticated user's org
-    const org = await prisma.organization.findFirst({
-      select: { id: true, onboardingComplete: true },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    if (!org) {
-      return res.json({ onboardingComplete: false, hasOrg: false })
+// Used by OnboardingGuard to determine if wizard should show.
+// Returns onboardingComplete for the acting member's org.
+onboardingRoutes.get('/status', async (req: Request, res: Response) => {
+  const member = (req as any).member
+  if (!member) {
+    // Check pending state
+    const pending = getPendingOnboarding(req.session)
+    if (pending) {
+      return res.json({ onboardingComplete: false, hasOrg: false, needsOnboarding: true })
     }
-
-    res.json({ onboardingComplete: org.onboardingComplete, hasOrg: true, orgId: org.id })
-  } catch (err) {
-    console.error('[Onboarding] Status check error:', err)
-    res.status(500).json({ error: 'Failed to check onboarding status' })
+    return res.status(401).json({ error: 'Unauthorized' })
   }
+
+  // Member exists — they have completed onboarding by definition
+  return res.json({
+    onboardingComplete: true,
+    hasOrg: true,
+    orgId: member.orgId,
+  })
 })

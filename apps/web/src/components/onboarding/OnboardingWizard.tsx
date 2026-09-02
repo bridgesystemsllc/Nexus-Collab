@@ -1,92 +1,69 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { useAppStore } from '@/stores/appStore'
-import { ProgressBar } from './shared/ProgressBar'
-import { StepUsageContext } from './steps/StepUsageContext'
+import { ChevronLeft, ChevronRight, Check, Building2 } from 'lucide-react'
+import { StepCompanyName } from './steps/StepCompanyName'
 import { StepIndustry } from './steps/StepIndustry'
-import { StepDepartments } from './steps/StepDepartments'
-import { StepIntegrations } from './steps/StepIntegrations'
-import { StepFeatures } from './steps/StepFeatures'
-import { StepWorkspace } from './steps/StepWorkspace'
-import { StepInviteTeam } from './steps/StepInviteTeam'
-import { StepReferral } from './steps/StepReferral'
+import { StepBrands } from './steps/StepBrands'
 
 interface OnboardingData {
-  usageContext: string
+  name: string
   industry: string
-  departments: string[]
-  integrations: string[]
-  featureInterests: string[]
-  workspaceName: string
-  workspaceSlug: string
-  workspaceColor: string
-  workspaceLogoUrl: string
-  invites: { email: string; role: string }[]
-  phoneNumber: string
-  referralSource: string
+  brands: string[]
+}
+
+interface Props {
+  pendingUser: { email: string; name: string }
+  onSuccess: () => void
 }
 
 const INITIAL_DATA: OnboardingData = {
-  usageContext: '',
+  name: '',
   industry: '',
-  departments: [],
-  integrations: [],
-  featureInterests: [],
-  workspaceName: '',
-  workspaceSlug: '',
-  workspaceColor: '#7C3AED',
-  workspaceLogoUrl: '',
-  invites: [{ email: '', role: 'member' }],
-  phoneNumber: '',
-  referralSource: '',
+  brands: [''],
 }
 
-const TOTAL_STEPS = 8
+const TOTAL_STEPS = 3
 
 const LOADING_MESSAGES = [
-  'Building your workspace...',
-  'Setting up your departments...',
-  'Configuring your integrations...',
-  'Almost there...',
+  'Creating your workspace...',
+  'Setting up departments...',
+  'Configuring brands...',
+  'Almost ready...',
 ]
 
-export function OnboardingWizard() {
+export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
   const [step, setStep] = useState(1)
   const [data, setData] = useState<OnboardingData>(INITIAL_DATA)
   const [showSuccess, setShowSuccess] = useState(false)
   const [loadingMessage, setLoadingMessage] = useState('')
-  const setPage = useAppStore((s) => s.setPage)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const submitMutation = useMutation({
     mutationFn: async (payload: OnboardingData) => {
-      // Filter out empty invites
-      const cleanInvites = payload.invites.filter((i) => i.email.trim())
+      const cleanBrands = payload.brands.filter((b) => b.trim())
       return api.post('/onboarding', {
-        ...payload,
-        invites: cleanInvites,
-        workspaceLogoUrl: payload.workspaceLogoUrl || undefined,
-        phoneNumber: payload.phoneNumber || undefined,
-        referralSource: payload.referralSource || undefined,
-        workspaceColor: payload.workspaceColor || undefined,
+        name: payload.name,
+        industry: payload.industry,
+        brands: cleanBrands,
       }).then((r) => r.data)
     },
     onSuccess: () => {
-      // Store meeting bot banner flag if selected
-      if (data.featureInterests.includes('meeting_ai_bot')) {
-        localStorage.setItem('nexus-show-meeting-bot-banner', 'true')
-      }
       setShowSuccess(true)
       setTimeout(() => {
-        setPage('dashboard')
-        // Force reload to pick up onboarding complete status
-        window.location.reload()
-      }, 2500)
+        onSuccess()
+      }, 2000)
+    },
+    onError: (err: any) => {
+      const response = err?.response?.data
+      if (response?.fields) {
+        setFieldErrors(response.fields)
+      }
     },
   })
 
   const handleSubmit = async () => {
-    // Animate through loading messages
+    setFieldErrors({})
     let msgIndex = 0
     setLoadingMessage(LOADING_MESSAGES[0])
     const interval = setInterval(() => {
@@ -94,7 +71,7 @@ export function OnboardingWizard() {
       if (msgIndex < LOADING_MESSAGES.length) {
         setLoadingMessage(LOADING_MESSAGES[msgIndex])
       }
-    }, 2000)
+    }, 1500)
 
     try {
       await submitMutation.mutateAsync(data)
@@ -108,44 +85,61 @@ export function OnboardingWizard() {
 
   const update = <K extends keyof OnboardingData>(key: K, value: OnboardingData[K]) => {
     setData((prev) => ({ ...prev, [key]: value }))
+    if (fieldErrors[key]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+    }
+  }
+
+  // Validation for each step
+  const canContinue = () => {
+    switch (step) {
+      case 1:
+        return data.name.trim().length > 0
+      case 2:
+        return data.industry.trim().length > 0
+      case 3:
+        return data.brands.some((b) => b.trim().length > 0)
+      default:
+        return false
+    }
   }
 
   // Success screen
   if (showSuccess) {
     return (
-      <div className="fixed inset-0 bg-[var(--bg-base)] flex items-center justify-center z-50">
-        <div className="text-center animate-step-enter">
-          {/* Animated checkmark */}
-          <div className="w-20 h-20 rounded-full bg-[var(--success)]/20 flex items-center justify-center mx-auto mb-6">
-            <svg className="w-10 h-10 text-[var(--success)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 6L9 17l-5-5" className="animate-check-draw" style={{ strokeDasharray: 30, strokeDashoffset: 30 }} />
-            </svg>
+      <div className="fixed inset-0 flex items-center justify-center" style={{ background: 'var(--bg-base)' }}>
+        <div className="text-center animate-fade-in">
+          <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6" style={{ background: 'color-mix(in srgb, var(--success) 15%, transparent)' }}>
+            <Check size={40} style={{ color: 'var(--success)' }} />
           </div>
-          <h2 className="text-[28px] font-semibold text-[var(--text-primary)] tracking-[-0.04em] mb-2">
-            Welcome to Nexus Collab
+          <h2 className="text-[28px] font-semibold tracking-tight mb-2" style={{ color: 'var(--text-primary)' }}>
+            Welcome to NEXUS
           </h2>
-          <p className="text-[15px] text-[var(--text-secondary)]">
-            Your workspace is ready. Redirecting to your dashboard...
+          <p className="text-[15px]" style={{ color: 'var(--text-secondary)' }}>
+            Your workspace is ready. Taking you to your dashboard...
           </p>
         </div>
       </div>
     )
   }
 
-  // Loading screen (during submission)
+  // Loading screen
   if (submitMutation.isPending) {
     return (
-      <div className="fixed inset-0 bg-[var(--bg-base)] flex items-center justify-center z-50">
+      <div className="fixed inset-0 flex items-center justify-center" style={{ background: 'var(--bg-base)' }}>
         <div className="text-center">
-          {/* Spinner */}
           <div className="w-16 h-16 mx-auto mb-6 relative">
-            <div className="absolute inset-0 rounded-full border-[3px] border-[var(--border-subtle)]" />
-            <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-[var(--accent)] animate-spin" />
+            <div className="absolute inset-0 rounded-full border-[3px]" style={{ borderColor: 'var(--border-subtle)' }} />
+            <div className="absolute inset-0 rounded-full border-[3px] border-transparent animate-spin" style={{ borderTopColor: 'var(--accent)' }} />
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
+              <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--accent)' }} />
             </div>
           </div>
-          <p className="text-[17px] text-[var(--text-primary)] font-medium tracking-[-0.02em] animate-fade-in">
+          <p className="text-[17px] font-medium tracking-tight animate-fade-in" style={{ color: 'var(--text-primary)' }}>
             {loadingMessage}
           </p>
         </div>
@@ -154,111 +148,158 @@ export function OnboardingWizard() {
   }
 
   return (
-    <div className="fixed inset-0 bg-[var(--bg-base)] flex items-center justify-center z-50">
-      {/* Background subtle grid */}
+    <div className="min-h-screen flex" style={{ background: 'var(--bg-base)' }}>
+      {/* Left panel — brand / context */}
       <div
-        className="absolute inset-0 opacity-[0.03]"
+        className="hidden md:flex flex-col justify-between w-1/2 p-12 relative overflow-hidden"
         style={{
-          backgroundImage: 'linear-gradient(var(--text-primary) 1px, transparent 1px), linear-gradient(90deg, var(--text-primary) 1px, transparent 1px)',
-          backgroundSize: '60px 60px',
+          background: 'linear-gradient(160deg, var(--accent) 0%, #5b21b6 60%, #1e1b4b 100%)',
         }}
-      />
+      >
+        <div className="text-white">
+          <div className="text-[22px] font-bold tracking-tight">NEXUS</div>
+          <div className="text-[13px] opacity-80 mt-1">Company Onboarding</div>
+        </div>
 
-      {/* Main card */}
-      <div className="relative w-full max-w-[640px] mx-4 max-h-[90vh] flex flex-col">
-        {/* Glass card container */}
-        <div className="glass-card p-8 flex flex-col max-h-[85vh]">
-          {/* Progress */}
-          <div className="mb-6 flex-shrink-0">
-            <ProgressBar currentStep={step} totalSteps={TOTAL_STEPS} />
+        <div className="text-white max-w-md">
+          <h1 className="text-[36px] font-bold leading-[1.1] tracking-tight">
+            Set up your workspace
+          </h1>
+          <p className="text-[16px] opacity-85 mt-5 leading-relaxed">
+            In just a few steps, you'll have a fully configured workspace with your departments, brands, and team ready to go.
+          </p>
+
+          <div className="mt-8 space-y-3">
+            <StepIndicator number={1} label="Company name" active={step === 1} completed={step > 1} />
+            <StepIndicator number={2} label="Industry" active={step === 2} completed={step > 2} />
+            <StepIndicator number={3} label="Brands" active={step === 3} completed={step > 3} />
+          </div>
+        </div>
+
+        <div className="text-white/70 text-[12px]">
+          Signed in as {pendingUser.email}
+        </div>
+      </div>
+
+      {/* Right panel — wizard form */}
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="w-full max-w-md">
+          {/* Mobile header */}
+          <div className="md:hidden mb-8">
+            <div className="flex items-center gap-2 mb-2">
+              <Building2 size={20} style={{ color: 'var(--accent)' }} />
+              <div className="text-[18px] font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+                NEXUS
+              </div>
+            </div>
+            <div className="text-[13px]" style={{ color: 'var(--text-tertiary)' }}>
+              Company Onboarding • Step {step} of {TOTAL_STEPS}
+            </div>
           </div>
 
+          {/* Progress bar (mobile) */}
+          <div className="md:hidden mb-6">
+            <div className="h-1 rounded-full overflow-hidden" style={{ background: 'var(--border-subtle)' }}>
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{
+                  width: `${(step / TOTAL_STEPS) * 100}%`,
+                  background: 'var(--accent)',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Error banner */}
+          {submitMutation.isError && Object.keys(fieldErrors).length === 0 && (
+            <div
+              className="mb-6 rounded-lg px-4 py-3 text-[13px]"
+              style={{
+                background: 'color-mix(in srgb, #ef4444 12%, transparent)',
+                color: '#ef4444',
+                border: '1px solid color-mix(in srgb, #ef4444 35%, transparent)',
+              }}
+            >
+              Failed to create workspace. Please try again.
+            </div>
+          )}
+
           {/* Step content */}
-          <div className="flex-1 overflow-hidden">
+          <div className="min-h-[320px]">
             {step === 1 && (
-              <StepUsageContext
-                value={data.usageContext}
-                onChange={(v) => update('usageContext', v)}
-                onContinue={next}
+              <StepCompanyName
+                value={data.name}
+                onChange={(v) => update('name', v)}
+                error={fieldErrors.name}
               />
             )}
             {step === 2 && (
               <StepIndustry
                 value={data.industry}
                 onChange={(v) => update('industry', v)}
-                onBack={back}
-                onContinue={next}
+                error={fieldErrors.industry}
               />
             )}
             {step === 3 && (
-              <StepDepartments
-                value={data.departments}
-                onChange={(v) => update('departments', v)}
-                onBack={back}
-                onContinue={next}
+              <StepBrands
+                value={data.brands}
+                onChange={(v) => update('brands', v)}
+                error={fieldErrors.brands}
               />
             )}
-            {step === 4 && (
-              <StepIntegrations
-                value={data.integrations}
-                onChange={(v) => update('integrations', v)}
-                onBack={back}
-                onContinue={next}
-                onSkip={next}
-              />
-            )}
-            {step === 5 && (
-              <StepFeatures
-                value={data.featureInterests}
-                onChange={(v) => update('featureInterests', v)}
-                onBack={back}
-                onContinue={next}
-                onSkip={next}
-              />
-            )}
-            {step === 6 && (
-              <StepWorkspace
-                value={{
-                  workspaceName: data.workspaceName,
-                  workspaceSlug: data.workspaceSlug,
-                  workspaceColor: data.workspaceColor,
-                  workspaceLogoUrl: data.workspaceLogoUrl,
-                }}
-                onChange={(v) => setData((prev) => ({ ...prev, ...v }))}
-                onBack={back}
-                onContinue={next}
-              />
-            )}
-            {step === 7 && (
-              <StepInviteTeam
-                invites={data.invites}
-                phoneNumber={data.phoneNumber}
-                onChangeInvites={(v) => update('invites', v)}
-                onChangePhone={(v) => update('phoneNumber', v)}
-                onBack={back}
-                onContinue={next}
-                onSkip={next}
-              />
-            )}
-            {step === 8 && (
-              <StepReferral
-                value={data.referralSource}
-                onChange={(v) => update('referralSource', v)}
-                onBack={back}
-                onSubmit={handleSubmit}
-                isLoading={submitMutation.isPending}
-              />
-            )}
+          </div>
+
+          {/* Navigation */}
+          <div className="flex items-center justify-between pt-6 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+            <div>
+              {step > 1 && (
+                <button
+                  onClick={back}
+                  className="flex items-center gap-1 text-[14px] transition-colors hover:opacity-80"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  <ChevronLeft size={16} />
+                  Back
+                </button>
+              )}
+            </div>
+
+            <button
+              onClick={step === TOTAL_STEPS ? handleSubmit : next}
+              disabled={!canContinue()}
+              className="btn-primary flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {step === TOTAL_STEPS ? 'Create workspace' : 'Continue'}
+              {step < TOTAL_STEPS && <ChevronRight size={16} />}
+            </button>
           </div>
         </div>
-
-        {/* Error toast */}
-        {submitMutation.isError && (
-          <div className="mt-4 p-4 bg-[var(--danger)]/10 border border-[var(--danger)]/30 rounded-[12px] text-[14px] text-[var(--danger)] animate-fade-in">
-            Failed to create workspace. Please try again.
-          </div>
-        )}
       </div>
+    </div>
+  )
+}
+
+function StepIndicator({
+  number,
+  label,
+  active,
+  completed,
+}: {
+  number: number
+  label: string
+  active: boolean
+  completed: boolean
+}) {
+  return (
+    <div className={`flex items-center gap-3 ${active ? 'opacity-100' : 'opacity-60'}`}>
+      <div
+        className={`w-7 h-7 rounded-full flex items-center justify-center text-[13px] font-medium ${
+          completed ? 'bg-white/20' : active ? 'bg-white text-[#5b21b6]' : 'bg-white/10'
+        }`}
+      >
+        {completed ? <Check size={14} /> : number}
+      </div>
+      <span className={`text-[14px] ${active ? 'font-medium' : ''}`}>{label}</span>
     </div>
   )
 }

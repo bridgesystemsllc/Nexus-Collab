@@ -63,6 +63,28 @@ export class UnknownTenantError extends Error {
   }
 }
 
+/// Stored in session when a Microsoft identity has no Organization yet.
+/// The user has authenticated but needs to provision their workspace.
+export interface PendingOnboarding {
+  clerkUserId: string
+  email: string
+  name: string
+  entraTenantId: string
+}
+
+/// Type-safe session access for pending onboarding state.
+export function getPendingOnboarding(session: any): PendingOnboarding | null {
+  return session?.pendingOnboarding ?? null
+}
+
+export function setPendingOnboarding(session: any, pending: PendingOnboarding): void {
+  session.pendingOnboarding = pending
+}
+
+export function clearPendingOnboarding(session: any): void {
+  delete session.pendingOnboarding
+}
+
 /**
  * Which Organization is this person signing in to?
  *
@@ -242,5 +264,14 @@ export async function attachMember(req: Request, _res: Response, next: NextFunct
 // ─── Require a valid session ─────────────────────────────────
 export const isAuthenticated: RequestHandler = (req, res, next) => {
   if ((req.session as any)?.userId) return next()
+  return res.status(401).json({ error: 'Unauthorized' })
+}
+
+// ─── Require either a member OR pending onboarding state ─────
+// Used by onboarding routes that need to work for pending users (POST /onboarding)
+// as well as authenticated members (GET /onboarding/status).
+export const requirePendingOrMember: RequestHandler = (req, res, next) => {
+  if ((req.session as any)?.userId) return next()
+  if (getPendingOnboarding(req.session)) return next()
   return res.status(401).json({ error: 'Unauthorized' })
 }

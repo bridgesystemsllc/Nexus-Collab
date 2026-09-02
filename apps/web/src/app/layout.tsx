@@ -3,7 +3,6 @@ import { useAppStore } from '@/stores/appStore'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
 import { AIPanel } from '@/components/layout/AIPanel'
-import { OnboardingGuard } from '@/components/onboarding/OnboardingGuard'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { DashboardPage } from '@/app/routes/dashboard'
 import { EverythingPage } from '@/app/routes/everything'
@@ -93,23 +92,21 @@ export function App() {
   }, [setPage])
 
   return (
-    <OnboardingGuard>
-      <div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
-        <Sidebar />
+    <div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
+      <Sidebar />
 
-        <div className="flex-1 flex flex-col min-w-0">
-          <TopBar />
-          <main className="flex-1 overflow-y-auto">
-            <MeetingBotBanner />
-            <ErrorBoundary>
-              <PageContent />
-            </ErrorBoundary>
-          </main>
-        </div>
-
-        {aiPanelOpen && <AIPanel />}
+      <div className="flex-1 flex flex-col min-w-0">
+        <TopBar />
+        <main className="flex-1 overflow-y-auto">
+          <MeetingBotBanner />
+          <ErrorBoundary>
+            <PageContent />
+          </ErrorBoundary>
+        </main>
       </div>
-    </OnboardingGuard>
+
+      {aiPanelOpen && <AIPanel />}
+    </div>
   )
 }
 

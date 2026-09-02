@@ -14,7 +14,13 @@ import {
   graphPost,
   MicrosoftNotConnectedError,
 } from '../lib/microsoftGraph'
-import { upsertMemberFromMicrosoft, stampLastLogin, UnknownTenantError } from '../auth/session'
+import {
+  upsertMemberFromMicrosoft,
+  stampLastLogin,
+  UnknownTenantError,
+  setPendingOnboarding,
+  type PendingOnboarding,
+} from '../auth/session'
 
 // OAuth state stored server-side in the session: single-use. `flow` tells the
 // shared callback whether this was a primary login (no prior member) or a
@@ -139,11 +145,46 @@ microsoftGraphRoutes.get('/callback', async (req: Request, res: Response) => {
         loggedInMember = await upsertMemberFromMicrosoft(profile, tokens)
       } catch (err) {
         if (err instanceof UnknownTenantError) {
-          // A real identity from an organization Nexus does not know. This is
-          // the normal path for someone whose company has not been onboarded,
-          // so it gets its own reason rather than looking like a broken login.
-          console.warn(`[auth] sign-in from unregistered tenant ${err.tenantId ?? '(none)'}`)
-          return res.redirect(APP_REDIRECT('error', 'unknown_tenant'))
+          // A real identity from an organization Nexus does not know. Instead
+          // of an error redirect, store the pending onboarding state so the
+          // user can provision their workspace via the onboarding wizard.
+          if (!err.tenantId) {
+            // No tenant ID in the token — cannot provision. This happens when
+            // someone signs in with a personal Microsoft account rather than
+            // a work/school account.
+            console.warn('[auth] sign-in with no Entra tenant ID')
+            return res.redirect(APP_REDIRECT('error', 'no_entra_tenant'))
+          }
+          const entraTenantId: string = err.tenantId
+          console.log(`[auth] unknown tenant ${entraTenantId} — starting onboarding flow`)
+          const clerkUserId = profile.id
+          if (!clerkUserId) {
+            console.warn('[auth] Microsoft profile missing id')
+            return res.redirect(APP_REDIRECT('error', 'exchange_failed'))
+          }
+          const email = profile.mail || profile.userPrincipalName || ''
+          const name = profile.displayName || email.split('@')[0] || 'New User'
+          const pending: PendingOnboarding = {
+            clerkUserId,
+            email,
+            name,
+            entraTenantId,
+          }
+          return req.session.regenerate((regenErr) => {
+            if (regenErr) {
+              console.error('[auth] failed to regenerate session for onboarding:', regenErr)
+              return res.redirect(APP_REDIRECT('error', 'session_persist_failed'))
+            }
+            setPendingOnboarding(req.session, pending)
+            req.session.save((saveErr) => {
+              if (saveErr) {
+                console.error('[auth] failed to save pending onboarding session:', saveErr)
+                return res.redirect(APP_REDIRECT('error', 'session_persist_failed'))
+              }
+              // Redirect to root — AuthGate will detect needs_onboarding and show wizard
+              res.redirect('/')
+            })
+          })
         }
         throw err
       }
