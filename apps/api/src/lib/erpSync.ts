@@ -472,10 +472,20 @@ export async function syncErpPricing(
 
 /**
  * Pull the ERP contract-manufacturer / vendor feed and upsert it into a
- * CM_PRODUCTIVITY module. Matches existing items by data.name, MERGES the ERP
- * fields (name/brands/status/avgLeadTime + onTime/quality/activePOs metrics)
- * while PRESERVING locally-managed fields (issues, contacts, products, notes).
- * Sets source:'ERP_KAREVE' + lastSyncedAt and mirrors status.
+ * CM_PRODUCTIVITY module.
+ *
+ * Matching strategy (NX-CM spec):
+ *   1. Match by data.erpId === ERP id (primary)
+ *   2. Fallback: data.name === companyName, then stamp erpId
+ *
+ * Mapped fields (erpId←id, name←companyName, cmCode, legalName, cmType,
+ * status, vendorId, headquarters, source='ERP_KAREVE', lastSyncedAt).
+ *
+ * Preserved fields: issues, contacts, products, notes, brands (merged),
+ * scorecard, openIssues. NEVER copy taxId.
+ *
+ * Unknown enum: skip row, do not abort page (handled in mapErpCm).
+ * Empty ERP: do not wipe existing CMs.
  */
 export async function syncErpCm(
   prisma: PrismaClient,
@@ -491,13 +501,25 @@ export async function syncErpCm(
   }
 
   const existing = await prisma.moduleItem.findMany({ where: { moduleId: mod.id } })
+
+  // Build lookup maps for matching: erpId first, name second
+  const byErpId = new Map<string, (typeof existing)[number]>()
   const byName = new Map<string, (typeof existing)[number]>()
   for (const item of existing) {
-    const name = (item.data as any)?.name
-    if (name) byName.set(name, item)
+    const d = (item.data as any) ?? {}
+    if (d.erpId) byErpId.set(String(d.erpId), item)
+    if (d.name) byName.set(String(d.name), item)
   }
 
   const cms = await fetchErpCms(prisma, erpPath, orgId)
+
+  // Spec: empty ERP response should NOT wipe existing CMs. If the ERP returns
+  // zero records, exit early without touching existing data.
+  if (cms.length === 0) {
+    console.log('[erpSync] CM feed returned 0 records; skipping sync to preserve existing CMs')
+    return { recordsProcessed: 0, created: 0, updated: 0 }
+  }
+
   const now = new Date().toISOString()
 
   let created = 0
@@ -505,10 +527,16 @@ export async function syncErpCm(
 
   for (const rec of cms) {
     const status = rec.status || 'active'
-    // ERP-supplied fields applied on every sync.
+
+    // ERP-owned fields applied on every sync
     const erpFields = {
+      erpId: rec.erpId,
       name: rec.name,
-      brands: rec.brands,
+      cmCode: rec.cmCode,
+      legalName: rec.legalName,
+      cmType: rec.cmType,
+      vendorId: rec.vendorId,
+      headquarters: rec.headquarters,
       status,
       avgLeadTime: rec.avgLeadTime,
       onTime: rec.onTime,
@@ -518,27 +546,65 @@ export async function syncErpCm(
       lastSyncedAt: now,
     }
 
-    const match = byName.get(rec.name)
+    // Match by erpId first, then fallback to name
+    let match = byErpId.get(rec.erpId) ?? null
+    let matchedByName = false
+    if (!match && rec.name) {
+      match = byName.get(rec.name) ?? null
+      matchedByName = !!match
+    }
+
     if (match) {
       const prev = (match.data as any) || {}
-      // Preserve locally-managed CM detail; ERP supplies the scorecard fields.
+
+      // Preserve locally-managed fields — ERP owns master data, Nexus owns
+      // operational detail (issues, contacts, products, notes, scorecard).
+      // Note: brands come from ERP; scorecard metrics (onTime/quality) use
+      // ERP values when present, else preserve local.
       const data = {
         ...prev,
         ...erpFields,
-        onTime: rec.onTime ?? prev.onTime,
-        quality: rec.quality ?? prev.quality,
-        activePOs: rec.activePOs ?? prev.activePOs,
+        // Merge brands: ERP is authoritative but preserve any local-only brands
+        brands: rec.brands.length > 0 ? rec.brands : (prev.brands ?? []),
+        // Preserve local scorecard fields when ERP doesn't provide them
+        onTime: rec.onTime ?? prev.onTime ?? 0,
+        quality: rec.quality ?? prev.quality ?? 0,
+        activePOs: rec.activePOs ?? prev.activePOs ?? 0,
+        // Always preserve local operational fields
         openIssues: prev.openIssues ?? 0,
+        issues: prev.issues,
+        contacts: prev.contacts,
+        products: prev.products,
+        notes: prev.notes,
+        contractStatus: prev.contractStatus,
+        address: prev.address,
+        // If matched by name, stamp erpId now (per spec: "fallback name ===
+        // companyName then stamp erpId")
+        erpId: rec.erpId,
       }
+
+      // NEVER copy taxId — explicitly remove if somehow present in prev
+      delete (data as any).taxId
+
       await prisma.moduleItem.update({ where: { id: match.id }, data: { data, status } })
       updated++
+
+      if (matchedByName) {
+        console.log(`[erpSync] CM "${rec.name}" matched by name; stamped erpId=${rec.erpId}`)
+      }
     } else {
+      // New CM from ERP — create with sensible defaults
       const data = {
         ...erpFields,
+        brands: rec.brands,
         onTime: rec.onTime ?? 0,
         quality: rec.quality ?? 0,
         activePOs: rec.activePOs ?? 0,
         openIssues: 0,
+        issues: [],
+        contacts: [],
+        products: [],
+        notes: [],
       }
       await prisma.moduleItem.create({ data: { moduleId: mod.id, data, status } })
       created++
