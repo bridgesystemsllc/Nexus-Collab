@@ -25,7 +25,8 @@
     "build:shared": "pnpm --filter @nexus/shared build",
     "db:seed:rbac": "pnpm --filter @nexus/prisma seed:rbac",
     "tenancy:audit": "node scripts/tenancy-audit.mjs",
-    "tokens:audit": "node scripts/design-tokens-audit.mjs"
+    "tokens:audit": "node scripts/design-tokens-audit.mjs",
+    "ops:sync-audit": "node scripts/erp-sync-audit.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
