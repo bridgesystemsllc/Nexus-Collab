@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { sanitizeIntegration, sanitizeAutomation, sanitizeAutomationRun } from '../../lib/connectors/mask'
+import { getCatalog } from './connectorService'
 
 describe('connectorService', () => {
   describe('sanitizeIntegration', () => {
@@ -251,6 +252,16 @@ describe('connectorService', () => {
       // This is verified by the schema and automationService
       // Default status is 'DRAFT'
       expect(true).toBe(true)
+    })
+  })
+
+  describe('getCatalog', () => {
+    it('marks catalog connector types as generic for the integrations UI', async () => {
+      const catalog = await getCatalog()
+
+      expect(catalog).not.toHaveLength(0)
+      expect(catalog.every((definition) => definition.isGeneric)).toBe(true)
+      expect(catalog.map((definition) => definition.type)).toContain('GENERIC_HTTP')
     })
   })
 })

@@ -85,8 +85,11 @@ export function serviceError(
   return { code, message, status }
 }
 
-export async function getCatalog(): Promise<typeof CONNECTOR_CATALOG> {
-  return CONNECTOR_CATALOG
+export async function getCatalog() {
+  return CONNECTOR_CATALOG.map((definition) => ({
+    ...definition,
+    isGeneric: isGenericType(definition.type),
+  }))
 }
 
 export async function listConnectors(
