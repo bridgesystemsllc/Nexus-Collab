@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Save, Loader2, Package, Box, Factory, Repeat2 } from 'lucide-react'
+import { Save, Loader2, Box, Factory, Repeat2 } from 'lucide-react'
 import { FullPageForm } from '@/components/shared/FullPageForm'
 import { useAppStore, type ActiveForm } from '@/stores/appStore'
 import { api } from '@/lib/api'
-import { BRAND_OPTIONS } from '@/components/ops/brandLabel'
 
 // ─── Shared context shape ───────────────────────────────────
 interface OpsFormContext {
@@ -134,56 +133,6 @@ function FooterBar({ submitting, saveError, onSave, saveLabel, icon }: { submitt
         </button>
       </div>
     </>
-  )
-}
-
-// ─── SKU Pipeline form ──────────────────────────────────────
-const SKU_STATUSES = ['Formula Pending', 'Component Sourcing', 'Awaiting Artwork', 'Pre-Production', 'In Production', 'Active', 'Discontinued']
-
-export function SkuPipelineFormPage({ form: activeForm }: { form: ActiveForm }) {
-  const { isEdit, submitting, saveError, save, closeForm } = useOpsPersist(activeForm)
-  const init = (activeForm.context?.initialData ?? {}) as Record<string, any>
-  const [d, setD] = useState({
-    name: init.name ?? '',
-    sku: init.sku ?? '',
-    upc: init.upc ?? '',
-    brand: init.brand ?? '',
-    owner: init.owner ?? '',
-    status: init.status ?? 'Formula Pending',
-    step: init.step ?? 1,
-    totalSteps: init.totalSteps ?? 6,
-    blocker: init.blocker ?? '',
-    linkedNpdId: init.linkedNpdId ?? null,
-  })
-  const set = (k: string, v: any) => setD((p) => ({ ...p, [k]: v }))
-
-  return (
-    <FullPageForm
-      title={isEdit ? 'Edit SKU Pipeline Entry' : 'New SKU Pipeline Entry'}
-      subtitle="Operations — SKU Pipeline"
-      onBack={closeForm}
-      backLabel="Back to SKU Pipeline"
-      headerExtra={<Package size={18} className="text-[var(--accent)]" />}
-      footer={<FooterBar submitting={submitting} saveError={saveError} onSave={() => save({ ...d, blocker: d.blocker || null }, d.status)} saveLabel={isEdit ? 'Save Changes' : 'Add SKU'} />}
-    >
-      <div className="space-y-5">
-        <Field label="Product name"><TextInput value={d.name} onChange={(v) => set('name', v)} placeholder="e.g. CD Scalp Detox Shampoo 8oz" /></Field>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="SKU number"><TextInput value={d.sku} onChange={(v) => set('sku', v)} placeholder="K6001100" mono /></Field>
-          <Field label="UPC"><TextInput value={d.upc} onChange={(v) => set('upc', v)} placeholder="0885221006011" mono /></Field>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Brand"><SelectInput value={d.brand} onChange={(v) => set('brand', v)} options={BRAND_OPTIONS} /></Field>
-          <Field label="Owner"><TextInput value={d.owner} onChange={(v) => set('owner', v)} placeholder="Operations" /></Field>
-        </div>
-        <Field label="Status"><SelectInput value={d.status} onChange={(v) => set('status', v)} options={SKU_STATUSES} /></Field>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Current step"><NumberInput value={d.step} onChange={(v) => set('step', v)} /></Field>
-          <Field label="Total steps"><NumberInput value={d.totalSteps} onChange={(v) => set('totalSteps', v)} /></Field>
-        </div>
-        <Field label="Blocker" hint="Leave blank if none."><TextInput value={d.blocker} onChange={(v) => set('blocker', v)} placeholder="e.g. TricorBraun MOQ pending" /></Field>
-      </div>
-    </FullPageForm>
   )
 }
 
