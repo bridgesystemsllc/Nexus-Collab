@@ -26,6 +26,7 @@ import { financeRoutes } from './routes/finance'
 import { memberRoutes } from './routes/members'
 import { emailAgentRoutes } from './routes/emailAgent'
 import { productRoutes } from './routes/products'
+import { componentRoutes } from './routes/components'
 import { brandTransitionRoutes } from './routes/brandTransition'
 import { taskAttachmentRoutes } from './routes/taskAttachments'
 import { techTransferStageRoutes } from './routes/techTransferStages'
@@ -193,6 +194,7 @@ api.use('/finance', financeRoutes)
 api.use('/members', memberRoutes)
 api.use('/email-agent', emailAgentRoutes)
 api.use('/products', productRoutes)
+api.use('/components', componentRoutes)
 api.use('/brand-transition', brandTransitionRoutes)
 api.use('/tasks', taskAttachmentRoutes)
 api.use('/tech-transfer-stages', techTransferStageRoutes)

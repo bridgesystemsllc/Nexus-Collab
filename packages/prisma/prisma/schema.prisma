@@ -274,6 +274,8 @@ model Product {
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
+  componentLinks ComponentProductLink[]
+
   @@index([orgId])
   @@index([status])
 }
@@ -1976,4 +1978,21 @@ model OorMeetingUpdate {
 
   @@index([oorLineId, meetingDate(sort: Desc)])
   @@index([status, dueDate])
+}
+
+// ─── Component → Product Assignment ─────────────────────────
+// NX-105: Org-scoped many-to-many join between Components (ModuleItem rows
+// where DepartmentModule.type === 'COMPONENTS') and Products. No Prisma model
+// 'Component' exists; componentId is a ModuleItem.id.
+model ComponentProductLink {
+  id          String   @id @default(cuid())
+  orgId       String
+  componentId String
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([orgId, componentId, productId])
+  @@index([orgId, componentId])
+  @@index([productId])
 }
