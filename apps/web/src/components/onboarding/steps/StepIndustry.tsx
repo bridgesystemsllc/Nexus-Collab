@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { Search } from 'lucide-react'
-import { StepLayout } from '../shared/StepLayout'
+import { Search, Factory } from 'lucide-react'
 
 const INDUSTRIES = [
   'Contract Manufacturing',
@@ -18,11 +17,10 @@ const INDUSTRIES = [
 interface Props {
   value: string
   onChange: (value: string) => void
-  onBack: () => void
-  onContinue: () => void
+  error?: string
 }
 
-export function StepIndustry({ value, onChange, onBack, onContinue }: Props) {
+export function StepIndustry({ value, onChange, error }: Props) {
   const [search, setSearch] = useState('')
   const [showOther, setShowOther] = useState(false)
   const [customValue, setCustomValue] = useState('')
@@ -51,41 +49,57 @@ export function StepIndustry({ value, onChange, onBack, onContinue }: Props) {
   }
 
   return (
-    <StepLayout
-      step={2}
-      totalSteps={8}
-      heading="What industry are you in?"
-      subheading="We'll tailor your workspace features accordingly."
-      canContinue={!!value}
-      onBack={onBack}
-      onContinue={onContinue}
-    >
+    <div className="animate-fade-in">
+      <div className="flex items-center gap-3 mb-2">
+        <Factory size={24} style={{ color: 'var(--accent)' }} />
+        <h2 className="text-[24px] font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+          What industry are you in?
+        </h2>
+      </div>
+      <p className="text-[14px] mb-6" style={{ color: 'var(--text-secondary)' }}>
+        We'll tailor your workspace features accordingly.
+      </p>
+
       {/* Search */}
       <div className="relative mb-4">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
+        <Search
+          size={16}
+          className="absolute left-3 top-1/2 -translate-y-1/2"
+          style={{ color: 'var(--text-tertiary)' }}
+        />
         <input
           type="text"
           placeholder="Search industries..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-9 pr-4 py-2.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-[10px] text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
+          className="w-full pl-9 pr-4 py-2.5 rounded-lg text-[14px] transition-colors focus:outline-none"
+          style={{
+            background: 'var(--bg-surface)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-default)',
+          }}
         />
       </div>
 
+      {error && (
+        <div className="mb-3 text-[12px]" style={{ color: 'var(--danger)' }}>
+          {error}
+        </div>
+      )}
+
       {/* Industry list */}
-      <div className="flex flex-col gap-1 max-h-[320px] overflow-y-auto">
+      <div className="flex flex-col gap-1 max-h-[240px] overflow-y-auto">
         {filtered.map((industry) => (
           <button
             key={industry}
+            type="button"
             onClick={() => handleSelect(industry)}
-            className={`
-              flex items-center px-4 py-3 rounded-[10px] text-[14px] font-medium text-left
-              transition-all duration-150 cursor-pointer
-              ${value === industry
-                ? 'bg-[var(--accent-subtle)] text-[var(--accent)] border border-[var(--accent)]'
-                : 'bg-[var(--bg-surface)] text-[var(--text-primary)] border border-transparent hover:bg-[var(--bg-elevated)]'
-              }
-            `}
+            className="flex items-center px-4 py-2.5 rounded-lg text-[14px] font-medium text-left transition-all duration-150 cursor-pointer"
+            style={{
+              background: value === industry ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'var(--bg-surface)',
+              color: value === industry ? 'var(--accent)' : 'var(--text-primary)',
+              border: value === industry ? '1px solid var(--accent)' : '1px solid transparent',
+            }}
           >
             {industry}
           </button>
@@ -93,15 +107,20 @@ export function StepIndustry({ value, onChange, onBack, onContinue }: Props) {
 
         {/* Other option */}
         <button
+          type="button"
           onClick={handleOtherToggle}
-          className={`
-            flex items-center px-4 py-3 rounded-[10px] text-[14px] font-medium text-left
-            transition-all duration-150 cursor-pointer
-            ${showOther && !INDUSTRIES.includes(value)
-              ? 'bg-[var(--accent-subtle)] text-[var(--accent)] border border-[var(--accent)]'
-              : 'bg-[var(--bg-surface)] text-[var(--text-primary)] border border-transparent hover:bg-[var(--bg-elevated)]'
-            }
-          `}
+          className="flex items-center px-4 py-2.5 rounded-lg text-[14px] font-medium text-left transition-all duration-150 cursor-pointer"
+          style={{
+            background: showOther && !INDUSTRIES.includes(value)
+              ? 'color-mix(in srgb, var(--accent) 12%, transparent)'
+              : 'var(--bg-surface)',
+            color: showOther && !INDUSTRIES.includes(value)
+              ? 'var(--accent)'
+              : 'var(--text-primary)',
+            border: showOther && !INDUSTRIES.includes(value)
+              ? '1px solid var(--accent)'
+              : '1px solid transparent',
+          }}
         >
           Other
         </button>
@@ -113,10 +132,15 @@ export function StepIndustry({ value, onChange, onBack, onContinue }: Props) {
             value={customValue}
             onChange={(e) => handleCustomChange(e.target.value)}
             autoFocus
-            className="px-4 py-2.5 bg-[var(--bg-surface)] border border-[var(--border-default)] rounded-[10px] text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors mt-1"
+            className="px-4 py-2.5 rounded-lg text-[14px] mt-1 transition-colors focus:outline-none"
+            style={{
+              background: 'var(--bg-surface)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-default)',
+            }}
           />
         )}
       </div>
-    </StepLayout>
+    </div>
   )
 }

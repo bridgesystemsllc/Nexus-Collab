@@ -52,7 +52,7 @@ import { jobRoutes } from './routes/jobs'
 import { emailRoutes } from './routes/emails'
 import { authRoutes } from './routes/auth'
 import { billingWebhookRoutes } from './routes/billingWebhooks'
-import { setupAuth, attachMember, isAuthenticated } from './auth/session'
+import { setupAuth, attachMember, isAuthenticated, requirePendingOrMember } from './auth/session'
 import { isLocalDevelopment } from './lib/devOnly'
 import { ensureDepartmentStructure } from './lib/ensureDepartmentStructure'
 import { ensureOorModule } from './services/oor/bootstrap'
@@ -156,6 +156,10 @@ api.use('/formulations-gate', formulationsGateRoutes)
 // its own (JOBS_TRIGGER_SECRET) — it must work without a user session, and it
 // is not part of the authenticated app surface.
 api.use('/jobs', jobRoutes)
+// Onboarding routes require either a pending onboarding session (for POST) or
+// an authenticated member (for GET /status). Mounted above isAuthenticated so
+// pending users can provision their workspace.
+api.use('/onboarding', requirePendingOrMember, onboardingRoutes)
 
 // ─── Everything below requires a session ───────────────────
 // The API authenticates by default. Anything mounted above this line is a
@@ -183,10 +187,6 @@ api.use('/integrations', integrationRoutes)
 api.use('/automations', automationRoutes)
 api.use('/ai', aiRoutes)
 api.use('/pulse', pulseRoutes)
-// OnboardingGuard (the only consumer of /onboarding/status) renders inside
-// AuthGate, so it is only ever called with a session already established —
-// gating it costs nothing and stops it leaking an org id to anonymous callers.
-api.use('/onboarding', onboardingRoutes)
 api.use('/briefs', briefRoutes)
 api.use('/cms', cmRoutes)
 api.use('/finance', financeRoutes)

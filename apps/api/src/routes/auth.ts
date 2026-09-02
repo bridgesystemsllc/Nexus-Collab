@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma } from '../index'
+import { getPendingOnboarding } from '../auth/session'
 
 export const authRoutes: ReturnType<typeof Router> = Router()
 
@@ -19,13 +20,27 @@ function shapeMember(member: any) {
 }
 
 // ─── Current authenticated member ───────────────────────────
-// Returns the NEXUS Member resolved from the session, shaped for the
-// frontend user store. 401 when there is no authenticated identity.
+// Returns:
+// - 200 with shaped member when signed in with an existing membership
+// - 200 with {status:'needs_onboarding',email,name} when pending onboarding
+// - 401 when there is no authenticated identity and no pending state
 authRoutes.get('/me', (req: Request, res: Response) => {
   const member = (req as any).member
-  if (!member) return res.status(401).json({ error: 'Unauthorized' })
+  if (member) {
+    return res.json(shapeMember(member))
+  }
 
-  res.json(shapeMember(member))
+  // Check for pending onboarding state (user authenticated but no org yet)
+  const pending = getPendingOnboarding(req.session)
+  if (pending) {
+    return res.json({
+      status: 'needs_onboarding',
+      email: pending.email,
+      name: pending.name,
+    })
+  }
+
+  return res.status(401).json({ error: 'Unauthorized' })
 })
 
 // ─── Update own profile ─────────────────────────────────────
