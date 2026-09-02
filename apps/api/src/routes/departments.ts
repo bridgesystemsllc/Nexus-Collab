@@ -9,10 +9,32 @@ export const departmentRoutes: ReturnType<typeof Router> = Router()
 // Direct trigger for pulling the ERP SKU/product master feed into the
 // Operations SKU Pipeline module. Mirrors /sku-pipeline/sync-from-npd and
 // runs request-driven (no Redis / Bull worker required).
+// Iterates each ERP_KAREVE_SYNC integration and syncs per-org.
 departmentRoutes.post('/sku-pipeline/sync-from-erp', async (_req: Request, res: Response) => {
   try {
-    const result = await syncErpSkuPipeline(prisma)
-    res.json(result)
+    // Find all ERP integrations and sync per-org
+    const integrations = await prisma.integration.findMany({
+      where: { type: 'ERP_KAREVE_SYNC' },
+      select: { orgId: true },
+    })
+
+    if (integrations.length === 0) {
+      return res.json({ recordsProcessed: 0, created: 0, updated: 0, message: 'No ERP integrations configured' })
+    }
+
+    let totalCreated = 0
+    let totalUpdated = 0
+    for (const integration of integrations) {
+      try {
+        const result = await syncErpSkuPipeline(prisma, integration.orgId)
+        totalCreated += result.created
+        totalUpdated += result.updated
+      } catch (err) {
+        console.error(`[departments] sync-from-erp for org ${integration.orgId} failed:`, err)
+      }
+    }
+
+    res.json({ recordsProcessed: totalCreated + totalUpdated, created: totalCreated, updated: totalUpdated })
   } catch (error) {
     console.error('[departments] POST /sku-pipeline/sync-from-erp error:', error)
     res.status(500).json({ error: 'Failed to sync SKU pipeline from ERP' })

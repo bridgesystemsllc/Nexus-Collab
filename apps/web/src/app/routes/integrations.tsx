@@ -56,7 +56,8 @@ import {
   useDeleteAutomation,
   usePauseAutomation,
   useResumeAutomation,
-  useTriggerAutomation,
+  useActivateAutomation,
+  useRunAutomation,
   useAutomationRuns,
   type ErpRoutingFeed,
   type ErpRoutingPatch,
@@ -1556,17 +1557,17 @@ function AutomationHistoryModal({
 
         {runs && runs.length > 0 && runs.map((run: AutomationRun) => {
           const badge = statusBadge(run.status)
-          const startTime = run.startedAt ? new Date(run.startedAt) : new Date(run.createdAt)
+          const startTime = new Date(run.startedAt)
           return (
             <div key={run.id} className="p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <span className={`badge text-[10px] ${badge.className}`}>{badge.label}</span>
                   <span className="text-[11px] text-[var(--text-tertiary)]">
-                    {run.triggeredBy === 'SCHEDULE' && <Clock size={10} className="inline mr-1" />}
-                    {run.triggeredBy === 'WEBHOOK' && <Webhook size={10} className="inline mr-1" />}
-                    {run.triggeredBy === 'MANUAL' && <Play size={10} className="inline mr-1" />}
-                    {run.triggeredBy}
+                    {run.trigger === 'SCHEDULE' && <Clock size={10} className="inline mr-1" />}
+                    {run.trigger === 'WEBHOOK' && <Webhook size={10} className="inline mr-1" />}
+                    {run.trigger === 'MANUAL' && <Play size={10} className="inline mr-1" />}
+                    {run.trigger}
                   </span>
                 </div>
                 <span className="text-[11px] text-[var(--text-tertiary)] tabular-nums">
@@ -1583,17 +1584,25 @@ function AutomationHistoryModal({
                     HTTP {run.httpStatus}
                   </span>
                 )}
+                {run.recordsProcessed > 0 && (
+                  <span className="tabular-nums">{run.recordsProcessed} processed</span>
+                )}
+                {run.recordsFailed > 0 && (
+                  <span className="tabular-nums text-[var(--danger)]">{run.recordsFailed} failed</span>
+                )}
               </div>
 
               {run.error && (
                 <p className="text-[12px] text-[var(--danger)] mt-2 font-mono break-all">
-                  {run.error}
+                  [{run.error.code}] {run.error.message}
                 </p>
               )}
 
-              <p className="text-[10px] text-[var(--text-tertiary)] mt-2 font-mono">
-                {run.requestId}
-              </p>
+              {run.idempotencyKey && (
+                <p className="text-[10px] text-[var(--text-tertiary)] mt-2 font-mono">
+                  {run.idempotencyKey}
+                </p>
+              )}
             </div>
           )
         })}
@@ -1618,13 +1627,21 @@ function AutomationModal({
   const isEdit = !!automation
   const [name, setName] = useState(automation?.name || '')
   const [description, setDescription] = useState(automation?.description || '')
-  const [integrationId, setIntegrationId] = useState(automation?.integrationId || '')
+  // §5.2: Use connectorId not integrationId
+  const [connectorId, setConnectorId] = useState(automation?.connectorId || '')
   const [triggerType, setTriggerType] = useState<'SCHEDULE' | 'WEBHOOK' | 'MANUAL'>(automation?.triggerType || 'MANUAL')
-  const [cronExpression, setCronExpression] = useState(automation?.cronExpression || '')
-  const [method, setMethod] = useState((automation?.config?.method as string) || 'GET')
-  const [path, setPath] = useState((automation?.config?.path as string) || '')
-  const [maxRetries, setMaxRetries] = useState(automation?.retryPolicy?.maxRetries ?? 3)
-  const [backoffMs, setBackoffMs] = useState(automation?.retryPolicy?.backoffMs ?? 1000)
+  // §5.2: Use triggerConfig.everyMinutes instead of cronExpression
+  const [everyMinutes, setEveryMinutes] = useState(automation?.triggerConfig?.everyMinutes ?? 15)
+  const [timezone, setTimezone] = useState(automation?.triggerConfig?.timezone || 'UTC')
+  // §5.2: Use actionType and actionConfig
+  const [actionType, setActionType] = useState<'HTTP_REQUEST' | 'MCP_CALL' | 'WEBHOOK_FORWARD'>(
+    (automation?.actionType as 'HTTP_REQUEST' | 'MCP_CALL' | 'WEBHOOK_FORWARD') || 'HTTP_REQUEST'
+  )
+  const [method, setMethod] = useState((automation?.actionConfig?.method as string) || 'GET')
+  const [path, setPath] = useState((automation?.actionConfig?.path as string) || '')
+  // §5.2: Use retryPolicy.maxAttempts instead of maxRetries
+  const [maxAttempts, setMaxAttempts] = useState(automation?.retryPolicy?.maxAttempts ?? 3)
+  const [baseDelayMs, setBaseDelayMs] = useState(automation?.retryPolicy?.baseDelayMs ?? 1000)
   const [error, setError] = useState('')
 
   const createAutomation = useCreateAutomation()
@@ -1643,21 +1660,24 @@ function AutomationModal({
       setError('Name is required')
       return
     }
-    if (!integrationId) {
+    if (!connectorId && !isEdit) {
       setError('Please select a connector')
       return
     }
-    if (triggerType === 'SCHEDULE' && !cronExpression.trim()) {
-      setError('Cron expression is required for scheduled automations')
-      return
-    }
 
-    const config: Record<string, unknown> = {
+    // §5.2: Build triggerConfig and actionConfig
+    const triggerConfig = triggerType === 'SCHEDULE' 
+      ? { everyMinutes, timezone }
+      : {}
+
+    const actionConfig = {
       method,
       path: path.trim() || '/',
     }
 
-    const retryPolicy = maxRetries > 0 ? { maxRetries, backoffMs } : null
+    const retryPolicy = maxAttempts > 0 
+      ? { maxAttempts, baseDelayMs, maxBackoffMs: baseDelayMs * 8 } 
+      : undefined
 
     try {
       if (isEdit) {
@@ -1665,21 +1685,21 @@ function AutomationModal({
           id: automation.id,
           name: name.trim(),
           description: description.trim() || undefined,
-          triggerType,
-          cronExpression: triggerType === 'SCHEDULE' ? cronExpression.trim() : null,
-          config,
-          retryPolicy,
+          triggerConfig,
+          actionConfig,
+          retryPolicy: retryPolicy || null,
         })
         onSuccess('Automation updated successfully')
       } else {
         await createAutomation.mutateAsync({
           name: name.trim(),
           description: description.trim() || undefined,
-          integrationId,
+          connectorId,
           triggerType,
-          cronExpression: triggerType === 'SCHEDULE' ? cronExpression.trim() : undefined,
-          config,
-          retryPolicy: retryPolicy || undefined,
+          triggerConfig,
+          actionType,
+          actionConfig,
+          retryPolicy,
         })
         onSuccess('Automation created successfully')
       }
@@ -1731,20 +1751,20 @@ function AutomationModal({
             </label>
             <div className="relative">
               <select
-                value={integrationId}
-                onChange={(e) => setIntegrationId(e.target.value)}
+                value={connectorId}
+                onChange={(e) => setConnectorId(e.target.value)}
                 className="w-full appearance-none px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
               >
                 <option value="">Select a connector...</option>
                 {genericIntegrations.map((i: any) => (
-                  <option key={i.id} value={i.id}>{i.name} ({i.type})</option>
+                  <option key={i.id} value={i.id}>{i.name} ({i.type.replace('GENERIC_', '')})</option>
                 ))}
               </select>
               <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none" />
             </div>
             {genericIntegrations.length === 0 && (
               <p className="text-[11px] text-[var(--text-tertiary)] mt-1.5">
-                No generic connectors available. Create an HTTP, MCP, or Webhook connector first.
+                No connectors available. Create an HTTP, MCP, or Webhook connector first.
               </p>
             )}
           </div>
@@ -1775,20 +1795,47 @@ function AutomationModal({
         </div>
 
         {triggerType === 'SCHEDULE' && (
-          <div>
-            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
-              Cron Expression
-            </label>
-            <input
-              type="text"
-              value={cronExpression}
-              onChange={(e) => setCronExpression(e.target.value)}
-              placeholder="*/5 * * * * (every 5 minutes)"
-              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors font-mono"
-            />
-            <p className="text-[11px] text-[var(--text-tertiary)] mt-1">
-              Standard cron format: minute hour day month weekday
-            </p>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                Run Every
+              </label>
+              <div className="flex gap-2">
+                {[15, 60, 1440].map((mins) => (
+                  <button
+                    key={mins}
+                    type="button"
+                    onClick={() => setEveryMinutes(mins)}
+                    className={`flex-1 px-3 py-2 rounded-[8px] text-[13px] border transition-colors ${
+                      everyMinutes === mins
+                        ? 'bg-[var(--accent-subtle)] border-[var(--accent)] text-[var(--accent)]'
+                        : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-default)]'
+                    }`}
+                  >
+                    {mins === 15 ? '15 min' : mins === 60 ? '1 hour' : '24 hours'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                Timezone
+              </label>
+              <div className="relative">
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="w-full appearance-none px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+                >
+                  <option value="UTC">UTC</option>
+                  <option value="America/New_York">Eastern Time (ET)</option>
+                  <option value="America/Chicago">Central Time (CT)</option>
+                  <option value="America/Denver">Mountain Time (MT)</option>
+                  <option value="America/Los_Angeles">Pacific Time (PT)</option>
+                </select>
+                <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none" />
+              </div>
+            </div>
           </div>
         )}
 
@@ -1827,27 +1874,27 @@ function AutomationModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
-              Max Retries
+              Max Attempts
             </label>
             <input
               type="number"
               min="0"
               max="10"
-              value={maxRetries}
-              onChange={(e) => setMaxRetries(parseInt(e.target.value) || 0)}
+              value={maxAttempts}
+              onChange={(e) => setMaxAttempts(parseInt(e.target.value) || 0)}
               className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors tabular-nums"
             />
           </div>
           <div>
             <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
-              Backoff (ms)
+              Base Delay (ms)
             </label>
             <input
               type="number"
               min="100"
               step="100"
-              value={backoffMs}
-              onChange={(e) => setBackoffMs(parseInt(e.target.value) || 1000)}
+              value={baseDelayMs}
+              onChange={(e) => setBaseDelayMs(parseInt(e.target.value) || 1000)}
               className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors tabular-nums"
             />
           </div>
@@ -1899,7 +1946,8 @@ function AutomationsPanel({
 
   const pauseAutomation = usePauseAutomation()
   const resumeAutomation = useResumeAutomation()
-  const triggerAutomation = useTriggerAutomation()
+  const activateAutomation = useActivateAutomation()
+  const runAutomation = useRunAutomation()
   const deleteAutomation = useDeleteAutomation()
 
   const handlePause = async (automation: Automation) => {
@@ -1920,12 +1968,23 @@ function AutomationsPanel({
     }
   }
 
-  const handleTrigger = async (automation: Automation) => {
+  // §5.2: POST /:id/activate for DRAFT → ACTIVE
+  const handleActivate = async (automation: Automation) => {
     try {
-      await triggerAutomation.mutateAsync(automation.id)
-      onToast({ type: 'success', message: `${automation.name} triggered` })
+      await activateAutomation.mutateAsync(automation.id)
+      onToast({ type: 'success', message: `${automation.name} activated` })
     } catch (err: any) {
-      onToast({ type: 'error', message: err?.response?.data?.error || 'Failed to trigger' })
+      onToast({ type: 'error', message: err?.response?.data?.error || 'Failed to activate' })
+    }
+  }
+
+  // §5.2: POST /:id/run executes immediately
+  const handleRun = async (automation: Automation) => {
+    try {
+      await runAutomation.mutateAsync(automation.id)
+      onToast({ type: 'success', message: `${automation.name} executed` })
+    } catch (err: any) {
+      onToast({ type: 'error', message: err?.response?.data?.error || 'Failed to run' })
     }
   }
 
@@ -2019,7 +2078,8 @@ function AutomationsPanel({
           {automationList.map((automation: Automation) => {
             const badge = statusBadge(automation.status)
             const TriggerIcon = triggerIcon(automation.triggerType)
-            const integration = integrations.find((i: any) => i.id === automation.integrationId)
+            // §5.2: Use connectorId instead of integrationId
+            const integration = integrations.find((i: any) => i.id === automation.connectorId)
 
             return (
               <div key={automation.id} className="data-cell">
@@ -2049,8 +2109,14 @@ function AutomationsPanel({
                     <TriggerIcon size={10} />
                     {automation.triggerType}
                   </span>
-                  {automation.cronExpression && (
-                    <span className="font-mono">{automation.cronExpression}</span>
+                  {automation.triggerConfig?.everyMinutes && (
+                    <span className="font-mono">
+                      every {automation.triggerConfig.everyMinutes === 1440 
+                        ? '24h' 
+                        : automation.triggerConfig.everyMinutes === 60 
+                        ? '1h' 
+                        : `${automation.triggerConfig.everyMinutes}m`}
+                    </span>
                   )}
                   {automation.lastRunAt && (
                     <span>
@@ -2059,18 +2125,12 @@ function AutomationsPanel({
                   )}
                 </div>
 
-                {automation.triggerType === 'WEBHOOK' && automation.webhookUrl && (
+                {automation.triggerType === 'WEBHOOK' && integration?.type === 'GENERIC_WEBHOOK' && (
                   <div className="flex items-center gap-2 mb-3 p-2 rounded-[8px] bg-[var(--bg-elevated)]">
-                    <Link2 size={12} className="text-[var(--text-tertiary)] flex-shrink-0" />
-                    <span className="text-[11px] font-mono text-[var(--text-secondary)] truncate flex-1">
-                      {automation.webhookUrl}
+                    <Webhook size={12} className="text-[var(--text-tertiary)] flex-shrink-0" />
+                    <span className="text-[11px] text-[var(--text-secondary)]">
+                      Webhook endpoint configured on connector
                     </span>
-                    <button
-                      onClick={() => copyWebhookUrl(automation.webhookUrl!)}
-                      className="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0"
-                    >
-                      {copied === automation.webhookUrl ? <CheckCircle2 size={12} className="text-[var(--success)]" /> : <Copy size={12} />}
-                    </button>
                   </div>
                 )}
 
@@ -2096,9 +2156,19 @@ function AutomationsPanel({
                           Resume
                         </button>
                       )}
+                      {automation.status === 'DRAFT' && (
+                        <button
+                          onClick={() => handleActivate(automation)}
+                          disabled={activateAutomation.isPending}
+                          className="btn-ghost text-[12px] py-1.5 flex items-center gap-1 text-[var(--success)]"
+                        >
+                          <CheckCircle2 size={11} />
+                          Activate
+                        </button>
+                      )}
                       <button
-                        onClick={() => handleTrigger(automation)}
-                        disabled={triggerAutomation.isPending || automation.status !== 'ACTIVE'}
+                        onClick={() => handleRun(automation)}
+                        disabled={runAutomation.isPending || (automation.status !== 'ACTIVE' && automation.status !== 'DRAFT')}
                         className="btn-ghost text-[12px] py-1.5 flex items-center gap-1 disabled:opacity-40"
                       >
                         <Zap size={11} />

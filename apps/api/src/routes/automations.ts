@@ -1,6 +1,6 @@
 // ─── Automations API routes ──────────────────────────────────
 // All routes are org-scoped via getActingOrgId. Mutating operations
-// require ADMIN or OPS_MANAGER role.
+// require ADMIN or OPS_MANAGER role. §5.2 compliant.
 
 import { Router, Request, Response } from 'express'
 import { prisma } from '../index'
@@ -13,11 +13,12 @@ import {
   deleteAutomation,
   pauseAutomation,
   resumeAutomation,
-  triggerAutomation,
+  activateAutomation,
   listAutomationRuns,
   getAutomationRun,
-  getAutomationWebhookUrl,
+  getConnectorWebhookUrl,
 } from '../services/automations/automationService'
+import { executeAutomationNow } from '../services/automations/runner'
 
 export const automationRoutes: ReturnType<typeof Router> = Router()
 
@@ -45,17 +46,19 @@ function handleError(res: Response, error: unknown): void {
   res.status(500).json({ error: 'Internal server error' })
 }
 
+// GET / - List automations (optionally filtered by connectorId)
 automationRoutes.get('/', async (req: Request, res: Response) => {
   try {
     const orgId = getActingOrgId(req)
-    const integrationId = req.query.integrationId as string | undefined
-    const automations = await listAutomations(prisma, orgId, integrationId)
+    const connectorId = req.query.connectorId as string | undefined
+    const automations = await listAutomations(prisma, orgId, connectorId)
     res.json(automations)
   } catch (error) {
     handleError(res, error)
   }
 })
 
+// GET /:id - Get single automation
 automationRoutes.get('/:id', async (req: Request, res: Response) => {
   try {
     const orgId = getActingOrgId(req)
@@ -66,44 +69,57 @@ automationRoutes.get('/:id', async (req: Request, res: Response) => {
   }
 })
 
+// POST / - Create automation (saves as DRAFT)
+// §5.2: triggerType + triggerConfig, actionType + actionConfig
 automationRoutes.post('/', async (req: Request, res: Response) => {
   try {
     if (!requirePrivileged(req, res)) return
     const orgId = getActingOrgId(req)
-    const { integrationId, name, description, trigger, schedule, config, retryPolicy } = req.body
+    const {
+      connectorId,
+      name,
+      description,
+      triggerType,
+      triggerConfig,
+      actionType,
+      actionConfig,
+      retryPolicy,
+    } = req.body
 
-    if (!integrationId || !name || !trigger) {
+    if (!connectorId || !name || !triggerType) {
       return res.status(400).json({
-        error: 'integrationId, name, and trigger are required',
+        error: 'connectorId, name, and triggerType are required',
       })
     }
 
-    if (!['SCHEDULE', 'WEBHOOK', 'MANUAL'].includes(trigger)) {
+    if (!['SCHEDULE', 'WEBHOOK', 'MANUAL'].includes(triggerType)) {
       return res.status(400).json({
-        error: 'trigger must be SCHEDULE, WEBHOOK, or MANUAL',
+        error: 'triggerType must be SCHEDULE, WEBHOOK, or MANUAL',
       })
     }
 
-    if (trigger === 'SCHEDULE' && !schedule) {
+    if (triggerType === 'SCHEDULE' && !triggerConfig?.everyMinutes) {
       return res.status(400).json({
-        error: 'schedule is required for SCHEDULE trigger',
+        error: 'triggerConfig.everyMinutes is required for SCHEDULE trigger',
       })
     }
 
     const automation = await createAutomation(prisma, orgId, {
-      integrationId,
+      connectorId,
       name,
       description,
-      trigger,
-      schedule,
-      config,
+      triggerType,
+      triggerConfig,
+      actionType,
+      actionConfig,
       retryPolicy,
     })
 
+    // For WEBHOOK triggers, include the webhook URL
     let webhookUrl: string | null = null
-    if (trigger === 'WEBHOOK') {
+    if (triggerType === 'WEBHOOK') {
       const baseUrl = `${req.protocol}://${req.get('host')}`
-      webhookUrl = await getAutomationWebhookUrl(prisma, orgId, automation.id, baseUrl)
+      webhookUrl = await getConnectorWebhookUrl(prisma, orgId, connectorId, baseUrl)
     }
 
     res.status(201).json({ ...automation, webhookUrl })
@@ -112,17 +128,18 @@ automationRoutes.post('/', async (req: Request, res: Response) => {
   }
 })
 
+// PATCH /:id - Update automation
 automationRoutes.patch('/:id', async (req: Request, res: Response) => {
   try {
     if (!requirePrivileged(req, res)) return
     const orgId = getActingOrgId(req)
-    const { name, description, schedule, config, retryPolicy, status } = req.body
+    const { name, description, triggerConfig, actionConfig, retryPolicy, status } = req.body
 
     const automation = await updateAutomation(prisma, orgId, req.params.id, {
       name,
       description,
-      schedule,
-      config,
+      triggerConfig,
+      actionConfig,
       retryPolicy,
       status,
     })
@@ -133,6 +150,7 @@ automationRoutes.patch('/:id', async (req: Request, res: Response) => {
   }
 })
 
+// DELETE /:id - Delete automation
 automationRoutes.delete('/:id', async (req: Request, res: Response) => {
   try {
     if (!requirePrivileged(req, res)) return
@@ -144,6 +162,7 @@ automationRoutes.delete('/:id', async (req: Request, res: Response) => {
   }
 })
 
+// POST /:id/pause - Pause automation
 automationRoutes.post('/:id/pause', async (req: Request, res: Response) => {
   try {
     if (!requirePrivileged(req, res)) return
@@ -155,6 +174,7 @@ automationRoutes.post('/:id/pause', async (req: Request, res: Response) => {
   }
 })
 
+// POST /:id/resume - Resume automation
 automationRoutes.post('/:id/resume', async (req: Request, res: Response) => {
   try {
     if (!requirePrivileged(req, res)) return
@@ -166,17 +186,47 @@ automationRoutes.post('/:id/resume', async (req: Request, res: Response) => {
   }
 })
 
-automationRoutes.post('/:id/trigger', async (req: Request, res: Response) => {
+// POST /:id/activate - Activate a DRAFT automation
+automationRoutes.post('/:id/activate', async (req: Request, res: Response) => {
   try {
     if (!requirePrivileged(req, res)) return
     const orgId = getActingOrgId(req)
-    const result = await triggerAutomation(prisma, orgId, req.params.id)
+    const automation = await activateAutomation(prisma, orgId, req.params.id)
+    res.json(automation)
+  } catch (error) {
+    handleError(res, error)
+  }
+})
+
+// POST /:id/run - Execute automation immediately
+automationRoutes.post('/:id/run', async (req: Request, res: Response) => {
+  try {
+    if (!requirePrivileged(req, res)) return
+    const orgId = getActingOrgId(req)
+
+    // Get the automation and its connector
+    const automation = await prisma.automation.findFirst({
+      where: { id: req.params.id, orgId },
+      include: { connector: true },
+    })
+
+    if (!automation) {
+      return res.status(404).json({ error: 'Automation not found', code: 'NOT_FOUND' })
+    }
+
+    if (!automation.connector) {
+      return res.status(400).json({ error: 'Connector not found', code: 'CONNECTOR_NOT_FOUND' })
+    }
+
+    // Execute immediately via the executor
+    const result = await executeAutomationNow(prisma, automation, automation.connector)
     res.json(result)
   } catch (error) {
     handleError(res, error)
   }
 })
 
+// GET /:id/runs - List automation runs
 automationRoutes.get('/:id/runs', async (req: Request, res: Response) => {
   try {
     const orgId = getActingOrgId(req)
@@ -188,6 +238,7 @@ automationRoutes.get('/:id/runs', async (req: Request, res: Response) => {
   }
 })
 
+// GET /:id/runs/:runId - Get single automation run
 automationRoutes.get('/:id/runs/:runId', async (req: Request, res: Response) => {
   try {
     const orgId = getActingOrgId(req)

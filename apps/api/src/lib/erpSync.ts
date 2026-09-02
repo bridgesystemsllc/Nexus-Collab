@@ -42,9 +42,9 @@ export interface ErpSyncResult {
  */
 export async function syncErpInventory(
   prisma: PrismaClient,
+  orgId: string,
   targetModuleId?: string,
   erpPath?: string,
-  orgId?: string,
 ): Promise<ErpSyncResult> {
   // Honor an explicit target module when provided (routing-driven); otherwise
   // fall back to the first INVENTORY_HEALTH module (back-compat behavior).
@@ -62,7 +62,7 @@ export async function syncErpInventory(
     if (sku) bySku.set(sku, item)
   }
 
-  const records = await fetchErpInventory(prisma, erpPath, orgId)
+  const records = await fetchErpInventory(prisma, orgId, erpPath)
   const now = new Date().toISOString()
 
   let created = 0
@@ -111,27 +111,26 @@ export async function syncErpInventory(
 }
 
 // Implemented sync functions, keyed by ERP feed key. Each takes the resolved
-// target module id. Feeds NOT listed here (components/pricing/cm) are wired in
-// the routing catalog but have no sync yet — syncErp leaves them inert.
+// target module id. §5.3: orgId is REQUIRED for org-scoped lookup.
 const FEED_SYNCS: Record<
   string,
   (
     prisma: PrismaClient,
+    orgId: string,
     targetModuleId: string,
     erpPath?: string | null,
-    orgId?: string,
   ) => Promise<ErpSyncResult>
 > = {
-  skus: (prisma, moduleId, _erpPath, orgId) => syncErpSkuPipeline(prisma, moduleId, orgId),
-  inventory: (prisma, moduleId, erpPath, orgId) =>
-    syncErpInventory(prisma, moduleId, erpPath ?? undefined, orgId),
-  components: (prisma, moduleId, erpPath, orgId) =>
-    syncErpComponents(prisma, moduleId, erpPath ?? undefined, orgId),
-  pricing: (prisma, moduleId, erpPath, orgId) =>
-    syncErpPricing(prisma, moduleId, erpPath ?? undefined, orgId),
-  cm: (prisma, moduleId, erpPath, orgId) => syncErpCm(prisma, moduleId, erpPath ?? undefined, orgId),
-  openOrders: (prisma, moduleId, erpPath, orgId) =>
-    syncErpOpenOrders(prisma, moduleId, erpPath ?? undefined, orgId),
+  skus: (prisma, orgId, moduleId, _erpPath) => syncErpSkuPipeline(prisma, orgId, moduleId),
+  inventory: (prisma, orgId, moduleId, erpPath) =>
+    syncErpInventory(prisma, orgId, moduleId, erpPath ?? undefined),
+  components: (prisma, orgId, moduleId, erpPath) =>
+    syncErpComponents(prisma, orgId, moduleId, erpPath ?? undefined),
+  pricing: (prisma, orgId, moduleId, erpPath) =>
+    syncErpPricing(prisma, orgId, moduleId, erpPath ?? undefined),
+  cm: (prisma, orgId, moduleId, erpPath) => syncErpCm(prisma, orgId, moduleId, erpPath ?? undefined),
+  openOrders: (prisma, orgId, moduleId, erpPath) =>
+    syncErpOpenOrders(prisma, orgId, moduleId, erpPath ?? undefined),
 }
 
 export interface ErpSyncOrchestratorResult {
@@ -147,13 +146,11 @@ export interface ErpSyncOrchestratorResult {
  *
  * Fully defensive: missing routing → defaults; missing module → skip the feed
  * (never throws for a single feed's resolution).
+ * §5.3: orgId is REQUIRED for org-scoped lookup.
  */
-export async function syncErp(prisma: PrismaClient, orgId?: string): Promise<ErpSyncOrchestratorResult> {
-  const whereClause: { type: string; orgId?: string } = { type: 'ERP_KAREVE_SYNC' }
-  if (orgId) whereClause.orgId = orgId
-
+export async function syncErp(prisma: PrismaClient, orgId: string): Promise<ErpSyncOrchestratorResult> {
   const integration = await prisma.integration.findFirst({
-    where: whereClause,
+    where: { type: 'ERP_KAREVE_SYNC', orgId },
   })
   const routing = getRouting(integration)
 
@@ -187,7 +184,7 @@ export async function syncErp(prisma: PrismaClient, orgId?: string): Promise<Erp
     // A single feed failing must never abort the whole sync (which would mark
     // the integration as errored). Isolate each feed and leave it inert on error.
     try {
-      const result = await syncFn(prisma, targetModule.id, entry.erpPath, orgId)
+      const result = await syncFn(prisma, orgId, targetModule.id, entry.erpPath)
       feeds[feed.key] = result
       recordsProcessed += result.recordsProcessed
     } catch (err) {
@@ -211,8 +208,8 @@ export async function syncErp(prisma: PrismaClient, orgId?: string): Promise<Erp
  */
 export async function syncErpSkuPipeline(
   prisma: PrismaClient,
+  orgId: string,
   targetModuleId?: string,
-  orgId?: string,
 ): Promise<ErpSyncResult> {
   // Honor an explicit target module when provided (routing-driven); otherwise
   // fall back to the first SKU_PIPELINE module (back-compat behavior).
@@ -305,9 +302,9 @@ export async function syncErpSkuPipeline(
  */
 export async function syncErpComponents(
   prisma: PrismaClient,
+  orgId: string,
   targetModuleId?: string,
   erpPath?: string,
-  orgId?: string,
 ): Promise<ErpSyncResult> {
   const mod = targetModuleId
     ? await prisma.departmentModule.findUnique({ where: { id: targetModuleId } })
@@ -323,7 +320,7 @@ export async function syncErpComponents(
     if (pn) byPart.set(pn, item)
   }
 
-  const fetched = await fetchErpComponents(prisma, erpPath, orgId)
+  const fetched = await fetchErpComponents(prisma, orgId, erpPath)
   // Dedupe incoming records by (trimmed) partNumber — a duplicated part in
   // one ERP payload must not create duplicate module items. Last wins.
   const byIncoming = new Map<string, (typeof fetched)[number]>()
@@ -397,9 +394,9 @@ export async function syncErpComponents(
  */
 export async function syncErpPricing(
   prisma: PrismaClient,
+  orgId: string,
   targetModuleId?: string,
   erpPath?: string,
-  orgId?: string,
 ): Promise<ErpSyncResult> {
   const mod = targetModuleId
     ? await prisma.departmentModule.findUnique({ where: { id: targetModuleId } })
@@ -415,7 +412,7 @@ export async function syncErpPricing(
     if (fg) byFg.set(fg, item)
   }
 
-  const pricing = await fetchErpPricing(prisma, erpPath, orgId)
+  const pricing = await fetchErpPricing(prisma, orgId, erpPath)
   const now = new Date().toISOString()
 
   let created = 0
@@ -480,9 +477,9 @@ export async function syncErpPricing(
  */
 export async function syncErpCm(
   prisma: PrismaClient,
+  orgId: string,
   targetModuleId?: string,
   erpPath?: string,
-  orgId?: string,
 ): Promise<ErpSyncResult> {
   const mod = targetModuleId
     ? await prisma.departmentModule.findUnique({ where: { id: targetModuleId } })
@@ -498,7 +495,7 @@ export async function syncErpCm(
     if (name) byName.set(name, item)
   }
 
-  const cms = await fetchErpCms(prisma, erpPath, orgId)
+  const cms = await fetchErpCms(prisma, orgId, erpPath)
   const now = new Date().toISOString()
 
   let created = 0
@@ -585,9 +582,9 @@ export async function ensureOpenOrdersModule(prisma: PrismaClient) {
  */
 export async function syncErpOpenOrders(
   prisma: PrismaClient,
+  orgId: string,
   targetModuleId?: string,
   erpPath?: string,
-  orgId?: string,
 ): Promise<ErpSyncResult> {
   const mod = targetModuleId
     ? await prisma.departmentModule.findUnique({ where: { id: targetModuleId } })
@@ -604,7 +601,7 @@ export async function syncErpOpenOrders(
     if (po) byPo.set(String(po), item)
   }
 
-  const records = await fetchErpOpenOrders(prisma, erpPath, orgId)
+  const records = await fetchErpOpenOrders(prisma, orgId, erpPath)
   const now = new Date().toISOString()
   let created = 0
   let updated = 0

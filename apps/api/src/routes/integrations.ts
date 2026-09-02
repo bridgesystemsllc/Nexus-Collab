@@ -937,7 +937,7 @@ integrationRoutes.post('/:type/push', async (req: Request, res: Response) => {
     })
 
     try {
-      const result = await pushErp(prisma, feedKeys)
+      const result = await pushErp(prisma, orgId, feedKeys)
 
       // A push is a DRY RUN when the ERP is not configured (no feed sent real
       // data). Surface this so the UI can label it "dry run (ERP not connected)".
@@ -985,10 +985,31 @@ integrationRoutes.post('/:type/push', async (req: Request, res: Response) => {
 // Fired by the Refresh button in the Open-Orders view. Pulls the ERP open-order
 // feed and upserts it into the OPEN_ORDERS module (synthetic feed when the ERP
 // is unconfigured; the module is auto-provisioned when missing). Independent of
-// the full multi-feed sync.
+// the full multi-feed sync. Iterates each ERP_KAREVE_SYNC integration per-org.
 integrationRoutes.post('/erp/refresh-open-orders', async (_req: Request, res: Response) => {
   try {
-    const result = await syncErpOpenOrders(prisma)
+    const integrations = await prisma.integration.findMany({
+      where: { type: 'ERP_KAREVE_SYNC' },
+      select: { orgId: true },
+    })
+
+    if (integrations.length === 0) {
+      return res.json({ ok: true, recordsProcessed: 0, created: 0, updated: 0 })
+    }
+
+    let totalCreated = 0
+    let totalUpdated = 0
+    for (const integration of integrations) {
+      try {
+        const result = await syncErpOpenOrders(prisma, integration.orgId)
+        totalCreated += result.created
+        totalUpdated += result.updated
+      } catch (err) {
+        console.error(`[integrations] refresh-open-orders for org ${integration.orgId} failed:`, err)
+      }
+    }
+
+    const result = { recordsProcessed: totalCreated + totalUpdated, created: totalCreated, updated: totalUpdated }
     res.json({ ok: true, ...result })
   } catch (err) {
     console.error('[integrations] POST /erp/refresh-open-orders error:', err)
@@ -1001,11 +1022,12 @@ integrationRoutes.post('/erp/refresh-open-orders', async (_req: Request, res: Re
 // DRY RUN until the ERP exposes a write endpoint (pushToErp never fakes a send).
 integrationRoutes.post('/erp/push-open-order/:itemId', async (req: Request, res: Response) => {
   try {
+    const orgId = getActingOrgId(req)
     const item = await prisma.moduleItem.findUnique({ where: { id: req.params.itemId as string } })
     if (!item) return res.status(404).json({ ok: false, error: 'item not found' })
-    const integration = await prisma.integration.findFirst({ where: { type: 'ERP_KAREVE_SYNC' } })
+    const integration = await prisma.integration.findFirst({ where: { type: 'ERP_KAREVE_SYNC', orgId } })
     const path = getOutbound(integration).openOrders?.erpPath || '/open-orders'
-    const result = await pushToErp(prisma, path, [mapOpenOrderForErp(item.data as any)])
+    const result = await pushToErp(prisma, orgId, path, [mapOpenOrderForErp(item.data as any)])
     res.json({ ok: true, ...result })
   } catch (err) {
     console.error('[integrations] POST /erp/push-open-order error:', err)

@@ -9,9 +9,13 @@ export interface CircuitBreakerConfig {
   cooldownMs: number
 }
 
+// §5.2: 5 failures → circuitOpenUntil now + 15 minutes
+export const CIRCUIT_THRESHOLD = 5
+export const CIRCUIT_OPEN_DURATION_MS = 15 * 60 * 1000 // 15 minutes
+
 export const DEFAULT_CIRCUIT_CONFIG: CircuitBreakerConfig = {
-  failureThreshold: 5,
-  cooldownMs: 60000,
+  failureThreshold: CIRCUIT_THRESHOLD,
+  cooldownMs: CIRCUIT_OPEN_DURATION_MS,
 }
 
 export type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN'

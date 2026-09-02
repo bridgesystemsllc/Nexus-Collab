@@ -1,3 +1,7 @@
+// ─── Mask Tests ──────────────────────────────────────────────
+// §5.2: Tests for sanitizeIntegration, sanitizeAutomation, sanitizeAutomationRun
+// These functions DROP sensitive fields rather than masking them.
+
 import { describe, it, expect } from 'vitest'
 import { sanitizeIntegration, sanitizeAutomation, sanitizeAutomationRun } from './mask'
 
@@ -22,7 +26,7 @@ describe('sanitizeIntegration', () => {
     config: {},
   }
 
-  it('masks sensitive fields in config', () => {
+  it('drops sensitive fields from config', () => {
     const integration = {
       ...baseIntegration,
       config: {
@@ -35,14 +39,15 @@ describe('sanitizeIntegration', () => {
 
     const sanitized = sanitizeIntegration(integration)
 
-    expect(sanitized.config).toBeDefined()
+    // Should keep baseUrl
     expect(sanitized.config.baseUrl).toBe('https://api.example.com')
-    expect(sanitized.config.apiKey).toBe('••••2345')
-    expect(sanitized.config.token).toBe('••••c123')
-    expect(sanitized.config.password).toBe('••••-pwd')
+    // Should DROP sensitive fields
+    expect(sanitized.config).not.toHaveProperty('apiKey')
+    expect(sanitized.config).not.toHaveProperty('token')
+    expect(sanitized.config).not.toHaveProperty('password')
   })
 
-  it('handles encrypted blobs', () => {
+  it('drops encrypted blobs entirely', () => {
     const integration = {
       ...baseIntegration,
       config: {
@@ -56,7 +61,12 @@ describe('sanitizeIntegration', () => {
     }
 
     const sanitized = sanitizeIntegration(integration)
-    expect(sanitized.config.secrets).toEqual({ encrypted: true, masked: true })
+    // Should DROP the secrets blob
+    expect(sanitized.config).not.toHaveProperty('secrets')
+    // Should keep baseUrl
+    expect(sanitized.config.baseUrl).toBe('https://api.example.com')
+    // Should emit hasCredentials
+    expect(sanitized.hasCredentials).toBe(true)
   })
 
   it('handles null config', () => {
@@ -67,6 +77,7 @@ describe('sanitizeIntegration', () => {
 
     const sanitized = sanitizeIntegration(integration)
     expect(sanitized.config).toEqual({})
+    expect(sanitized.hasCredentials).toBe(false)
   })
 
   it('preserves non-sensitive fields', () => {
@@ -89,30 +100,36 @@ describe('sanitizeIntegration', () => {
     expect(sanitized.config.timeout).toBe(5000)
   })
 
-  it('masks webhook secrets (underscore format)', () => {
+  it('drops webhook secrets', () => {
     const integration = {
       ...baseIntegration,
       config: {
         webhookId: 'wh_123',
-        webhook_secret: 'secret_456789',
+        webhookSecret: 'secret_456789',
       },
     }
 
     const sanitized = sanitizeIntegration(integration)
+    // Should keep webhookId (not a secret)
     expect(sanitized.config.webhookId).toBe('wh_123')
-    expect(sanitized.config.webhook_secret).toBe('••••6789')
+    // Should DROP webhookSecret
+    expect(sanitized.config).not.toHaveProperty('webhookSecret')
   })
 
-  it('masks secret fields', () => {
+  it('drops secret fields at any nesting level', () => {
     const integration = {
       ...baseIntegration,
       config: {
-        secret: 'my-secret-value',
+        nested: {
+          apiKey: 'nested-secret',
+          otherField: 'keep-this',
+        },
       },
     }
 
     const sanitized = sanitizeIntegration(integration)
-    expect(sanitized.config.secret).toBe('••••alue')
+    expect(sanitized.config.nested).not.toHaveProperty('apiKey')
+    expect(sanitized.config.nested?.otherField).toBe('keep-this')
   })
 })
 
@@ -120,12 +137,13 @@ describe('sanitizeAutomation', () => {
   const baseAutomation = {
     id: 'auto-1',
     orgId: 'org-1',
-    integrationId: 'int-1',
+    connectorId: 'int-1',
     name: 'Test Automation',
     description: 'Test description',
-    trigger: 'SCHEDULE',
-    schedule: '*/5 * * * *',
-    webhookId: null,
+    triggerType: 'SCHEDULE',
+    triggerConfig: { everyMinutes: 15, timezone: 'UTC' },
+    actionType: 'HTTP_REQUEST',
+    actionConfig: { method: 'POST', path: '/api/data' },
     status: 'ACTIVE',
     nextRunAt: new Date('2024-01-01T00:05:00Z'),
     lastRunAt: new Date('2024-01-01T00:00:00Z'),
@@ -135,41 +153,47 @@ describe('sanitizeAutomation', () => {
     retryPolicy: { maxAttempts: 3, baseDelayMs: 1000 },
     createdAt: new Date('2024-01-01T00:00:00Z'),
     updatedAt: new Date('2024-01-01T00:00:00Z'),
-    config: {},
   }
 
-  it('masks config secrets', () => {
+  it('drops secrets from actionConfig', () => {
     const automation = {
       ...baseAutomation,
-      config: {
+      actionConfig: {
         method: 'POST',
         path: '/api/webhook',
-        headers: { Authorization: 'Bearer secret-token' },
+        headers: { 'Content-Type': 'application/json' },
         apiKey: 'secret-key-12345',
       },
     }
 
     const sanitized = sanitizeAutomation(automation)
     expect(sanitized.id).toBe('auto-1')
-    expect(sanitized.config.method).toBe('POST')
-    expect(sanitized.config.path).toBe('/api/webhook')
-    expect(sanitized.config.apiKey).toBe('••••2345')
+    expect(sanitized.actionConfig.method).toBe('POST')
+    expect(sanitized.actionConfig.path).toBe('/api/webhook')
+    // Should DROP apiKey
+    expect(sanitized.actionConfig).not.toHaveProperty('apiKey')
   })
 
-  it('preserves non-sensitive config', () => {
+  it('preserves non-sensitive actionConfig', () => {
     const automation = {
       ...baseAutomation,
-      config: {
+      actionConfig: {
         method: 'GET',
         path: '/status',
-        timeout: 5000,
       },
     }
 
     const sanitized = sanitizeAutomation(automation)
-    expect(sanitized.config.method).toBe('GET')
-    expect(sanitized.config.path).toBe('/status')
-    expect(sanitized.config.timeout).toBe(5000)
+    expect(sanitized.actionConfig.method).toBe('GET')
+    expect(sanitized.actionConfig.path).toBe('/status')
+  })
+
+  it('exposes connectorId, triggerType, triggerConfig, actionType', () => {
+    const sanitized = sanitizeAutomation(baseAutomation)
+    expect(sanitized.connectorId).toBe('int-1')
+    expect(sanitized.triggerType).toBe('SCHEDULE')
+    expect(sanitized.triggerConfig).toEqual({ everyMinutes: 15, timezone: 'UTC' })
+    expect(sanitized.actionType).toBe('HTTP_REQUEST')
   })
 })
 
@@ -177,27 +201,30 @@ describe('sanitizeAutomationRun', () => {
   const baseRun = {
     id: 'run-1',
     automationId: 'auto-1',
+    orgId: 'org-1',
+    trigger: 'SCHEDULE',
+    idempotencyKey: 'schedule:auto-1:2024-01-01T00:00:00.000Z',
     status: 'SUCCESS',
-    triggeredBy: 'SCHEDULE',
-    requestId: 'req_123',
-    startedAt: new Date('2024-01-01T00:00:00Z'),
-    completedAt: new Date('2024-01-01T00:00:01Z'),
-    durationMs: 1000,
-    httpStatus: 200,
-    errorCode: null,
-    errorMessage: null,
-    createdAt: new Date('2024-01-01T00:00:00Z'),
+    error: null,
+    requestSummary: { method: 'POST', host: 'api.example.com', path: '/data' },
+    recordsProcessed: 1,
+    recordsFailed: 0,
     inputSnapshot: {},
     outputSnapshot: {},
+    httpStatus: 200,
+    durationMs: 1000,
+    retryCount: 0,
+    startedAt: new Date('2024-01-01T00:00:00Z'),
+    completedAt: new Date('2024-01-01T00:00:01Z'),
   }
 
-  it('masks sensitive data in snapshots', () => {
+  it('drops sensitive data from snapshots', () => {
     const run = {
       ...baseRun,
       inputSnapshot: {
         url: 'https://api.example.com/webhook',
-        headers: { Authorization: 'Bearer secret-token' },
-        body: { apiKey: 'secret-key-12345' },
+        headers: { 'Content-Type': 'application/json' },
+        body: { apiKey: 'secret-key-12345', data: 'public' },
       },
       outputSnapshot: {
         status: 200,
@@ -208,8 +235,11 @@ describe('sanitizeAutomationRun', () => {
     const sanitized = sanitizeAutomationRun(run)
     expect(sanitized.id).toBe('run-1')
     expect(sanitized.inputSnapshot?.url).toBe('https://api.example.com/webhook')
-    expect(sanitized.inputSnapshot?.body?.apiKey).toBe('••••2345')
-    expect(sanitized.outputSnapshot?.body?.token).toBe('••••-abc')
+    // Should DROP apiKey
+    expect(sanitized.inputSnapshot?.body).not.toHaveProperty('apiKey')
+    expect(sanitized.inputSnapshot?.body?.data).toBe('public')
+    // Should DROP token
+    expect(sanitized.outputSnapshot?.body).not.toHaveProperty('token')
     expect(sanitized.outputSnapshot?.body?.data).toBe('public')
   })
 
@@ -223,5 +253,21 @@ describe('sanitizeAutomationRun', () => {
     const sanitized = sanitizeAutomationRun(run)
     expect(sanitized.inputSnapshot).toBeNull()
     expect(sanitized.outputSnapshot).toBeNull()
+  })
+
+  it('exposes idempotencyKey, error object, requestSummary, records', () => {
+    const run = {
+      ...baseRun,
+      error: { code: 'TIMEOUT', message: 'Request timed out', retryable: true },
+      recordsProcessed: 5,
+      recordsFailed: 2,
+    }
+
+    const sanitized = sanitizeAutomationRun(run)
+    expect(sanitized.idempotencyKey).toBe('schedule:auto-1:2024-01-01T00:00:00.000Z')
+    expect(sanitized.error).toEqual({ code: 'TIMEOUT', message: 'Request timed out', retryable: true })
+    expect(sanitized.requestSummary).toEqual({ method: 'POST', host: 'api.example.com', path: '/data' })
+    expect(sanitized.recordsProcessed).toBe(5)
+    expect(sanitized.recordsFailed).toBe(2)
   })
 })

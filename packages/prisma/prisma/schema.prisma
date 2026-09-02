@@ -767,7 +767,7 @@ model Integration {
   lastTestOk          Boolean?
   consecutiveFailures Int        @default(0)
   circuitOpenUntil    DateTime?
-  automations         Automation[]
+  automations         Automation[] @relation("ConnectorAutomations")
 
   @@index([orgId])
   @@index([orgId, type])
@@ -794,63 +794,71 @@ model SyncLog {
 }
 
 // ─── Automation ─────────────────────────────────────────────
-// An org-scoped automation wires a connector (Integration) to scheduled or
-// webhook-triggered actions. Supports SCHEDULE (cron-like) and WEBHOOK triggers.
+// An org-scoped automation wires a connector (Integration) to scheduled,
+// webhook-triggered, or manual actions per §5.2.
 model Automation {
-  id            String          @id @default(cuid())
-  orgId         String
-  org           Organization    @relation(fields: [orgId], references: [id])
-  integrationId String
-  integration   Integration     @relation(fields: [integrationId], references: [id])
-  name          String
-  description   String?
-  trigger       String          // SCHEDULE, WEBHOOK
-  // For SCHEDULE: cron expression or interval. For WEBHOOK: the webhookId matches incoming.
-  schedule      String?
-  webhookId     String?         @unique
-  webhookSecret String?
-  // The action payload: method, url path, headers, body template
-  config        Json            @default("{}")
-  status        String          @default("ACTIVE") // ACTIVE, PAUSED, ERROR, DISABLED
-  nextRunAt     DateTime?
-  lastRunAt     DateTime?
-  lastRunOk     Boolean?
-  lastError     String?
-  consecutiveFailures Int       @default(0)
-  retryPolicy   Json?           // { maxRetries, backoffMs, maxBackoffMs }
-  runs          AutomationRun[]
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id              String          @id @default(cuid())
+  orgId           String
+  org             Organization    @relation(fields: [orgId], references: [id])
+  connectorId     String
+  connector       Integration     @relation("ConnectorAutomations", fields: [connectorId], references: [id])
+  name            String
+  description     String?
+  // §5.2: triggerType + triggerConfig
+  triggerType     String          // SCHEDULE, WEBHOOK, MANUAL
+  triggerConfig   Json            @default("{}") // { everyMinutes: 15|60|1440, timezone }
+  // §5.2: actionType + actionConfig
+  actionType      String          @default("HTTP_REQUEST") // HTTP_REQUEST, MCP_CALL, WEBHOOK_FORWARD
+  actionConfig    Json            @default("{}") // { method, path, headers, body }
+  // §5.2: status default DRAFT
+  status          String          @default("DRAFT") // DRAFT, ACTIVE, PAUSED, ERROR
+  // §5.2: retryPolicy
+  retryPolicy     Json?           // { maxAttempts, baseDelayMs, maxDelayMs }
+  nextRunAt       DateTime?
+  lastRunAt       DateTime?
+  lastRunOk       Boolean?
+  lastError       String?
+  consecutiveFailures Int         @default(0)
+  runs            AutomationRun[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   @@index([orgId])
-  @@index([integrationId])
+  @@index([connectorId])
   @@index([status, nextRunAt])
-  @@index([webhookId])
 }
 
 // ─── Automation Run ─────────────────────────────────────────
-// A single execution of an automation. Append-only run history for audit.
+// A single execution of an automation. Append-only run history for audit per §5.2.
 model AutomationRun {
-  id              String     @id @default(cuid())
-  automationId    String
-  automation      Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  orgId           String
-  trigger         String     // SCHEDULE, WEBHOOK, MANUAL
-  requestId       String?    // Idempotency key
-  status          String     // PENDING, RUNNING, SUCCESS, FAILED, TIMEOUT, SKIPPED
+  id               String     @id @default(cuid())
+  automationId     String
+  automation       Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  orgId            String
+  trigger          String     // SCHEDULE, WEBHOOK, MANUAL
+  idempotencyKey   String?    // Window-based dedup key
+  // §5.2: status QUEUED|RUNNING|SUCCESS|PARTIAL|FAILED|SKIPPED
+  status           String     // QUEUED, RUNNING, SUCCESS, PARTIAL, FAILED, SKIPPED
+  // §5.2: error Json {code,message,retryable}
+  error            Json?      // { code, message, retryable }
+  // §5.2: requestSummary {method,host,path}
+  requestSummary   Json?      // { method, host, path }
+  // §5.2: recordsProcessed/recordsFailed
+  recordsProcessed Int        @default(0)
+  recordsFailed    Int        @default(0)
   // Input/output stored masked (no plaintext secrets)
-  inputSnapshot   Json?
-  outputSnapshot  Json?
-  errorMessage    String?
-  httpStatus      Int?
-  durationMs      Int?
-  retryCount      Int        @default(0)
-  startedAt       DateTime   @default(now())
-  completedAt     DateTime?
+  inputSnapshot    Json?
+  outputSnapshot   Json?
+  httpStatus       Int?
+  durationMs       Int?
+  retryCount       Int        @default(0)
+  startedAt        DateTime   @default(now())
+  completedAt      DateTime?
 
+  // §5.2: @@unique([orgId, idempotencyKey])
+  @@unique([orgId, idempotencyKey])
   @@index([automationId, startedAt(sort: Desc)])
   @@index([orgId, startedAt(sort: Desc)])
-  @@index([requestId])
 }
 
 // ─── Pulse ──────────────────────────────────────────────────

@@ -142,10 +142,11 @@ export interface PushToErpResult {
  */
 export async function pushToErp(
   prisma: PrismaClient,
+  orgId: string,
   path: string,
   records: Record<string, any>[],
 ): Promise<PushToErpResult> {
-  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
 
   // DRY RUN — no real credentials, so report what WOULD be sent without sending.
   if (!configured || !apiUrl || !apiKey) {
@@ -239,10 +240,11 @@ async function loadFeedPayloads(
  */
 export async function pushErp(
   prisma: PrismaClient,
+  orgId: string,
   feedKeys?: string[],
 ): Promise<PushErpResult> {
   const integration = await prisma.integration.findFirst({
-    where: { type: 'ERP_KAREVE_SYNC' },
+    where: { type: 'ERP_KAREVE_SYNC', orgId },
   })
   const outbound = getOutbound(integration)
 
@@ -263,7 +265,7 @@ export async function pushErp(
     try {
       const payloads = await loadFeedPayloads(prisma, feed)
       const path = entry?.erpPath || feed.defaultPath
-      const pushResult = await pushToErp(prisma, path, payloads)
+      const pushResult = await pushToErp(prisma, orgId, path, payloads)
 
       feeds[feed.key] = {
         count: payloads.length,

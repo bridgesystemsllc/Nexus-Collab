@@ -94,17 +94,15 @@ interface StoredErpConfig {
 /**
  * Resolve ERP connection settings, preferring the encrypted Integration
  * config and falling back to environment variables.
+ * §5.3: orgId is REQUIRED for org-scoped lookup.
  */
-export async function getErpConfig(prisma: PrismaClient, orgId?: string): Promise<ErpConfig> {
+export async function getErpConfig(prisma: PrismaClient, orgId: string): Promise<ErpConfig> {
   let apiUrl: string | null = null
   let apiKey: string | null = null
 
   try {
-    const whereClause: { type: string; orgId?: string } = { type: 'ERP_KAREVE_SYNC' }
-    if (orgId) whereClause.orgId = orgId
-
     const integration = await prisma.integration.findFirst({
-      where: whereClause,
+      where: { type: 'ERP_KAREVE_SYNC', orgId },
     })
     const config = integration?.config as
       | { iv?: string; encrypted?: string; tag?: string }
@@ -265,8 +263,9 @@ function mapErpRecord(raw: Record<string, any>): ErpSku {
 /**
  * Fetch SKU / product master data from the ERP. Returns the real feed when
  * configured, otherwise a labelled synthetic dev feed.
+ * §5.3: orgId is REQUIRED for org-scoped lookup.
  */
-export async function fetchErpSkus(prisma: PrismaClient, orgId?: string): Promise<ErpSku[]> {
+export async function fetchErpSkus(prisma: PrismaClient, orgId: string): Promise<ErpSku[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
   if (!configured || !apiUrl || !apiKey) {
     return syntheticFeed()
@@ -500,11 +499,12 @@ function mapErpInventory(raw: Record<string, any>): ErpInventory {
  * configured (trying `path` then `/inventory` then `/products`), otherwise a
  * labelled synthetic dev feed. Falls back to synthetic on any fetch error or
  * when the ERP returns zero usable records.
+ * §5.3: orgId is REQUIRED for org-scoped lookup.
  */
 export async function fetchErpInventory(
   prisma: PrismaClient,
+  orgId: string,
   path?: string,
-  orgId?: string,
 ): Promise<ErpInventory[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
   if (!configured || !apiUrl || !apiKey) return syntheticInventory()
@@ -595,11 +595,12 @@ function mapErpComponent(raw: Record<string, any>): ErpComponent {
  * Fetch component / part master data from the ERP. Returns the real feed when
  * configured (trying `path` then `/components` then `/parts`), otherwise a
  * labelled synthetic dev feed.
+ * §5.3: orgId is REQUIRED for org-scoped lookup.
  */
 export async function fetchErpComponents(
   prisma: PrismaClient,
+  orgId: string,
   path?: string,
-  orgId?: string,
 ): Promise<ErpComponent[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
   if (!configured || !apiUrl || !apiKey) return syntheticComponents()
@@ -655,11 +656,12 @@ function mapErpPricing(raw: Record<string, any>): ErpPricing {
  * Fetch pricing / cost data from the ERP. Returns the real feed when
  * configured (trying `path` then `/pricing` then `/costs`), otherwise a
  * labelled synthetic dev feed.
+ * §5.3: orgId is REQUIRED for org-scoped lookup.
  */
 export async function fetchErpPricing(
   prisma: PrismaClient,
+  orgId: string,
   path?: string,
-  orgId?: string,
 ): Promise<ErpPricing[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
   if (!configured || !apiUrl || !apiKey) return syntheticPricing()
@@ -726,8 +728,9 @@ function mapErpCm(raw: Record<string, any>): ErpCm {
  * Fetch contract-manufacturer / vendor data from the ERP. Returns the real
  * feed when configured (trying `path` then `/vendors` then `/cms`), otherwise
  * a labelled synthetic dev feed.
+ * §5.3: orgId is REQUIRED for org-scoped lookup.
  */
-export async function fetchErpCms(prisma: PrismaClient, path?: string, orgId?: string): Promise<ErpCm[]> {
+export async function fetchErpCms(prisma: PrismaClient, orgId: string, path?: string): Promise<ErpCm[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
   if (!configured || !apiUrl || !apiKey) return syntheticCms()
   // Configured → REAL data only: throw on failure so the sync orchestrator
@@ -834,11 +837,12 @@ function syntheticOpenOrders(): ErpOpenOrder[] {
  * otherwise a labelled synthetic dev feed. Throws when both module fetches
  * fail or the merge yields zero usable records, so the sync orchestrator
  * isolates the feed instead of writing sample data over real POs.
+ * §5.3: orgId is REQUIRED for org-scoped lookup.
  */
 export async function fetchErpOpenOrders(
   prisma: PrismaClient,
+  orgId: string,
   path?: string,
-  orgId?: string,
 ): Promise<ErpOpenOrder[]> {
   const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
   if (!configured || !apiUrl || !apiKey) return syntheticOpenOrders()
