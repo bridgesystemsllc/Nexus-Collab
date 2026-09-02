@@ -1,26 +1,37 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
   AlertTriangle,
+  Calendar,
   CheckCircle2,
   ChevronDown,
+  Clock,
   Cloud,
   Copy,
   Database,
   ExternalLink,
+  Globe,
   Hash,
+  History,
   Key,
+  Link2,
   Lock,
   Mail,
   MessageCircle,
+  Pause,
   Pencil,
+  Play,
   Plug,
+  Plus,
   RefreshCw,
   Route,
+  Server,
   Settings,
   ShoppingCart,
   Table2,
+  Trash2,
   Unplug,
   Upload,
+  Webhook,
   X,
   Zap,
 } from 'lucide-react'
@@ -33,11 +44,28 @@ import {
   useErpOutbound,
   useUpdateErpOutbound,
   usePushToErp,
+  useConnectorCatalog,
+  useCreateConnector,
+  useTestConnector,
+  usePauseConnector,
+  useResumeConnector,
+  useDeleteConnector,
+  useAutomations,
+  useCreateAutomation,
+  useUpdateAutomation,
+  useDeleteAutomation,
+  usePauseAutomation,
+  useResumeAutomation,
+  useTriggerAutomation,
+  useAutomationRuns,
   type ErpRoutingFeed,
   type ErpRoutingPatch,
   type ErpOutboundFeed,
   type ErpOutboundPatch,
   type ErpPushResponse,
+  type ConnectorDefinition,
+  type Automation,
+  type AutomationRun,
 } from '@/hooks/useData'
 import { useUserStore } from '@/stores/userStore'
 import { useQueryClient } from '@tanstack/react-query'
@@ -1211,21 +1239,954 @@ function OAuthSetupModal({
   )
 }
 
+// ─── Add Connector Modal ──────────────────────────────────────
+
+function AddConnectorModal({
+  catalog,
+  onClose,
+  onSuccess,
+}: {
+  catalog: ConnectorDefinition[]
+  onClose: () => void
+  onSuccess: (message: string) => void
+}) {
+  const [step, setStep] = useState<'select' | 'configure'>('select')
+  const [selectedType, setSelectedType] = useState<ConnectorDefinition | null>(null)
+  const [name, setName] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [authType, setAuthType] = useState<'NONE' | 'BASIC' | 'BEARER' | 'API_KEY'>('NONE')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [token, setToken] = useState('')
+  const [apiKey, setApiKey] = useState('')
+  const [headerName, setHeaderName] = useState('X-API-Key')
+  const [error, setError] = useState('')
+
+  const createConnector = useCreateConnector()
+
+  const genericTypes = catalog.filter(c => c.isGeneric)
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'GENERIC_HTTP': return Globe
+      case 'GENERIC_MCP': return Server
+      case 'GENERIC_WEBHOOK': return Webhook
+      default: return Plug
+    }
+  }
+
+  const handleCreate = async () => {
+    setError('')
+    if (!selectedType || !name.trim()) return
+
+    const config: Record<string, unknown> = {}
+
+    if (selectedType.type === 'GENERIC_HTTP' || selectedType.type === 'GENERIC_MCP') {
+      if (!baseUrl.trim()) {
+        setError('Base URL is required')
+        return
+      }
+      config.baseUrl = baseUrl.trim()
+      config.authType = authType
+
+      if (authType === 'BASIC') {
+        config.username = username
+        config.password = password
+      } else if (authType === 'BEARER') {
+        config.token = token
+      } else if (authType === 'API_KEY') {
+        config.apiKey = apiKey
+        config.headerName = headerName || 'X-API-Key'
+      }
+    }
+
+    try {
+      await createConnector.mutateAsync({
+        type: selectedType.type,
+        name: name.trim(),
+        config,
+      })
+      onSuccess(`${name} connector created successfully`)
+      onClose()
+    } catch (err: any) {
+      setError(err?.response?.data?.error || 'Failed to create connector')
+    }
+  }
+
+  return (
+    <Dialog open={true} onClose={onClose} title="Add Connector" subtitle="Connect a new service to your workspace">
+      {step === 'select' ? (
+        <div className="space-y-4">
+          <p className="text-[13px] text-[var(--text-secondary)]">
+            Select a connector type to add to your organization.
+          </p>
+          <div className="space-y-2">
+            {genericTypes.map((connector) => {
+              const Icon = getTypeIcon(connector.type)
+              return (
+                <button
+                  key={connector.type}
+                  onClick={() => {
+                    setSelectedType(connector)
+                    setName(connector.name)
+                    setStep('configure')
+                  }}
+                  className="w-full flex items-center gap-3 p-4 rounded-[12px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors text-left"
+                >
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-[var(--accent-subtle)]">
+                    <Icon size={20} className="text-[var(--accent)]" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] font-medium text-[var(--text-primary)]">{connector.name}</p>
+                    <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">{connector.description}</p>
+                  </div>
+                  <ChevronDown size={16} className="text-[var(--text-tertiary)] -rotate-90" />
+                </button>
+              )
+            })}
+          </div>
+          {genericTypes.length === 0 && (
+            <p className="text-[13px] text-[var(--text-tertiary)] text-center py-8">
+              No connector types available.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <button
+            onClick={() => setStep('select')}
+            className="text-[12px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] flex items-center gap-1"
+          >
+            <ChevronDown size={12} className="rotate-90" /> Back
+          </button>
+
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              Connector Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="My HTTP Connector"
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+            />
+          </div>
+
+          {(selectedType?.type === 'GENERIC_HTTP' || selectedType?.type === 'GENERIC_MCP') && (
+            <>
+              <div>
+                <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                  Base URL
+                </label>
+                <input
+                  type="url"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="https://api.example.com"
+                  className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                  Authentication
+                </label>
+                <div className="relative">
+                  <select
+                    value={authType}
+                    onChange={(e) => setAuthType(e.target.value as typeof authType)}
+                    className="w-full appearance-none px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+                  >
+                    <option value="NONE">None</option>
+                    <option value="BASIC">Basic Auth</option>
+                    <option value="BEARER">Bearer Token</option>
+                    <option value="API_KEY">API Key</option>
+                  </select>
+                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none" />
+                </div>
+              </div>
+
+              {authType === 'BASIC' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                      Password
+                    </label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {authType === 'BEARER' && (
+                <div>
+                  <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                    Bearer Token
+                  </label>
+                  <input
+                    type="password"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    placeholder="Enter your bearer token"
+                    className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+                  />
+                </div>
+              )}
+
+              {authType === 'API_KEY' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                      Header Name
+                    </label>
+                    <input
+                      type="text"
+                      value={headerName}
+                      onChange={(e) => setHeaderName(e.target.value)}
+                      placeholder="X-API-Key"
+                      className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+                      API Key
+                    </label>
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="Enter your API key"
+                      className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {selectedType?.type === 'GENERIC_WEBHOOK' && (
+            <div className="p-4 rounded-[10px] bg-[var(--bg-elevated)] border border-[var(--border-subtle)]">
+              <p className="text-[13px] text-[var(--text-secondary)]">
+                A unique webhook URL will be generated after creation. You can then use this URL to receive events from external services.
+              </p>
+            </div>
+          )}
+
+          {error && (
+            <p className="text-[12px] text-[var(--danger)] flex items-center gap-1.5">
+              <AlertTriangle size={12} />
+              {error}
+            </p>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={handleCreate}
+              disabled={createConnector.isPending || !name.trim()}
+              className="btn-primary flex-1 text-[14px] disabled:opacity-50"
+            >
+              {createConnector.isPending ? 'Creating...' : 'Create Connector'}
+            </button>
+            <button onClick={onClose} className="btn-ghost text-[14px]">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </Dialog>
+  )
+}
+
+// ─── Automation Run History Modal ─────────────────────────────
+
+function AutomationHistoryModal({
+  automation,
+  onClose,
+}: {
+  automation: Automation
+  onClose: () => void
+}) {
+  const { data: runs, isLoading } = useAutomationRuns(automation.id)
+
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case 'SUCCESS': return { label: 'Success', className: 'badge-healthy' }
+      case 'FAILED': return { label: 'Failed', className: 'badge-emergency' }
+      case 'RUNNING': return { label: 'Running', className: 'badge-info' }
+      case 'PENDING': return { label: 'Pending', className: 'badge-accent' }
+      case 'SKIPPED': return { label: 'Skipped', className: 'badge-accent' }
+      default: return { label: status, className: 'badge-accent' }
+    }
+  }
+
+  return (
+    <Dialog open={true} onClose={onClose} title={`Run History: ${automation.name}`} subtitle="Recent automation executions" wide>
+      <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+        {isLoading && (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => <div key={i} className="skeleton h-16 rounded-[10px]" />)}
+          </div>
+        )}
+
+        {!isLoading && (!runs || runs.length === 0) && (
+          <div className="py-8 text-center">
+            <History size={32} className="text-[var(--text-tertiary)] mx-auto mb-3" />
+            <p className="text-[14px] text-[var(--text-secondary)]">No runs yet</p>
+            <p className="text-[12px] text-[var(--text-tertiary)] mt-1">
+              Runs will appear here once the automation is triggered.
+            </p>
+          </div>
+        )}
+
+        {runs && runs.length > 0 && runs.map((run: AutomationRun) => {
+          const badge = statusBadge(run.status)
+          const startTime = run.startedAt ? new Date(run.startedAt) : new Date(run.createdAt)
+          return (
+            <div key={run.id} className="p-3 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className={`badge text-[10px] ${badge.className}`}>{badge.label}</span>
+                  <span className="text-[11px] text-[var(--text-tertiary)]">
+                    {run.triggeredBy === 'SCHEDULE' && <Clock size={10} className="inline mr-1" />}
+                    {run.triggeredBy === 'WEBHOOK' && <Webhook size={10} className="inline mr-1" />}
+                    {run.triggeredBy === 'MANUAL' && <Play size={10} className="inline mr-1" />}
+                    {run.triggeredBy}
+                  </span>
+                </div>
+                <span className="text-[11px] text-[var(--text-tertiary)] tabular-nums">
+                  {formatDistanceToNow(startTime, { addSuffix: true })}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-4 text-[12px] text-[var(--text-secondary)]">
+                {run.durationMs != null && (
+                  <span className="tabular-nums">{run.durationMs}ms</span>
+                )}
+                {run.httpStatus != null && (
+                  <span className={`tabular-nums ${run.httpStatus >= 400 ? 'text-[var(--danger)]' : ''}`}>
+                    HTTP {run.httpStatus}
+                  </span>
+                )}
+              </div>
+
+              {run.error && (
+                <p className="text-[12px] text-[var(--danger)] mt-2 font-mono break-all">
+                  {run.error}
+                </p>
+              )}
+
+              <p className="text-[10px] text-[var(--text-tertiary)] mt-2 font-mono">
+                {run.requestId}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+    </Dialog>
+  )
+}
+
+// ─── Create/Edit Automation Modal ─────────────────────────────
+
+function AutomationModal({
+  integrations,
+  automation,
+  onClose,
+  onSuccess,
+}: {
+  integrations: any[]
+  automation?: Automation
+  onClose: () => void
+  onSuccess: (message: string) => void
+}) {
+  const isEdit = !!automation
+  const [name, setName] = useState(automation?.name || '')
+  const [description, setDescription] = useState(automation?.description || '')
+  const [integrationId, setIntegrationId] = useState(automation?.integrationId || '')
+  const [triggerType, setTriggerType] = useState<'SCHEDULE' | 'WEBHOOK' | 'MANUAL'>(automation?.triggerType || 'MANUAL')
+  const [cronExpression, setCronExpression] = useState(automation?.cronExpression || '')
+  const [method, setMethod] = useState((automation?.config?.method as string) || 'GET')
+  const [path, setPath] = useState((automation?.config?.path as string) || '')
+  const [maxRetries, setMaxRetries] = useState(automation?.retryPolicy?.maxRetries ?? 3)
+  const [backoffMs, setBackoffMs] = useState(automation?.retryPolicy?.backoffMs ?? 1000)
+  const [error, setError] = useState('')
+
+  const createAutomation = useCreateAutomation()
+  const updateAutomation = useUpdateAutomation()
+
+  const genericIntegrations = useMemo(() => 
+    integrations.filter((i: any) => 
+      i.type?.startsWith('GENERIC_') && (i.status === 'CONNECTED' || i.status === 'SYNCING')
+    ),
+    [integrations]
+  )
+
+  const handleSubmit = async () => {
+    setError('')
+    if (!name.trim()) {
+      setError('Name is required')
+      return
+    }
+    if (!integrationId) {
+      setError('Please select a connector')
+      return
+    }
+    if (triggerType === 'SCHEDULE' && !cronExpression.trim()) {
+      setError('Cron expression is required for scheduled automations')
+      return
+    }
+
+    const config: Record<string, unknown> = {
+      method,
+      path: path.trim() || '/',
+    }
+
+    const retryPolicy = maxRetries > 0 ? { maxRetries, backoffMs } : null
+
+    try {
+      if (isEdit) {
+        await updateAutomation.mutateAsync({
+          id: automation.id,
+          name: name.trim(),
+          description: description.trim() || undefined,
+          triggerType,
+          cronExpression: triggerType === 'SCHEDULE' ? cronExpression.trim() : null,
+          config,
+          retryPolicy,
+        })
+        onSuccess('Automation updated successfully')
+      } else {
+        await createAutomation.mutateAsync({
+          name: name.trim(),
+          description: description.trim() || undefined,
+          integrationId,
+          triggerType,
+          cronExpression: triggerType === 'SCHEDULE' ? cronExpression.trim() : undefined,
+          config,
+          retryPolicy: retryPolicy || undefined,
+        })
+        onSuccess('Automation created successfully')
+      }
+      onClose()
+    } catch (err: any) {
+      setError(err?.response?.data?.error || `Failed to ${isEdit ? 'update' : 'create'} automation`)
+    }
+  }
+
+  return (
+    <Dialog 
+      open={true} 
+      onClose={onClose} 
+      title={isEdit ? 'Edit Automation' : 'Create Automation'} 
+      subtitle={isEdit ? 'Modify automation settings' : 'Set up a new automated workflow'}
+      wide
+    >
+      <div className="space-y-4">
+        <div>
+          <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+            Name
+          </label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="My Automation"
+            className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+          />
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+            Description <span className="normal-case">(optional)</span>
+          </label>
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="What does this automation do?"
+            className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+          />
+        </div>
+
+        {!isEdit && (
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              Connector
+            </label>
+            <div className="relative">
+              <select
+                value={integrationId}
+                onChange={(e) => setIntegrationId(e.target.value)}
+                className="w-full appearance-none px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+              >
+                <option value="">Select a connector...</option>
+                {genericIntegrations.map((i: any) => (
+                  <option key={i.id} value={i.id}>{i.name} ({i.type})</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none" />
+            </div>
+            {genericIntegrations.length === 0 && (
+              <p className="text-[11px] text-[var(--text-tertiary)] mt-1.5">
+                No generic connectors available. Create an HTTP, MCP, or Webhook connector first.
+              </p>
+            )}
+          </div>
+        )}
+
+        <div>
+          <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+            Trigger Type
+          </label>
+          <div className="flex gap-2">
+            {(['MANUAL', 'SCHEDULE', 'WEBHOOK'] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() => setTriggerType(type)}
+                className={`flex-1 px-3 py-2 rounded-[8px] text-[13px] border transition-colors ${
+                  triggerType === type
+                    ? 'bg-[var(--accent-subtle)] border-[var(--accent)] text-[var(--accent)]'
+                    : 'bg-[var(--bg-elevated)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-default)]'
+                }`}
+              >
+                {type === 'MANUAL' && <Play size={12} className="inline mr-1.5" />}
+                {type === 'SCHEDULE' && <Clock size={12} className="inline mr-1.5" />}
+                {type === 'WEBHOOK' && <Webhook size={12} className="inline mr-1.5" />}
+                {type.charAt(0) + type.slice(1).toLowerCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {triggerType === 'SCHEDULE' && (
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              Cron Expression
+            </label>
+            <input
+              type="text"
+              value={cronExpression}
+              onChange={(e) => setCronExpression(e.target.value)}
+              placeholder="*/5 * * * * (every 5 minutes)"
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors font-mono"
+            />
+            <p className="text-[11px] text-[var(--text-tertiary)] mt-1">
+              Standard cron format: minute hour day month weekday
+            </p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              HTTP Method
+            </label>
+            <div className="relative">
+              <select
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+                className="w-full appearance-none px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
+              >
+                {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(m => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              Path
+            </label>
+            <input
+              type="text"
+              value={path}
+              onChange={(e) => setPath(e.target.value)}
+              placeholder="/api/endpoint"
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors font-mono"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              Max Retries
+            </label>
+            <input
+              type="number"
+              min="0"
+              max="10"
+              value={maxRetries}
+              onChange={(e) => setMaxRetries(parseInt(e.target.value) || 0)}
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors tabular-nums"
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--text-tertiary)] mb-1.5">
+              Backoff (ms)
+            </label>
+            <input
+              type="number"
+              min="100"
+              step="100"
+              value={backoffMs}
+              onChange={(e) => setBackoffMs(parseInt(e.target.value) || 1000)}
+              className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors tabular-nums"
+            />
+          </div>
+        </div>
+
+        {error && (
+          <p className="text-[12px] text-[var(--danger)] flex items-center gap-1.5">
+            <AlertTriangle size={12} />
+            {error}
+          </p>
+        )}
+
+        <div className="flex gap-3 pt-2">
+          <button
+            onClick={handleSubmit}
+            disabled={createAutomation.isPending || updateAutomation.isPending || !name.trim()}
+            className="btn-primary flex-1 text-[14px] disabled:opacity-50"
+          >
+            {createAutomation.isPending || updateAutomation.isPending 
+              ? 'Saving...' 
+              : isEdit ? 'Save Changes' : 'Create Automation'}
+          </button>
+          <button onClick={onClose} className="btn-ghost text-[14px]">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
+// ─── Automations Panel ────────────────────────────────────────
+
+function AutomationsPanel({
+  integrations,
+  onToast,
+}: {
+  integrations: any[]
+  onToast: (toast: { type: 'success' | 'error'; message: string }) => void
+}) {
+  const { data: automations, isLoading } = useAutomations()
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [editingAutomation, setEditingAutomation] = useState<Automation | null>(null)
+  const [historyAutomation, setHistoryAutomation] = useState<Automation | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
+
+  const role = useUserStore((s) => s.currentUser?.role)
+  const canEdit = role == null || role === 'ADMIN' || role === 'OPS_MANAGER'
+
+  const pauseAutomation = usePauseAutomation()
+  const resumeAutomation = useResumeAutomation()
+  const triggerAutomation = useTriggerAutomation()
+  const deleteAutomation = useDeleteAutomation()
+
+  const handlePause = async (automation: Automation) => {
+    try {
+      await pauseAutomation.mutateAsync(automation.id)
+      onToast({ type: 'success', message: `${automation.name} paused` })
+    } catch (err: any) {
+      onToast({ type: 'error', message: err?.response?.data?.error || 'Failed to pause' })
+    }
+  }
+
+  const handleResume = async (automation: Automation) => {
+    try {
+      await resumeAutomation.mutateAsync(automation.id)
+      onToast({ type: 'success', message: `${automation.name} resumed` })
+    } catch (err: any) {
+      onToast({ type: 'error', message: err?.response?.data?.error || 'Failed to resume' })
+    }
+  }
+
+  const handleTrigger = async (automation: Automation) => {
+    try {
+      await triggerAutomation.mutateAsync(automation.id)
+      onToast({ type: 'success', message: `${automation.name} triggered` })
+    } catch (err: any) {
+      onToast({ type: 'error', message: err?.response?.data?.error || 'Failed to trigger' })
+    }
+  }
+
+  const handleDelete = async (automation: Automation) => {
+    if (!confirm(`Delete automation "${automation.name}"? This cannot be undone.`)) return
+    try {
+      await deleteAutomation.mutateAsync(automation.id)
+      onToast({ type: 'success', message: `${automation.name} deleted` })
+    } catch (err: any) {
+      onToast({ type: 'error', message: err?.response?.data?.error || 'Failed to delete' })
+    }
+  }
+
+  const copyWebhookUrl = async (url: string) => {
+    await navigator.clipboard.writeText(url)
+    setCopied(url)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  const statusBadge = (status: string) => {
+    switch (status) {
+      case 'ACTIVE': return { label: 'Active', className: 'badge-healthy' }
+      case 'PAUSED': return { label: 'Paused', className: 'badge-accent' }
+      case 'ERROR': return { label: 'Error', className: 'badge-emergency' }
+      case 'DISABLED': return { label: 'Disabled', className: 'badge-accent' }
+      default: return { label: status, className: 'badge-accent' }
+    }
+  }
+
+  const triggerIcon = (type: string) => {
+    switch (type) {
+      case 'SCHEDULE': return Clock
+      case 'WEBHOOK': return Webhook
+      case 'MANUAL': return Play
+      default: return Zap
+    }
+  }
+
+  const automationList = Array.isArray(automations) ? automations : []
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-[18px] font-semibold text-[var(--text-primary)]">Automations</h2>
+          <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">
+            Automated workflows powered by your connectors
+          </p>
+        </div>
+        {canEdit && (
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="btn-primary text-[13px] flex items-center gap-1.5"
+          >
+            <Plus size={14} />
+            New Automation
+          </button>
+        )}
+      </div>
+
+      {/* Loading */}
+      {isLoading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2, 3].map(i => <div key={i} className="skeleton h-32 rounded-xl" />)}
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!isLoading && automationList.length === 0 && (
+        <div className="text-center py-12 px-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+          <Zap size={40} className="text-[var(--text-tertiary)] mx-auto mb-4" />
+          <h3 className="text-[16px] font-medium text-[var(--text-primary)]">No automations yet</h3>
+          <p className="text-[13px] text-[var(--text-secondary)] mt-1 max-w-sm mx-auto">
+            Create automations to run scheduled tasks, respond to webhooks, or trigger actions manually.
+          </p>
+          {canEdit && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="btn-primary text-[13px] mt-4"
+            >
+              Create your first automation
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Automation List */}
+      {!isLoading && automationList.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {automationList.map((automation: Automation) => {
+            const badge = statusBadge(automation.status)
+            const TriggerIcon = triggerIcon(automation.triggerType)
+            const integration = integrations.find((i: any) => i.id === automation.integrationId)
+
+            return (
+              <div key={automation.id} className="data-cell">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[var(--accent-subtle)]">
+                      <TriggerIcon size={16} className="text-[var(--accent)]" />
+                    </div>
+                    <div>
+                      <h3 className="text-[14px] font-medium text-[var(--text-primary)]">{automation.name}</h3>
+                      <p className="text-[11px] text-[var(--text-tertiary)]">
+                        {integration?.name || 'Unknown connector'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`badge text-[10px] ${badge.className}`}>{badge.label}</span>
+                </div>
+
+                {automation.description && (
+                  <p className="text-[12px] text-[var(--text-secondary)] mb-3 line-clamp-2">
+                    {automation.description}
+                  </p>
+                )}
+
+                <div className="flex items-center gap-4 text-[11px] text-[var(--text-tertiary)] mb-3">
+                  <span className="flex items-center gap-1">
+                    <TriggerIcon size={10} />
+                    {automation.triggerType}
+                  </span>
+                  {automation.cronExpression && (
+                    <span className="font-mono">{automation.cronExpression}</span>
+                  )}
+                  {automation.lastRunAt && (
+                    <span>
+                      Last run: {formatDistanceToNow(new Date(automation.lastRunAt), { addSuffix: true })}
+                    </span>
+                  )}
+                </div>
+
+                {automation.triggerType === 'WEBHOOK' && automation.webhookUrl && (
+                  <div className="flex items-center gap-2 mb-3 p-2 rounded-[8px] bg-[var(--bg-elevated)]">
+                    <Link2 size={12} className="text-[var(--text-tertiary)] flex-shrink-0" />
+                    <span className="text-[11px] font-mono text-[var(--text-secondary)] truncate flex-1">
+                      {automation.webhookUrl}
+                    </span>
+                    <button
+                      onClick={() => copyWebhookUrl(automation.webhookUrl!)}
+                      className="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0"
+                    >
+                      {copied === automation.webhookUrl ? <CheckCircle2 size={12} className="text-[var(--success)]" /> : <Copy size={12} />}
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 pt-2 border-t border-[var(--border-subtle)]">
+                  {canEdit && (
+                    <>
+                      {automation.status === 'ACTIVE' ? (
+                        <button
+                          onClick={() => handlePause(automation)}
+                          disabled={pauseAutomation.isPending}
+                          className="btn-ghost text-[12px] py-1.5 flex items-center gap-1"
+                        >
+                          <Pause size={11} />
+                          Pause
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleResume(automation)}
+                          disabled={resumeAutomation.isPending}
+                          className="btn-ghost text-[12px] py-1.5 flex items-center gap-1"
+                        >
+                          <Play size={11} />
+                          Resume
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleTrigger(automation)}
+                        disabled={triggerAutomation.isPending || automation.status !== 'ACTIVE'}
+                        className="btn-ghost text-[12px] py-1.5 flex items-center gap-1 disabled:opacity-40"
+                      >
+                        <Zap size={11} />
+                        Run
+                      </button>
+                    </>
+                  )}
+                  <button
+                    onClick={() => setHistoryAutomation(automation)}
+                    className="btn-ghost text-[12px] py-1.5 flex items-center gap-1"
+                  >
+                    <History size={11} />
+                    History
+                  </button>
+                  <div className="flex-1" />
+                  {canEdit && (
+                    <>
+                      <button
+                        onClick={() => setEditingAutomation(automation)}
+                        className="p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(automation)}
+                        disabled={deleteAutomation.isPending}
+                        className="p-1.5 rounded text-[var(--text-tertiary)] hover:text-[var(--danger)] hover:bg-[var(--bg-elevated)] transition-colors"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Modals */}
+      {showCreateModal && (
+        <AutomationModal
+          integrations={integrations}
+          onClose={() => setShowCreateModal(false)}
+          onSuccess={(message) => onToast({ type: 'success', message })}
+        />
+      )}
+
+      {editingAutomation && (
+        <AutomationModal
+          integrations={integrations}
+          automation={editingAutomation}
+          onClose={() => setEditingAutomation(null)}
+          onSuccess={(message) => onToast({ type: 'success', message })}
+        />
+      )}
+
+      {historyAutomation && (
+        <AutomationHistoryModal
+          automation={historyAutomation}
+          onClose={() => setHistoryAutomation(null)}
+        />
+      )}
+    </div>
+  )
+}
+
 // ─── Main Page ───────────────────────────────────────────────
 
 export function IntegrationsPage() {
   const { data: integrations, isLoading, refetch } = useIntegrations()
+  const { data: catalog } = useConnectorCatalog()
   const syncMutation = useSyncIntegration()
   const qc = useQueryClient()
 
+  const [activeTab, setActiveTab] = useState<'connectors' | 'automations'>('connectors')
   const [settingsDrawer, setSettingsDrawer] = useState<any>(null)
   const [editModal, setEditModal] = useState<any>(null)
   const [showZapierModal, setShowZapierModal] = useState(false)
   const [zapierWebhookUrl, setZapierWebhookUrl] = useState('')
   const [showErpModal, setShowErpModal] = useState(false)
+  const [showAddConnectorModal, setShowAddConnectorModal] = useState(false)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const [connecting, setConnecting] = useState<string | null>(null)
   const [oauthSetup, setOauthSetup] = useState<{ provider: string; required: { key: string; description: string }[] } | null>(null)
+
+  const role = useUserStore((s) => s.currentUser?.role)
+  const canEdit = role == null || role === 'ADMIN' || role === 'OPS_MANAGER'
 
   // Auto-dismiss toast after 5 seconds
   useEffect(() => {
@@ -1264,6 +2225,7 @@ export function IntegrationsPage() {
   }, [refetch, qc])
 
   const integrationList = Array.isArray(integrations) ? integrations : []
+  const catalogList = Array.isArray(catalog) ? catalog : []
   // SYNCING is a transient state during a manual sync — the integration is
   // still connected, so keep it in the Active section (with a Syncing badge)
   // instead of dropping it back to "Available" as if the setup was lost.
@@ -1372,19 +2334,64 @@ export function IntegrationsPage() {
       )}
 
       {/* Header */}
-      <div>
-        <h1 className="text-[28px] font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
-          Integrations Hub
-        </h1>
-        <p className="text-[14px] text-[var(--text-secondary)] mt-0.5">
-          Manage connected services and data sync
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-[28px] font-semibold tracking-[-0.04em] text-[var(--text-primary)]">
+            Integrations Hub
+          </h1>
+          <p className="text-[14px] text-[var(--text-secondary)] mt-0.5">
+            Manage connected services, connectors, and automations
+          </p>
+        </div>
+        {canEdit && activeTab === 'connectors' && (
+          <button
+            onClick={() => setShowAddConnectorModal(true)}
+            className="btn-primary text-[13px] flex items-center gap-1.5"
+          >
+            <Plus size={14} />
+            Add Connector
+          </button>
+        )}
       </div>
 
-      {/* Per-user Microsoft account connection */}
-      <ConnectMicrosoft variant="card" />
+      {/* Tabs */}
+      <div className="flex gap-1 p-1 rounded-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] w-fit">
+        <button
+          onClick={() => setActiveTab('connectors')}
+          className={`px-4 py-2 rounded-[8px] text-[13px] font-medium transition-colors flex items-center gap-2 ${
+            activeTab === 'connectors'
+              ? 'bg-[var(--accent)] text-white'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <Plug size={14} />
+          Connectors
+        </button>
+        <button
+          onClick={() => setActiveTab('automations')}
+          className={`px-4 py-2 rounded-[8px] text-[13px] font-medium transition-colors flex items-center gap-2 ${
+            activeTab === 'automations'
+              ? 'bg-[var(--accent)] text-white'
+              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <Zap size={14} />
+          Automations
+        </button>
+      </div>
 
-      {/* Loading */}
+      {/* Automations Tab */}
+      {activeTab === 'automations' && (
+        <AutomationsPanel integrations={integrationList} onToast={setToast} />
+      )}
+
+      {/* Connectors Tab */}
+      {activeTab === 'connectors' && (
+        <>
+          {/* Per-user Microsoft account connection */}
+          <ConnectMicrosoft variant="card" />
+
+          {/* Loading */}
       {isLoading && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[1, 2, 3, 4].map((i) => (
@@ -1509,6 +2516,8 @@ export function IntegrationsPage() {
           </div>
         </div>
       )}
+        </>
+      )}
 
       {/* Settings Drawer */}
       {settingsDrawer && (
@@ -1553,6 +2562,18 @@ export function IntegrationsPage() {
           provider={oauthSetup.provider}
           requiredVars={oauthSetup.required}
           onClose={() => setOauthSetup(null)}
+        />
+      )}
+
+      {/* Add Connector Modal */}
+      {showAddConnectorModal && catalogList.length > 0 && (
+        <AddConnectorModal
+          catalog={catalogList}
+          onClose={() => setShowAddConnectorModal(false)}
+          onSuccess={(message) => {
+            setToast({ type: 'success', message })
+            refetch()
+          }}
         />
       )}
     </div>

@@ -297,6 +297,233 @@ export function useSyncIntegration() {
   })
 }
 
+// ─── Connector Catalog ───────────────────────────────────────
+export interface ConnectorDefinition {
+  type: string
+  name: string
+  description: string
+  category: string
+  authTypes: string[]
+  singleton: boolean
+  isGeneric: boolean
+}
+
+export function useConnectorCatalog() {
+  return useQuery<ConnectorDefinition[]>({
+    queryKey: ['connector-catalog'],
+    queryFn: () => api.get('/integrations/catalog').then(r => r.data),
+    staleTime: 60_000,
+  })
+}
+
+// ─── Connector (Integration) CRUD ────────────────────────────
+export function useConnector(id: string) {
+  return useQuery({
+    queryKey: ['connector', id],
+    queryFn: () => api.get(`/integrations/${id}`).then(r => r.data),
+    enabled: !!id,
+  })
+}
+
+export function useCreateConnector() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { type: string; name: string; config: Record<string, unknown> }) =>
+      api.post('/integrations', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['integrations'] }),
+  })
+}
+
+export function useUpdateConnector() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; name?: string; config?: Record<string, unknown> }) =>
+      api.patch(`/integrations/${id}`, data).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['integrations'] })
+      qc.invalidateQueries({ queryKey: ['connector', vars.id] })
+    },
+  })
+}
+
+export function useTestConnector() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/integrations/${id}/test`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['integrations'] }),
+  })
+}
+
+export function usePauseConnector() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/integrations/${id}/pause`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['integrations'] }),
+  })
+}
+
+export function useResumeConnector() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/integrations/${id}/resume`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['integrations'] }),
+  })
+}
+
+export function useDeleteConnector() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/integrations/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['integrations'] }),
+  })
+}
+
+// ─── Automations ────────────────────────────────────────────
+export interface Automation {
+  id: string
+  name: string
+  description: string | null
+  integrationId: string
+  integration?: { id: string; name: string; type: string }
+  triggerType: 'SCHEDULE' | 'WEBHOOK' | 'MANUAL'
+  cronExpression: string | null
+  webhookId: string | null
+  webhookUrl?: string | null
+  status: 'ACTIVE' | 'PAUSED' | 'ERROR' | 'DISABLED'
+  retryPolicy: { maxRetries: number; backoffMs: number } | null
+  config: Record<string, unknown>
+  nextRunAt: string | null
+  lastRunAt: string | null
+  lastRunStatus: string | null
+  consecutiveFailures: number
+  circuitOpenUntil: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AutomationRun {
+  id: string
+  automationId: string
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'
+  triggeredBy: 'SCHEDULE' | 'WEBHOOK' | 'MANUAL'
+  requestId: string
+  startedAt: string | null
+  completedAt: string | null
+  durationMs: number | null
+  httpStatus: number | null
+  responseBody: string | null
+  error: string | null
+  requestSnapshot: Record<string, unknown>
+  responseSnapshot: Record<string, unknown> | null
+  createdAt: string
+}
+
+export function useAutomations() {
+  return useQuery<Automation[]>({
+    queryKey: ['automations'],
+    queryFn: () => api.get('/automations').then(r => r.data),
+    refetchInterval: (query) => {
+      const list = query.state.data as Automation[] | undefined
+      return Array.isArray(list) && list.some(a => a.status === 'ACTIVE' && a.triggerType === 'SCHEDULE') ? 10000 : false
+    },
+  })
+}
+
+export function useAutomation(id: string) {
+  return useQuery<Automation>({
+    queryKey: ['automation', id],
+    queryFn: () => api.get(`/automations/${id}`).then(r => r.data),
+    enabled: !!id,
+  })
+}
+
+export function useCreateAutomation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: {
+      name: string
+      description?: string
+      integrationId: string
+      triggerType: 'SCHEDULE' | 'WEBHOOK' | 'MANUAL'
+      cronExpression?: string
+      config: Record<string, unknown>
+      retryPolicy?: { maxRetries: number; backoffMs: number }
+    }) => api.post('/automations', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['automations'] }),
+  })
+}
+
+export function useUpdateAutomation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: {
+      id: string
+      name?: string
+      description?: string
+      triggerType?: 'SCHEDULE' | 'WEBHOOK' | 'MANUAL'
+      cronExpression?: string | null
+      config?: Record<string, unknown>
+      retryPolicy?: { maxRetries: number; backoffMs: number } | null
+    }) => api.patch(`/automations/${id}`, data).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['automations'] })
+      qc.invalidateQueries({ queryKey: ['automation', vars.id] })
+    },
+  })
+}
+
+export function useDeleteAutomation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/automations/${id}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['automations'] }),
+  })
+}
+
+export function usePauseAutomation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/automations/${id}/pause`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['automations'] }),
+  })
+}
+
+export function useResumeAutomation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/automations/${id}/resume`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['automations'] }),
+  })
+}
+
+export function useTriggerAutomation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/automations/${id}/trigger`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['automations'] }),
+  })
+}
+
+export function useAutomationRuns(automationId: string, limit = 20) {
+  return useQuery<AutomationRun[]>({
+    queryKey: ['automation-runs', automationId, limit],
+    queryFn: () => api.get(`/automations/${automationId}/runs?limit=${limit}`).then(r => r.data),
+    enabled: !!automationId,
+    refetchInterval: (query) => {
+      const list = query.state.data as AutomationRun[] | undefined
+      return Array.isArray(list) && list.some(r => r.status === 'PENDING' || r.status === 'RUNNING') ? 2000 : false
+    },
+  })
+}
+
+export function useAutomationRun(automationId: string, runId: string) {
+  return useQuery<AutomationRun>({
+    queryKey: ['automation-run', automationId, runId],
+    queryFn: () => api.get(`/automations/${automationId}/runs/${runId}`).then(r => r.data),
+    enabled: !!automationId && !!runId,
+  })
+}
+
 // ─── ERP Data Routing ───────────────────────────────────────
 // GET returns which ERP feeds flow to which Nexus modules. PATCH updates a
 // partial routing map (admin / OPS_MANAGER only — a 403 surfaces in the UI).
