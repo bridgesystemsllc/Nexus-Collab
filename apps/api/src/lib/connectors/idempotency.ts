@@ -58,14 +58,14 @@ export function verifyWebhookSignature(
 export async function isDuplicateRun(
   prisma: PrismaClient,
   automationId: string,
-  requestId: string,
+  idempotencyKey: string,
   windowMs: number = 300000
 ): Promise<boolean> {
   const windowStart = new Date(Date.now() - windowMs)
   const existing = await prisma.automationRun.findFirst({
     where: {
       automationId,
-      requestId,
+      idempotencyKey,
       startedAt: { gte: windowStart },
     },
     select: { id: true },

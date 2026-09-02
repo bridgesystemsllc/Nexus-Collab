@@ -172,7 +172,8 @@ export async function createConnector(
     data: {
       type,
       name,
-      status: 'CONNECTED',
+      // §5.2: Create status DISCONNECTED
+      status: 'DISCONNECTED',
       orgId,
       authType: effectiveAuthType,
       config: fullConfig as Prisma.InputJsonObject,

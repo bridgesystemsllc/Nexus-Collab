@@ -172,9 +172,24 @@ export async function executeHttpRequest(
   }
 }
 
+export type HttpClient = ReturnType<typeof createHttpClient>
+
 export function createHttpClient(config: HttpClientConfig) {
   return {
     config,
+    async request(
+      method: string,
+      path: string,
+      body?: unknown,
+      headers?: Record<string, string>
+    ) {
+      return executeHttpRequest(config, {
+        method: method.toUpperCase() as HttpRequest['method'],
+        path,
+        body,
+        headers,
+      })
+    },
     async get(path: string, query?: Record<string, string>, headers?: Record<string, string>) {
       return executeHttpRequest(config, { method: 'GET', path, query, headers })
     },

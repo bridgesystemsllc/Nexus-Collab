@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Bell, CreditCard, KeyRound, ScrollText, ShieldCheck, SlidersHorizontal, User,
+  Bell, CreditCard, KeyRound, Plug, ScrollText, ShieldCheck, SlidersHorizontal, User,
 } from 'lucide-react'
 import { ApiError } from '@/features/users/api/usersApi'
 import { fetchMeBundle, verifyEmailChange } from '../api/settingsApi'
@@ -13,6 +13,7 @@ import { NotificationsSection } from '../sections/NotificationsSection'
 import { SecuritySection } from '../sections/SecuritySection'
 import { AccessSection } from '../sections/AccessSection'
 import { AuditSection } from '../sections/AuditSection'
+import { IntegrationsSection } from '../sections/IntegrationsSection'
 import { OverviewSection } from '@/features/billing/sections/OverviewSection'
 
 // ─── Settings ────────────────────────────────────────────────
@@ -20,7 +21,7 @@ import { OverviewSection } from '@/features/billing/sections/OverviewSection'
 // present; the two that concern the workspace appear only for people who can
 // act on them — a read-only Access screen is a screen that teaches nothing.
 
-type SectionKey = 'account' | 'preferences' | 'notifications' | 'security' | 'access' | 'audit' | 'billing'
+type SectionKey = 'account' | 'preferences' | 'notifications' | 'security' | 'access' | 'integrations' | 'audit' | 'billing'
 
 interface SectionDef {
   key: SectionKey
@@ -36,6 +37,7 @@ const SECTIONS: SectionDef[] = [
   { key: 'notifications', label: 'Notifications', icon: Bell },
   { key: 'security', label: 'Security', icon: ShieldCheck },
   { key: 'access', label: 'Access & permissions', icon: KeyRound, permission: 'roles:read' },
+  { key: 'integrations', label: 'Integrations', icon: Plug, permission: 'integrations:manage' },
   { key: 'audit', label: 'Audit log', icon: ScrollText, permission: 'audit:read' },
   { key: 'billing', label: 'Billing', icon: CreditCard, permission: 'billing:read' },
 ]
@@ -141,6 +143,7 @@ export function SettingsPage() {
               {active === 'notifications' && <NotificationsSection key={me.dataUpdatedAt} me={me.data} />}
               {active === 'security' && <SecuritySection me={me.data} />}
               {active === 'access' && <AccessSection me={me.data} />}
+              {active === 'integrations' && <IntegrationsSection />}
               {active === 'audit' && <AuditSection />}
               {active === 'billing' && (
                 <div className="billing-module">
