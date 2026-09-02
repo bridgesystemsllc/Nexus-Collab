@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Layers,
 } from 'lucide-react'
+import { UpcAProductSearch } from './UpcAProductSearch'
 import type {
   Component,
   FeasibilityStatus,
@@ -862,7 +863,7 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
   )
 
   const renderAssignments = () => {
-    const renderAssignmentTable = (items: ProductAssignment[], label: string) => (
+    const renderLegacyAssignmentTable = (items: ProductAssignment[], label: string) => (
       <div className="overflow-x-auto rounded-lg border border-[var(--border-subtle)]">
         <table className="nexus-table">
           <thead>
@@ -895,81 +896,47 @@ export function ComponentDetail({ open, component, onClose, onComponentUpdate, o
 
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <SectionHeader icon={Layers} label="Product Assignments" />
-          <button
-            onClick={() => setShowAssignForm(!showAssignForm)}
-            className="flex items-center gap-1 text-[12px] text-[var(--accent)] hover:underline"
-          >
-            <Plus size={14} /> Assign to Product
-          </button>
-        </div>
+        <SectionHeader icon={Layers} label="Product Assignments" />
 
-        {showAssignForm && (
-          <div className="p-4 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-base)] space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <input
-                type="text"
-                placeholder="Product name"
-                value={assignForm.productName}
-                onChange={(e) => setAssignForm({ ...assignForm, productName: e.target.value })}
-                className="nexus-input text-[13px]"
-              />
-              <input
-                type="text"
-                placeholder="Brand"
-                value={assignForm.brand}
-                onChange={(e) => setAssignForm({ ...assignForm, brand: e.target.value })}
-                className="nexus-input text-[13px]"
-              />
-              <input
-                type="text"
-                placeholder="SKU"
-                value={assignForm.sku}
-                onChange={(e) => setAssignForm({ ...assignForm, sku: e.target.value })}
-                className="nexus-input text-[13px]"
-              />
-              <input
-                type="number"
-                placeholder="Annual Volume"
-                value={assignForm.annualVolumeUnits || ''}
-                onChange={(e) => setAssignForm({ ...assignForm, annualVolumeUnits: Number(e.target.value) })}
-                className="nexus-input text-[13px]"
-              />
-            </div>
-            <button onClick={handleAssignProduct} className="btn-primary px-4 py-2 text-[13px]">Assign</button>
-          </div>
+        {/* NX-105: UPC-A based product assignment */}
+        {component?.id && (
+          <UpcAProductSearch componentId={component.id} />
         )}
 
-        {activeAssignments.length > 0 && (
-          <div>
-            <h4 className="text-[12px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Active ({activeAssignments.length})</h4>
-            {renderAssignmentTable(activeAssignments, 'Active')}
-          </div>
-        )}
+        {/* Legacy JSON-based assignments (read-only display) */}
+        {assignments.length > 0 && (
+          <div className="pt-4 border-t border-[var(--border-subtle)]">
+            <h4 className="text-[12px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider mb-3">
+              Legacy Assignments (from component data)
+            </h4>
 
-        {candidateAssignments.length > 0 && (
-          <div>
-            <h4 className="text-[12px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2">Candidate ({candidateAssignments.length})</h4>
-            {renderAssignmentTable(candidateAssignments, 'Candidate')}
-          </div>
-        )}
+            {activeAssignments.length > 0 && (
+              <div className="mb-4">
+                <h5 className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wider mb-2">Active ({activeAssignments.length})</h5>
+                {renderLegacyAssignmentTable(activeAssignments, 'Active')}
+              </div>
+            )}
 
-        {historicalAssignments.length > 0 && (
-          <div>
-            <button
-              onClick={() => setHistoricalExpanded(!historicalExpanded)}
-              className="flex items-center gap-1 text-[12px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider mb-2 hover:text-[var(--text-primary)]"
-            >
-              {historicalExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              Historical ({historicalAssignments.length})
-            </button>
-            {historicalExpanded && renderAssignmentTable(historicalAssignments, 'Historical')}
-          </div>
-        )}
+            {candidateAssignments.length > 0 && (
+              <div className="mb-4">
+                <h5 className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wider mb-2">Candidate ({candidateAssignments.length})</h5>
+                {renderLegacyAssignmentTable(candidateAssignments, 'Candidate')}
+              </div>
+            )}
 
-        {assignments.length === 0 && (
-          <p className="text-[13px] text-[var(--text-tertiary)]">No product assignments.</p>
+            {historicalAssignments.length > 0 && (
+              <div>
+                <button
+                  onClick={() => setHistoricalExpanded(!historicalExpanded)}
+                  className="flex items-center gap-1 text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wider mb-2 hover:text-[var(--text-primary)]"
+                >
+                  {historicalExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  Historical ({historicalAssignments.length})
+                </button>
+                {historicalExpanded && renderLegacyAssignmentTable(historicalAssignments, 'Historical')}
+              </div>
+            )}
+          </div>
         )}
       </div>
     )
