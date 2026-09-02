@@ -67,7 +67,7 @@ crash-looping on ECONNREFUSED.
 
 | Group | Cadence | Jobs |
 |---|---|---|
-| `frequent` | every 15 min | `erp-sync` |
+| `frequent` | every 15 min | `erp-sync`, `automation-runner` |
 | `hourly` | hourly | `graph-subscription-renew`, `escalation-check`, `checkin-engine`, `report-schedule` |
 | `nightly` | 02:00 | `project-health` (scoring + the daily health snapshot) |
 | `morning` | 09:00 | `daily-briefing` |

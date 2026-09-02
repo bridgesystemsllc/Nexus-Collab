@@ -41,6 +41,7 @@ model Organization {
   seatAssignments    SeatAssignment[]
   paymentMethods     BillingPaymentMethod[]
   invoices           BillingInvoice[]
+  automations        Automation[]
 }
 
 // ─── Session ────────────────────────────────────────────────
@@ -746,7 +747,7 @@ model Note {
 // ─── Integration ────────────────────────────────────────────
 model Integration {
   id         String       @id @default(cuid())
-  type       String // ERP_KAREVE_SYNC, MICROSOFT_OUTLOOK, MICROSOFT_TEAMS, MICROSOFT_ONEDRIVE, AMAZON_VENDOR_CENTRAL, SHOPIFY, GS1_SYNC, SLACK, ZAPIER
+  type       String // ERP_KAREVE_SYNC, MICROSOFT_OUTLOOK, MICROSOFT_TEAMS, MICROSOFT_ONEDRIVE, AMAZON_VENDOR_CENTRAL, SHOPIFY, GS1_SYNC, SLACK, ZAPIER, GENERIC_HTTP, GENERIC_MCP, GENERIC_WEBHOOK
   name       String
   status     String       @default("DISCONNECTED") // CONNECTED, DISCONNECTED, ERROR, SYNCING
   config     Json         @default("{}")
@@ -758,7 +759,18 @@ model Integration {
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
+  // NX-101: Connector framework extensions
+  paused              Boolean    @default(false)
+  authType            String?    // NONE, API_KEY, BEARER, BASIC, OAUTH2, WEBHOOK_SECRET
+  lastError           String?
+  lastTestAt          DateTime?
+  lastTestOk          Boolean?
+  consecutiveFailures Int        @default(0)
+  circuitOpenUntil    DateTime?
+  automations         Automation[]
+
   @@index([orgId])
+  @@index([orgId, type])
 }
 
 // ─── Sync Log ───────────────────────────────────────────────
@@ -772,7 +784,73 @@ model SyncLog {
   startedAt        DateTime    @default(now())
   completedAt      DateTime?
 
+  // NX-101: Extended for connector/automation runs
+  orgId            String?
+  kind             String      @default("SYNC") // SYNC, TEST, AUTOMATION_RUN
+  requestId        String?     // Idempotency key
+
   @@index([integrationId])
+  @@index([orgId, startedAt])
+}
+
+// ─── Automation ─────────────────────────────────────────────
+// An org-scoped automation wires a connector (Integration) to scheduled or
+// webhook-triggered actions. Supports SCHEDULE (cron-like) and WEBHOOK triggers.
+model Automation {
+  id            String          @id @default(cuid())
+  orgId         String
+  org           Organization    @relation(fields: [orgId], references: [id])
+  integrationId String
+  integration   Integration     @relation(fields: [integrationId], references: [id])
+  name          String
+  description   String?
+  trigger       String          // SCHEDULE, WEBHOOK
+  // For SCHEDULE: cron expression or interval. For WEBHOOK: the webhookId matches incoming.
+  schedule      String?
+  webhookId     String?         @unique
+  webhookSecret String?
+  // The action payload: method, url path, headers, body template
+  config        Json            @default("{}")
+  status        String          @default("ACTIVE") // ACTIVE, PAUSED, ERROR, DISABLED
+  nextRunAt     DateTime?
+  lastRunAt     DateTime?
+  lastRunOk     Boolean?
+  lastError     String?
+  consecutiveFailures Int       @default(0)
+  retryPolicy   Json?           // { maxRetries, backoffMs, maxBackoffMs }
+  runs          AutomationRun[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([orgId])
+  @@index([integrationId])
+  @@index([status, nextRunAt])
+  @@index([webhookId])
+}
+
+// ─── Automation Run ─────────────────────────────────────────
+// A single execution of an automation. Append-only run history for audit.
+model AutomationRun {
+  id              String     @id @default(cuid())
+  automationId    String
+  automation      Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  orgId           String
+  trigger         String     // SCHEDULE, WEBHOOK, MANUAL
+  requestId       String?    // Idempotency key
+  status          String     // PENDING, RUNNING, SUCCESS, FAILED, TIMEOUT, SKIPPED
+  // Input/output stored masked (no plaintext secrets)
+  inputSnapshot   Json?
+  outputSnapshot  Json?
+  errorMessage    String?
+  httpStatus      Int?
+  durationMs      Int?
+  retryCount      Int        @default(0)
+  startedAt       DateTime   @default(now())
+  completedAt     DateTime?
+
+  @@index([automationId, startedAt(sort: Desc)])
+  @@index([orgId, startedAt(sort: Desc)])
+  @@index([requestId])
 }
 
 // ─── Pulse ──────────────────────────────────────────────────

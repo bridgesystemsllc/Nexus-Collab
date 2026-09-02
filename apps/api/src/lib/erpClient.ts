@@ -95,13 +95,16 @@ interface StoredErpConfig {
  * Resolve ERP connection settings, preferring the encrypted Integration
  * config and falling back to environment variables.
  */
-export async function getErpConfig(prisma: PrismaClient): Promise<ErpConfig> {
+export async function getErpConfig(prisma: PrismaClient, orgId?: string): Promise<ErpConfig> {
   let apiUrl: string | null = null
   let apiKey: string | null = null
 
   try {
+    const whereClause: { type: string; orgId?: string } = { type: 'ERP_KAREVE_SYNC' }
+    if (orgId) whereClause.orgId = orgId
+
     const integration = await prisma.integration.findFirst({
-      where: { type: 'ERP_KAREVE_SYNC' },
+      where: whereClause,
     })
     const config = integration?.config as
       | { iv?: string; encrypted?: string; tag?: string }
@@ -263,8 +266,8 @@ function mapErpRecord(raw: Record<string, any>): ErpSku {
  * Fetch SKU / product master data from the ERP. Returns the real feed when
  * configured, otherwise a labelled synthetic dev feed.
  */
-export async function fetchErpSkus(prisma: PrismaClient): Promise<ErpSku[]> {
-  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+export async function fetchErpSkus(prisma: PrismaClient, orgId?: string): Promise<ErpSku[]> {
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
   if (!configured || !apiUrl || !apiKey) {
     return syntheticFeed()
   }
@@ -501,8 +504,9 @@ function mapErpInventory(raw: Record<string, any>): ErpInventory {
 export async function fetchErpInventory(
   prisma: PrismaClient,
   path?: string,
+  orgId?: string,
 ): Promise<ErpInventory[]> {
-  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
   if (!configured || !apiUrl || !apiKey) return syntheticInventory()
   // Configured → REAL data only: throw on failure or zero usable records so the
   // sync orchestrator isolates/logs it instead of writing synthetic stock.
@@ -595,8 +599,9 @@ function mapErpComponent(raw: Record<string, any>): ErpComponent {
 export async function fetchErpComponents(
   prisma: PrismaClient,
   path?: string,
+  orgId?: string,
 ): Promise<ErpComponent[]> {
-  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
   if (!configured || !apiUrl || !apiKey) return syntheticComponents()
   // Configured → REAL data only: throw on failure so the sync orchestrator
   // isolates/logs it instead of writing synthetic components.
@@ -654,8 +659,9 @@ function mapErpPricing(raw: Record<string, any>): ErpPricing {
 export async function fetchErpPricing(
   prisma: PrismaClient,
   path?: string,
+  orgId?: string,
 ): Promise<ErpPricing[]> {
-  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
   if (!configured || !apiUrl || !apiKey) return syntheticPricing()
   // Configured → REAL data only: throw on failure so the sync orchestrator
   // isolates/logs it instead of writing synthetic pricing.
@@ -721,8 +727,8 @@ function mapErpCm(raw: Record<string, any>): ErpCm {
  * feed when configured (trying `path` then `/vendors` then `/cms`), otherwise
  * a labelled synthetic dev feed.
  */
-export async function fetchErpCms(prisma: PrismaClient, path?: string): Promise<ErpCm[]> {
-  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+export async function fetchErpCms(prisma: PrismaClient, path?: string, orgId?: string): Promise<ErpCm[]> {
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
   if (!configured || !apiUrl || !apiKey) return syntheticCms()
   // Configured → REAL data only: throw on failure so the sync orchestrator
   // isolates/logs it instead of writing synthetic CM/vendor rows.
@@ -832,8 +838,9 @@ function syntheticOpenOrders(): ErpOpenOrder[] {
 export async function fetchErpOpenOrders(
   prisma: PrismaClient,
   path?: string,
+  orgId?: string,
 ): Promise<ErpOpenOrder[]> {
-  const { apiUrl, apiKey, configured } = await getErpConfig(prisma)
+  const { apiUrl, apiKey, configured } = await getErpConfig(prisma, orgId)
   if (!configured || !apiUrl || !apiKey) return syntheticOpenOrders()
 
   const results: ErpOpenOrder[] = []

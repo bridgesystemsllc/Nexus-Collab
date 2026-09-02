@@ -4,6 +4,7 @@ import { renewSubscriptions, isSubscriptionConfigured } from '../services/emailA
 import { recomputeAllProjects } from '../services/projects/recompute'
 import { runCheckinEngine } from '../services/projects/checkinEngine'
 import { runReportSchedule } from '../services/projects/reports/schedule'
+import { runDueAutomations, runPendingAutomations } from '../services/automations/runner'
 
 // ─── Background jobs ─────────────────────────────────────────
 // Every scheduled job as a plain named function, so the same body can be run
@@ -69,15 +70,52 @@ const dailyBriefing: JobFn = async (prisma) => {
 }
 
 // ─── ERP sync ────────────────────────────────────────────────
+// Iterate each ERP_KAREVE_SYNC integration and sync per-org.
 
 const erpSync: JobFn = async (prisma) => {
-  const result = await syncErp(prisma)
-  const feeds = (result as any)?.feeds ?? {}
-  const names = Object.keys(feeds)
+  const integrations = await prisma.integration.findMany({
+    where: { type: 'ERP_KAREVE_SYNC' },
+    select: { orgId: true },
+  })
+
+  if (integrations.length === 0) {
+    return { summary: 'no ERP integrations configured' }
+  }
+
+  const results: string[] = []
+  for (const integration of integrations) {
+    try {
+      const result = await syncErp(prisma, integration.orgId)
+      const feeds = (result as any)?.feeds ?? {}
+      const names = Object.keys(feeds)
+      const feedSummary = names.length
+        ? names.map((n) => `${n}: ${feeds[n]?.updated ?? 0}`).join(', ')
+        : 'no feeds'
+      results.push(`org ${integration.orgId.slice(0, 8)}: ${feedSummary}`)
+    } catch (err) {
+      results.push(`org ${integration.orgId.slice(0, 8)}: error - ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  return { summary: results.join('; ') }
+}
+
+// ─── Automation runner ───────────────────────────────────────
+// Process due scheduled automations and pending manual triggers.
+
+const automationRunner: JobFn = async (prisma) => {
+  const dueResult = await runDueAutomations(prisma)
+  const pendingResult = await runPendingAutomations(prisma)
+
+  const totalProcessed = dueResult.processed + pendingResult.processed
+  const totalSucceeded = dueResult.succeeded + pendingResult.succeeded
+  const totalFailed = dueResult.failed + pendingResult.failed
+  const totalSkipped = dueResult.skipped + pendingResult.skipped
+
   return {
-    summary: names.length
-      ? names.map((n) => `${n}: ${feeds[n]?.updated ?? 0} updated`).join(', ')
-      : 'no ERP feeds configured',
+    summary: totalProcessed === 0
+      ? 'no automations due'
+      : `${totalProcessed} processed: ${totalSucceeded} ok, ${totalFailed} failed, ${totalSkipped} skipped`,
   }
 }
 
@@ -187,6 +225,12 @@ export const JOBS: JobDefinition[] = [
     group: 'frequent',
     description: 'Pull ERP inventory and order state',
     run: erpSync,
+  },
+  {
+    name: 'automation-runner',
+    group: 'frequent',
+    description: 'Execute due scheduled automations and pending manual triggers',
+    run: automationRunner,
   },
   {
     name: 'graph-subscription-renew',
