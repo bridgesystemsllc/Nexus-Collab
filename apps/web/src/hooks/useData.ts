@@ -41,6 +41,12 @@ export interface CMOption {
   name: string
   status: string | null
   brands: string[]
+  erpId: string | null
+  cmCode: string | null
+  legalName: string | null
+  cmType: string | null
+  vendorId: string | null
+  headquarters: unknown
 }
 
 export function useCMs() {

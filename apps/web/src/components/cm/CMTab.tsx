@@ -1,10 +1,30 @@
 import { useState, useMemo, useEffect } from 'react'
-import { Edit3, Eye, Plus, Trash2, Users } from 'lucide-react'
+import { AlertTriangle, Edit3, Eye, Plus, Trash2, Users } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { api } from '@/lib/api'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 import { StatusBadge, ActionsMenu, DeleteConfirmDialog } from '@/components/shared/TablePrimitives'
 import { CMDetailModal } from '@/components/rd/CMDetailModal'
+
+// ─── ERP field display helpers ─────────────────────────────
+function dash(v: unknown): string {
+  if (v == null || v === '') return '—'
+  if (typeof v === 'string') return v
+  return '—'
+}
+
+function formatHeadquarters(h: unknown): string {
+  if (h == null || h === '') return '—'
+  if (typeof h === 'string') return h
+  if (typeof h === 'object' && !Array.isArray(h)) {
+    const o = h as Record<string, unknown>
+    const line = [o.city, o.state ?? o.region, o.country]
+      .filter((x) => typeof x === 'string' && x)
+      .join(', ')
+    return line || '—'
+  }
+  return '—'
+}
 
 // ─── CM-only helpers ───────────────────────────────────────
 export function percentColor(val: number): string {
@@ -41,8 +61,24 @@ export function computeCMOnTime(cmName: string, productionOrders: any[]): number
   return Math.round((onTimeCount / orders.length) * 100)
 }
 
+// ─── Loading skeleton ──────────────────────────────────────
+function CardsSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="data-cell space-y-3">
+          <div className="skeleton h-5 w-32" />
+          <div className="skeleton h-4 w-full" />
+          <div className="skeleton h-3 w-3/4" />
+          <div className="skeleton h-2 w-full" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── CM Productivity Tab (Expanded) ────────────────────────
-export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [], productionItems = [], openCmId, onOpenCmHandled }: {
+export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [], productionItems = [], openCmId, onOpenCmHandled, isLoading = false, isError = false, onRetry }: {
   items: any[]; moduleId: string | null; departmentId: string | null; onRefresh: () => void
   /** Briefs used for cross-links inside the CM detail modal. Optional — callers without R&D briefs (e.g. Finance) can omit. */
   briefItems?: any[]
@@ -52,6 +88,12 @@ export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [
   openCmId?: string | null
   /** Called once openCmId has been consumed so the parent can clear it. */
   onOpenCmHandled?: () => void
+  /** When true, show loading skeleton instead of content. */
+  isLoading?: boolean
+  /** When true, show error state instead of content. */
+  isError?: boolean
+  /** Retry callback for error state. */
+  onRetry?: () => void
 }) {
   const openForm = useAppStore((s) => s.openForm)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
@@ -135,7 +177,22 @@ export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [
         </button>
       </div>
 
-      {cmList.length === 0 ? (
+      {isLoading ? (
+        <CardsSkeleton />
+      ) : isError ? (
+        <div role="alert" className="flex items-start gap-2 rounded-lg px-3 py-3 text-[12px]" style={{ background: 'rgba(216,53,42,0.08)' }}>
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" style={{ color: 'var(--danger)' }} />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-[var(--text-primary)]">Could not load contract manufacturers.</p>
+            <p className="text-[var(--text-secondary)] mt-0.5">Check the connection and try again.</p>
+            {onRetry && (
+              <button onClick={onRetry} className="mt-2 text-[var(--accent)] hover:underline font-medium">
+                Try again
+              </button>
+            )}
+          </div>
+        </div>
+      ) : cmList.length === 0 ? (
         <div className="text-center py-12">
           <Users size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
           <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No contract manufacturers yet</p>
@@ -156,7 +213,34 @@ export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [
                     </div>
                   </div>
                 </div>
-                <div className="text-[12px] text-[var(--text-secondary)]">{(cm.brands || []).join(', ')}</div>
+                <div className="text-[12px] text-[var(--text-secondary)]">{(cm.brands || []).join(', ') || '—'}</div>
+                {/* ERP metadata */}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                  <div className="flex justify-between">
+                    <span className="text-[var(--text-tertiary)]">Code</span>
+                    <span className="text-[var(--text-secondary)] font-mono">{dash(cm.cmCode)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--text-tertiary)]">Type</span>
+                    <span className="text-[var(--text-secondary)]">{dash(cm.cmType)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--text-tertiary)]">Legal</span>
+                    <span className="text-[var(--text-secondary)] truncate max-w-[80px]" title={dash(cm.legalName)}>{dash(cm.legalName)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--text-tertiary)]">Vendor</span>
+                    <span className="text-[var(--text-secondary)] font-mono">{dash(cm.vendorId)}</span>
+                  </div>
+                  <div className="col-span-2 flex justify-between">
+                    <span className="text-[var(--text-tertiary)]">HQ</span>
+                    <span className="text-[var(--text-secondary)] truncate max-w-[140px]" title={formatHeadquarters(cm.headquarters)}>{formatHeadquarters(cm.headquarters)}</span>
+                  </div>
+                  <div className="col-span-2 flex justify-between">
+                    <span className="text-[var(--text-tertiary)]">ERP id</span>
+                    <span className="text-[var(--text-tertiary)] font-mono text-[10px]">{dash(cm.erpId)}</span>
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <p className="text-[11px] text-[var(--text-tertiary)]">On-Time</p>
@@ -183,6 +267,11 @@ export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [
                 <th>CM Name</th>
                 <th>Contact</th>
                 <th>Brands</th>
+                <th>Code</th>
+                <th>Type</th>
+                <th>Legal Name</th>
+                <th>Vendor</th>
+                <th>HQ</th>
                 <th>Active POs</th>
                 <th>Quality</th>
                 <th>On-Time</th>
@@ -200,7 +289,8 @@ export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [
                     <td>
                       <div>
                         <span className="font-medium text-[14px] text-[var(--text-primary)]">{cm.name}</span>
-                        {cm.address?.city && <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">{cm.address.city}, {cm.address.state}</p>}
+                        {cm.erpId && <p className="text-[10px] text-[var(--text-tertiary)] font-mono mt-0.5">{cm.erpId}</p>}
+                        {!cm.erpId && cm.address?.city && <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">{cm.address.city}, {cm.address.state}</p>}
                       </div>
                     </td>
                     <td>
@@ -213,9 +303,16 @@ export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [
                     </td>
                     <td>
                       <div className="flex flex-wrap gap-1">
-                        {(cm.brands || []).map((b: string) => <span key={b} className="badge badge-info text-[10px]">{b}</span>)}
+                        {(cm.brands || []).length > 0
+                          ? (cm.brands || []).map((b: string) => <span key={b} className="badge badge-info text-[10px]">{b}</span>)
+                          : <span className="text-[var(--text-tertiary)]">—</span>}
                       </div>
                     </td>
+                    <td><span className="text-[13px] text-[var(--text-secondary)] font-mono">{dash(cm.cmCode)}</span></td>
+                    <td><span className="text-[13px] text-[var(--text-secondary)]">{dash(cm.cmType)}</span></td>
+                    <td><span className="text-[13px] text-[var(--text-secondary)] max-w-[100px] truncate block" title={dash(cm.legalName)}>{dash(cm.legalName)}</span></td>
+                    <td><span className="text-[13px] text-[var(--text-secondary)] font-mono">{dash(cm.vendorId)}</span></td>
+                    <td><span className="text-[13px] text-[var(--text-secondary)] max-w-[100px] truncate block" title={formatHeadquarters(cm.headquarters)}>{formatHeadquarters(cm.headquarters)}</span></td>
                     <td><span className="text-[14px] font-medium text-[var(--accent)] tabular-nums">{cm.activePOs || 0}</span></td>
                     <td><span className="text-[14px] font-semibold tabular-nums" style={{ color: percentColor(cm.quality || 0) }}>{cm.quality || 0}%</span></td>
                     <td><span className="text-[14px] font-semibold tabular-nums" style={{ color: percentColor(cm.onTime || 0) }}>{cm.onTime || 0}%</span></td>

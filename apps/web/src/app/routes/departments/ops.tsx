@@ -1207,7 +1207,7 @@ export function OpsPage() {
     () => (Array.isArray(departments) ? departments.find((d: any) => d.type === 'BUILTIN_RD') : null),
     [departments],
   )
-  const { data: rdDetail, refetch: refetchRd } = useDepartment(rdDept?.id || '')
+  const { data: rdDetail, isLoading: rdDetailLoading, isError: rdDetailError, refetch: refetchRd } = useDepartment(rdDept?.id || '')
   const cmModule = useMemo(() => {
     const mods = (rdDetail?.modules as any[]) || []
     return mods.find((m: any) => m.type === 'CM_PRODUCTIVITY') || null
@@ -1353,7 +1353,7 @@ export function OpsPage() {
           ) : activeTab === 'bom' ? (
             <BOMTab items={moduleData.bom} moduleId={moduleIds.bom} departmentId={deptId} onRefresh={() => refetchDept()} components={moduleData.components} skuItems={moduleData.sku} />
           ) : (
-            <CMTab items={cmModule?.items || []} moduleId={cmModule?.id ?? null} departmentId={rdDept?.id ?? null} onRefresh={() => refetchRd()} productionItems={moduleData.production} />
+            <CMTab items={cmModule?.items || []} moduleId={cmModule?.id ?? null} departmentId={rdDept?.id ?? null} onRefresh={() => refetchRd()} productionItems={moduleData.production} isLoading={rdDetailLoading} isError={rdDetailError} onRetry={() => refetchRd()} />
           )}
         </div>
       </div>
