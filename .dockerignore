@@ -1,0 +1,64 @@
+# Dependencies (reinstalled in container)
+node_modules
+**/node_modules
+
+# Build outputs (rebuilt in container)
+apps/api/dist
+apps/web/dist
+packages/shared/dist
+
+# Development files
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+
+# IDE/Editor
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+
+# Logs and caches
+*.log
+npm-debug.log*
+.pnpm-debug.log*
+.cache
+.turbo
+
+# Test files
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+coverage
+.nyc_output
+
+# Documentation
+docs
+*.md
+!README.md
+
+# CI/CD
+.github
+.cursor
+
+# Database files (local dev only)
+*.db
+*.sqlite
+
+# Temporary files
+tmp
+temp
+*.tmp
+
+# Secrets and credentials
+*.pem
+*.key
+secrets/
+
+# Replit-specific
+.replit
+replit.nix
