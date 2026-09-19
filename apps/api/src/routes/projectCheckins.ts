@@ -7,7 +7,7 @@ import {
   NotFoundError, ValidationError, ConflictError,
 } from '../services/projects/context'
 import { checkinDueAt, nextCheckinAt, formatEt, type Cadence } from '../services/projects/cadence'
-import { runCheckinEngine, ensureCheckinSchedule } from '../services/projects/checkinEngine'
+import { runCheckinEngine, ensureCheckinSchedule, findOldestOpenTaskForRespondent } from '../services/projects/checkinEngine'
 import { logActivity, touchProject } from '../services/projects/activity'
 import { scheduleRecompute } from '../services/projects/recompute'
 
@@ -47,6 +47,7 @@ projectCheckinRoutes.get('/checkins/my/pending', async (req: Request, res: Respo
       include: {
         project: { select: { id: true, projectNumber: true, title: true, healthBand: true } },
         department: { select: { id: true, code: true, name: true, color: true } },
+        task: { select: { id: true, title: true, status: true } },
       },
       take: 50,
     })
@@ -166,6 +167,7 @@ projectCheckinRoutes.get('/:id/checkins', async (req: Request, res: Response) =>
       include: {
         department: { select: { id: true, code: true, name: true, color: true } },
         respondent: { select: { id: true, name: true, avatar: true } },
+        task: { select: { id: true, title: true, status: true } },
       },
     })
 
@@ -244,6 +246,7 @@ projectCheckinRoutes.post('/:id/checkins/request', async (req: Request, res: Res
 
     for (const lane of lanes) {
       const respondentId = lane.laneLeadId ?? full?.projectManagerId ?? null
+      const taskId = await findOldestOpenTaskForRespondent(prisma, project.id, respondentId)
       try {
         const row = await prisma.projectCheckin.create({
           data: {
@@ -253,6 +256,7 @@ projectCheckinRoutes.post('/:id/checkins/request', async (req: Request, res: Res
             dueAt,
             status: 'PENDING',
             respondentId,
+            taskId,
           },
         })
         created.push(row.id)
