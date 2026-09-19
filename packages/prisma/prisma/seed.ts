@@ -298,6 +298,30 @@ async function main() {
   ]) await prisma.moduleItem.create({ data: { moduleId: invMod.id, data: i, status: i.status } })
   console.log('✅ Inventory: 6')
 
+  // ─── Part Numbers
+  // Part number registry for Operations. Counter starts at 200000 so first allocated number is 200001.
+  await prisma.partNumberCounter.create({ data: { orgId: org.id, lastValue: 200005 } })
+  const PART_NUMBERS: { partsNumber: number; brand: string; itemDescription: string; itemNumber: string; itemType: string }[] = [
+    { partsNumber: 200001, brand: "Carol's Daughter", itemDescription: '8oz PET Cylinder #365649', itemNumber: 'CD-101007', itemType: 'bottle' },
+    { partsNumber: 200002, brand: "Carol's Daughter", itemDescription: '6oz PET Cylinder #365648', itemNumber: 'CD-101011', itemType: 'bottle' },
+    { partsNumber: 200003, brand: "Carol's Daughter", itemDescription: '24/410 needle nose cap', itemNumber: 'CD-101008', itemType: 'cap' },
+    { partsNumber: 200004, brand: 'Ambi', itemDescription: 'Ambi tube 2oz', itemNumber: 'AM-201001', itemType: 'tube' },
+    { partsNumber: 200005, brand: 'AcneFree', itemDescription: 'AcneFree pump bottle 8oz', itemNumber: 'AF-301001', itemType: 'bottle' },
+  ]
+  for (const pn of PART_NUMBERS) {
+    await prisma.partNumber.create({
+      data: {
+        orgId: org.id,
+        partsNumber: pn.partsNumber,
+        brand: pn.brand,
+        itemDescription: pn.itemDescription,
+        itemNumber: pn.itemNumber,
+        itemType: pn.itemType,
+      },
+    })
+  }
+  console.log(`✅ Part Numbers: ${PART_NUMBERS.length}`)
+
   // ─── Production Orders
   // Operations now runs off the ERP-synced OPEN_ORDERS module (Table / Board /
   // Open Orders all read it), so no sample production orders are seeded — the
