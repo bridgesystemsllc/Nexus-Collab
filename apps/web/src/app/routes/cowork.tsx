@@ -12,6 +12,8 @@ import {
   AlertCircle,
   LayoutGrid,
   Rows3,
+  Filter,
+  Clock,
 } from 'lucide-react'
 import {
   useCoworkSpaces,
@@ -47,19 +49,169 @@ const LINK_CATEGORY_ICONS: Record<string, string> = {
   formulations: '\u{2697}\u{FE0F}',
 }
 
+const TASK_COUNT_OPTIONS = ['any', '0', '1-5', '6-10', '10+'] as const
+const DUE_OPTIONS = ['any', 'overdue', 'this_week', 'this_month', 'none'] as const
+const PRIORITY_ORDER: Record<string, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
+const LIVE_TASK_STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'IN_REVIEW', 'BLOCKED']
+
+const PRIORITY_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  CRITICAL: { bg: 'var(--danger-subtle, rgba(239, 68, 68, 0.15))', text: 'var(--danger)', border: 'var(--danger)' },
+  HIGH: { bg: 'var(--warning-subtle, rgba(234, 179, 8, 0.15))', text: 'var(--warning)', border: 'var(--warning)' },
+  MEDIUM: { bg: 'var(--info-subtle, rgba(59, 130, 246, 0.15))', text: 'var(--info)', border: 'var(--info)' },
+  LOW: { bg: 'var(--success-subtle, rgba(34, 197, 94, 0.15))', text: 'var(--success)', border: 'var(--success)' },
+}
+
+type TaskCountFilter = typeof TASK_COUNT_OPTIONS[number]
+type DueFilter = typeof DUE_OPTIONS[number]
+
+interface DerivedSpace {
+  id: string
+  name: string
+  description?: string
+  type: string
+  deptNames: string[]
+  memberIds: string[]
+  tasks: Array<{ id: string; status: string; priority: string; dueDate: string | null }>
+  project?: { id: string; title: string; priority: string; health?: string; isConfidential?: boolean; targetEndDate?: string | null } | null
+  _count?: { activities?: number; tasks?: number; documents?: number }
+  members?: any[]
+  linkedItem?: any
+  metadata?: any
+  taskCount: number
+  highestPriority: string | null
+  nextDueDate: Date | null
+}
+
+function deriveSpaceFields(space: any): DerivedSpace {
+  const tasks = space.tasks ?? []
+  const taskCount = space._count?.tasks ?? tasks.length
+  
+  let highestPriority: string | null = null
+  if (tasks.length > 0) {
+    let best: string | null = null
+    let bestOrder = Infinity
+    for (const t of tasks) {
+      const order = PRIORITY_ORDER[t.priority] ?? Infinity
+      if (order < bestOrder) {
+        bestOrder = order
+        best = t.priority
+      }
+    }
+    highestPriority = best
+  } else if (space.project?.priority) {
+    highestPriority = space.project.priority
+  }
+  
+  let nextDueDate: Date | null = null
+  const liveTasks = tasks.filter((t: any) => LIVE_TASK_STATUSES.includes(t.status) && t.dueDate)
+  if (liveTasks.length > 0) {
+    const dueDates = liveTasks.map((t: any) => new Date(t.dueDate))
+    nextDueDate = new Date(Math.min(...dueDates.map((d: Date) => d.getTime())))
+  } else if (space.project?.targetEndDate) {
+    nextDueDate = new Date(space.project.targetEndDate)
+  }
+
+  return { ...space, taskCount, highestPriority, nextDueDate }
+}
+
+function matchesTaskCountFilter(taskCount: number, filter: TaskCountFilter): boolean {
+  if (filter === 'any') return true
+  if (filter === '0') return taskCount === 0
+  if (filter === '1-5') return taskCount >= 1 && taskCount <= 5
+  if (filter === '6-10') return taskCount >= 6 && taskCount <= 10
+  if (filter === '10+') return taskCount > 10
+  return true
+}
+
+function matchesDueFilter(nextDueDate: Date | null, filter: DueFilter): boolean {
+  if (filter === 'any') return true
+  if (filter === 'none') return nextDueDate === null
+  if (!nextDueDate) return false
+  
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  
+  if (filter === 'overdue') {
+    return nextDueDate < startOfToday
+  }
+  
+  if (filter === 'this_week') {
+    const endOfWeek = new Date(startOfToday)
+    endOfWeek.setDate(endOfWeek.getDate() + (7 - endOfWeek.getDay()))
+    return nextDueDate >= startOfToday && nextDueDate <= endOfWeek
+  }
+  
+  if (filter === 'this_month') {
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    return nextDueDate >= startOfToday && nextDueDate <= endOfMonth
+  }
+  
+  return true
+}
+
+function formatDueDate(date: Date): string {
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const diff = Math.ceil((date.getTime() - startOfToday.getTime()) / (1000 * 60 * 60 * 24))
+  
+  if (diff < 0) return `${Math.abs(diff)}d overdue`
+  if (diff === 0) return 'Today'
+  if (diff === 1) return 'Tomorrow'
+  if (diff <= 7) return `${diff}d`
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
 /* ─── Page ────────────────────────────────────────────────── */
 export function CoworkPage() {
   const { data: spaces, isLoading } = useCoworkSpaces()
+  const { data: departments } = useDepartments()
   const setSelectedCowork = useAppStore((s) => s.setSelectedCowork)
   const [search, setSearch] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [quickTaskSpaceId, setQuickTaskSpaceId] = useState<string | null>(null)
   const [view, setView] = useState<ViewMode>('table')
 
+  const [selectedDepts, setSelectedDepts] = useState<string[]>([])
+  const [taskCountFilter, setTaskCountFilter] = useState<TaskCountFilter>('any')
+  const [selectedPriorities, setSelectedPriorities] = useState<string[]>([])
+  const [dueFilter, setDueFilter] = useState<DueFilter>('any')
+  const [showFilters, setShowFilters] = useState(false)
+
+  const deptList = Array.isArray(departments) ? departments : []
   const spaceList = Array.isArray(spaces) ? spaces : []
-  const filtered = spaceList.filter((s: any) =>
-    s.name.toLowerCase().includes(search.toLowerCase())
-  )
+  
+  const derivedSpaces = useMemo(() => spaceList.map(deriveSpaceFields), [spaceList])
+  
+  const hasActiveFilters = selectedDepts.length > 0 || taskCountFilter !== 'any' || selectedPriorities.length > 0 || dueFilter !== 'any'
+
+  const clearFilters = () => {
+    setSelectedDepts([])
+    setTaskCountFilter('any')
+    setSelectedPriorities([])
+    setDueFilter('any')
+  }
+
+  const filtered = useMemo(() => {
+    return derivedSpaces.filter((s) => {
+      if (!s.name.toLowerCase().includes(search.toLowerCase())) return false
+      
+      if (selectedDepts.length > 0) {
+        const spaceDeptNamesLower = (s.deptNames ?? []).map((d: string) => d.toLowerCase())
+        const selectedDeptNames = selectedDepts.map((id) => deptList.find((d: any) => d.id === id)?.name?.toLowerCase()).filter(Boolean)
+        if (!selectedDeptNames.some((name) => spaceDeptNamesLower.includes(name!))) return false
+      }
+      
+      if (!matchesTaskCountFilter(s.taskCount, taskCountFilter)) return false
+      
+      if (selectedPriorities.length > 0) {
+        if (s.highestPriority === null || !selectedPriorities.includes(s.highestPriority)) return false
+      }
+      
+      if (!matchesDueFilter(s.nextDueDate, dueFilter)) return false
+      
+      return true
+    })
+  }, [derivedSpaces, search, selectedDepts, deptList, taskCountFilter, selectedPriorities, dueFilter])
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -89,6 +241,15 @@ export function CoworkPage() {
               }}
             />
           </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`btn-ghost flex items-center gap-2 text-sm ${hasActiveFilters ? 'text-[var(--accent)]' : ''}`}
+            style={hasActiveFilters ? { background: 'var(--accent-subtle)', borderColor: 'var(--accent)' } : {}}
+          >
+            <Filter className="w-4 h-4" />
+            Filters
+            {hasActiveFilters && <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />}
+          </button>
           <ViewToggle
             value={view}
             onChange={setView}
@@ -104,6 +265,112 @@ export function CoworkPage() {
         </div>
       </div>
 
+      {/* Filters Panel */}
+      {showFilters && (
+        <div
+          className="p-4 rounded-xl space-y-4"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Filter Spaces</span>
+            {hasActiveFilters && (
+              <button onClick={clearFilters} className="text-xs flex items-center gap-1" style={{ color: 'var(--accent)' }}>
+                <X className="w-3 h-3" />
+                Clear filters
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Department Filter */}
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Department</label>
+              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 rounded-lg" style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}>
+                {deptList.map((dept: any) => (
+                  <label
+                    key={dept.id}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] cursor-pointer transition-all"
+                    style={{
+                      background: selectedDepts.includes(dept.id) ? 'var(--accent-subtle)' : 'transparent',
+                      border: `1px solid ${selectedDepts.includes(dept.id) ? 'var(--accent)' : 'var(--border-subtle)'}`,
+                      color: selectedDepts.includes(dept.id) ? 'var(--accent)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedDepts.includes(dept.id)}
+                      onChange={() => setSelectedDepts((prev) => prev.includes(dept.id) ? prev.filter((d) => d !== dept.id) : [...prev, dept.id])}
+                      className="sr-only"
+                    />
+                    {dept.name}
+                  </label>
+                ))}
+                {deptList.length === 0 && <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>No departments</span>}
+              </div>
+            </div>
+
+            {/* Task Count Filter */}
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Tasks</label>
+              <select
+                value={taskCountFilter}
+                onChange={(e) => setTaskCountFilter(e.target.value as TaskCountFilter)}
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--bg-input)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
+              >
+                <option value="any">Any</option>
+                <option value="0">No tasks (0)</option>
+                <option value="1-5">1–5 tasks</option>
+                <option value="6-10">6–10 tasks</option>
+                <option value="10+">10+ tasks</option>
+              </select>
+            </div>
+
+            {/* Priority Filter */}
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Priority</label>
+              <div className="flex flex-wrap gap-1.5">
+                {PRIORITIES.map((p) => (
+                  <label
+                    key={p}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] cursor-pointer transition-all"
+                    style={{
+                      background: selectedPriorities.includes(p) ? PRIORITY_COLORS[p]?.bg : 'transparent',
+                      border: `1px solid ${selectedPriorities.includes(p) ? PRIORITY_COLORS[p]?.border : 'var(--border-subtle)'}`,
+                      color: selectedPriorities.includes(p) ? PRIORITY_COLORS[p]?.text : 'var(--text-secondary)',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedPriorities.includes(p)}
+                      onChange={() => setSelectedPriorities((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])}
+                      className="sr-only"
+                    />
+                    {p}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Due Date Filter */}
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Due Date</label>
+              <select
+                value={dueFilter}
+                onChange={(e) => setDueFilter(e.target.value as DueFilter)}
+                className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--bg-input)', border: '1px solid var(--border-default)', color: 'var(--text-primary)' }}
+              >
+                <option value="any">Any</option>
+                <option value="overdue">Overdue</option>
+                <option value="this_week">This week</option>
+                <option value="this_month">This month</option>
+                <option value="none">No due date</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Loading */}
       {isLoading && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -116,12 +383,14 @@ export function CoworkPage() {
       {/* Space Cards */}
       {!isLoading && view === 'table' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 stagger">
-          {filtered.map((space: any) => {
+          {filtered.map((space) => {
             const isEmergency = space.type === 'EMERGENCY'
-            const taskCount = space._count?.tasks ?? space.tasks?.length ?? 0
+            const taskCount = space.taskCount
             const completeTasks = (space.tasks ?? []).filter((t: any) => t.status === 'COMPLETE').length
             const pendingTasks = taskCount - completeTasks
             const linkedMeta = space.linkedItem ?? space.metadata?.linkedItem
+            const priorityStyle = space.highestPriority ? PRIORITY_COLORS[space.highestPriority] : null
+            const isOverdue = space.nextDueDate && space.nextDueDate < new Date(new Date().setHours(0, 0, 0, 0))
 
             return (
               <div
@@ -148,9 +417,32 @@ export function CoworkPage() {
                           {space.name}
                         </h3>
                       </div>
-                      <span className={`badge ml-2 flex-shrink-0 ${isEmergency ? 'badge-emergency' : 'badge-accent'}`}>
-                        {space.type}
-                      </span>
+                      <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+                        {space.highestPriority && priorityStyle && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded"
+                            style={{ background: priorityStyle.bg, color: priorityStyle.text, border: `1px solid ${priorityStyle.border}` }}
+                          >
+                            {space.highestPriority}
+                          </span>
+                        )}
+                        {space.nextDueDate && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded"
+                            style={{
+                              background: isOverdue ? 'var(--danger-subtle, rgba(239, 68, 68, 0.15))' : 'var(--bg-surface)',
+                              color: isOverdue ? 'var(--danger)' : 'var(--text-secondary)',
+                              border: `1px solid ${isOverdue ? 'var(--danger)' : 'var(--border-subtle)'}`,
+                            }}
+                          >
+                            <Clock className="w-3 h-3" />
+                            {formatDueDate(space.nextDueDate)}
+                          </span>
+                        )}
+                        <span className={`badge ${isEmergency ? 'badge-emergency' : 'badge-accent'}`}>
+                          {space.type}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Linked Item Chip */}
@@ -197,7 +489,7 @@ export function CoworkPage() {
                       </span>
                       <span className="flex items-center gap-1.5">
                         <MessageSquare className="w-3.5 h-3.5" />
-                        {space._count?.activities ?? space.activities?.length ?? 0} activity
+                        {space._count?.activities ?? 0} activity
                       </span>
                       <span className="flex items-center gap-1.5">
                         <CheckSquare className="w-3.5 h-3.5" />
@@ -241,12 +533,13 @@ export function CoworkPage() {
       {/* Space List / Line view */}
       {!isLoading && view === 'list' && filtered.length > 0 && (
         <div className="rounded-xl border border-[var(--border-subtle)] overflow-hidden stagger" style={{ background: 'var(--bg-elevated)' }}>
-          {filtered.map((space: any, idx: number) => {
+          {filtered.map((space, idx: number) => {
             const isEmergency = space.type === 'EMERGENCY'
-            const taskCount = space._count?.tasks ?? space.tasks?.length ?? 0
+            const taskCount = space.taskCount
             const completeTasks = (space.tasks ?? []).filter((t: any) => t.status === 'COMPLETE').length
-            const pendingTasks = taskCount - completeTasks
             const linkedMeta = space.linkedItem ?? space.metadata?.linkedItem
+            const priorityStyle = space.highestPriority ? PRIORITY_COLORS[space.highestPriority] : null
+            const isOverdue = space.nextDueDate && space.nextDueDate < new Date(new Date().setHours(0, 0, 0, 0))
 
             return (
               <div
@@ -267,6 +560,27 @@ export function CoworkPage() {
                       <span className="font-medium text-sm truncate" style={{ color: 'var(--text-primary)' }}>
                         {space.name}
                       </span>
+                      {space.highestPriority && priorityStyle && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded flex-shrink-0"
+                          style={{ background: priorityStyle.bg, color: priorityStyle.text, border: `1px solid ${priorityStyle.border}` }}
+                        >
+                          {space.highestPriority}
+                        </span>
+                      )}
+                      {space.nextDueDate && (
+                        <span
+                          className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded flex-shrink-0"
+                          style={{
+                            background: isOverdue ? 'var(--danger-subtle, rgba(239, 68, 68, 0.15))' : 'var(--bg-surface)',
+                            color: isOverdue ? 'var(--danger)' : 'var(--text-secondary)',
+                            border: `1px solid ${isOverdue ? 'var(--danger)' : 'var(--border-subtle)'}`,
+                          }}
+                        >
+                          <Clock className="w-3 h-3" />
+                          {formatDueDate(space.nextDueDate)}
+                        </span>
+                      )}
                       <span className={`badge flex-shrink-0 ${isEmergency ? 'badge-emergency' : 'badge-accent'}`}>
                         {space.type}
                       </span>
@@ -302,7 +616,7 @@ export function CoworkPage() {
                     </span>
                     <span className="flex items-center gap-1.5">
                       <MessageSquare className="w-3.5 h-3.5" />
-                      {space._count?.activities ?? space.activities?.length ?? 0}
+                      {space._count?.activities ?? 0}
                     </span>
                     <span className="flex items-center gap-1.5">
                       <CheckSquare className="w-3.5 h-3.5" />
@@ -338,8 +652,24 @@ export function CoworkPage() {
       {!isLoading && filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center py-20" style={{ color: 'var(--text-tertiary)' }}>
           <Users className="w-12 h-12 mb-4 opacity-40" />
-          <p className="text-lg font-medium">No cowork spaces found</p>
-          <p className="text-sm mt-1">Try adjusting your search or create a new space</p>
+          {hasActiveFilters ? (
+            <>
+              <p className="text-lg font-medium">No spaces match these filters.</p>
+              <button
+                onClick={clearFilters}
+                className="mt-3 text-sm flex items-center gap-1.5 px-4 py-2 rounded-lg transition-colors"
+                style={{ color: 'var(--accent)', background: 'var(--accent-subtle)', border: '1px solid var(--accent)' }}
+              >
+                <X className="w-4 h-4" />
+                Clear filters
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-lg font-medium">No cowork spaces found</p>
+              <p className="text-sm mt-1">Try adjusting your search or create a new space</p>
+            </>
+          )}
         </div>
       )}
 
