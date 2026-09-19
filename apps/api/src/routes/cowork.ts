@@ -83,8 +83,8 @@ coworkRoutes.get('/', async (req: Request, res: Response) => {
     const allSpaces = await prisma.coworkSpace.findMany({
       where: { status: 'ACTIVE' },
       include: {
-        project: { select: { id: true, title: true, priority: true, health: true, isConfidential: true } },
-        tasks: { select: { id: true, status: true } },
+        project: { select: { id: true, title: true, priority: true, health: true, isConfidential: true, targetEndDate: true } },
+        tasks: { select: { id: true, status: true, priority: true, dueDate: true } },
         _count: { select: { activities: true, tasks: true, documents: true } },
       },
       orderBy: { createdAt: 'desc' },
