@@ -5,12 +5,14 @@ import {
   Beaker,
   CheckCircle2,
   Clock,
+  ClipboardList,
   Download,
   Eye,
   Edit3,
   FileText,
   FolderKanban,
   FlaskConical,
+  LayoutDashboard,
   Loader2,
   Package,
   Plus,
@@ -46,11 +48,15 @@ import { AddToCowork } from '@/components/shared/AddToCowork'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { StatusBadge, ActionsMenu, DeleteConfirmDialog } from '@/components/shared/TablePrimitives'
 import { CMTab } from '@/components/cm/CMTab'
+import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
+import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
 
 // ─── Types ─────────────────────────────────────────────────
-type RDTab = 'projects' | 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd'
+type RDTab = 'overview' | 'tasks-followup' | 'projects' | 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd'
 
 const TABS: { key: RDTab; label: string; icon: React.ElementType }[] = [
+  { key: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { key: 'tasks-followup', label: 'Tasks & Follow-up', icon: ClipboardList },
   { key: 'projects', label: 'Projects', icon: FolderKanban },
   { key: 'briefs', label: 'Active Briefs', icon: FileText },
   { key: 'cm', label: 'CM Productivity', icon: Users },
@@ -1262,7 +1268,7 @@ function FormulationsTab({ items, moduleId, departmentId, briefItems = [], onSel
 // ─── Main Page ─────────────────────────────────────────────
 export function RDPage() {
   const openForm = useAppStore((s) => s.openForm)
-  const [activeTab, setActiveTab] = useState<RDTab>('briefs')
+  const [activeTab, setActiveTab] = useState<RDTab>('overview')
   const [viewingTransfer, setViewingTransfer] = useState<any>(null)
   const [viewingFormulation, setViewingFormulation] = useState<any>(null)
   // Brief id queued for cross-tab navigation (e.g. clicking a tech
@@ -1350,6 +1356,9 @@ export function RDPage() {
   }, [deptDetail])
 
   const tabContent: Record<RDTab, any[]> = {
+    // Overview and Tasks & Follow-up are new UI tabs, not DepartmentModules.
+    overview: [],
+    'tasks-followup': [],
     // Projects fetches its own data rather than reading a department module.
     projects: [],
     briefs: moduleData.briefs,
@@ -1401,7 +1410,18 @@ export function RDPage() {
       {/* Tab Content */}
       <div className="stagger">
         <div>
-          {activeTab === 'projects' ? (
+          {activeTab === 'overview' ? (
+            <DepartmentOverviewTab
+              departmentId={rdDept?.id ?? null}
+              departmentName="R&D"
+              onNavigateToTab={(tab) => setActiveTab(tab as RDTab)}
+            />
+          ) : activeTab === 'tasks-followup' ? (
+            <DepartmentTasksFollowUpTab
+              departmentId={rdDept?.id ?? null}
+              departmentName="R&D"
+            />
+          ) : activeTab === 'projects' ? (
             <DepartmentProjectsTab
               departmentId={rdDept?.id ?? null}
               departmentName="R&D"

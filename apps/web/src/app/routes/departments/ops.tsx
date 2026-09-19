@@ -16,6 +16,7 @@ import {
   Hash,
   LayoutDashboard,
   LayoutGrid,
+  ListChecks,
   Mail,
   Package,
   Pencil,
@@ -46,12 +47,16 @@ import { BOMTab } from '@/components/ops/BOMTab'
 import { PoTrackingOverlay, type PoTrackingScope } from '@/components/ops/poTracking/PoTrackingTab'
 import { brandLabel } from '@/components/ops/brandLabel'
 import { useAppStore } from '@/stores/appStore'
+import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
+import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
 
 
 // ─── Types ─────────────────────────────────────────────────
-type OpsTab = 'projects' | 'inventory' | 'production' | 'part-numbers' | 'components' | 'bom' | 'cm'
+type OpsTab = 'overview' | 'tasks-followup' | 'projects' | 'inventory' | 'production' | 'part-numbers' | 'components' | 'bom' | 'cm'
 
 const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
+  { key: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { key: 'tasks-followup', label: 'Tasks & Follow-up', icon: ListChecks },
   { key: 'projects', label: 'Projects', icon: FolderKanban },
   { key: 'inventory', label: 'Inventory Health', icon: Box },
   { key: 'production', label: 'Production Tracking', icon: Factory },
@@ -1126,6 +1131,9 @@ function BrandTransitionTab({ items, moduleId, departmentId, onSelect }: TabProp
 
 // ─── Main Page ─────────────────────────────────────────────
 const MODULE_TYPE_BY_TAB: Record<OpsTab, string> = {
+  // Overview and Tasks & Follow-up are new UI tabs, not DepartmentModules.
+  overview: '',
+  'tasks-followup': '',
   // Projects is not a DepartmentModule — it owns its own tables and fetches
   // its own data, so it has no module type to resolve.
   projects: '',
@@ -1157,7 +1165,7 @@ const COWORK_TYPE_BY_MODULE: Record<string, string> = {
 }
 
 export function OpsPage() {
-  const [activeTab, setActiveTab] = useState<OpsTab>('projects')
+  const [activeTab, setActiveTab] = useState<OpsTab>('overview')
   const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
   const [showRemovedFrame, setShowRemovedFrame] = useState(false)
   const [showRemovedBrandFrame, setShowRemovedBrandFrame] = useState(false)
@@ -1341,6 +1349,17 @@ export function OpsPage() {
             <RemovedTabFrame onBack={dismissRemovedFrame} onCatalog={goToProductCatalog} />
           ) : showRemovedBrandFrame ? (
             <RemovedBrandFrame onBack={dismissRemovedBrandFrame} />
+          ) : activeTab === 'overview' ? (
+            <DepartmentOverviewTab
+              departmentId={deptId}
+              departmentName="Operations"
+              onNavigateToTab={(tab) => setActiveTab(tab as OpsTab)}
+            />
+          ) : activeTab === 'tasks-followup' ? (
+            <DepartmentTasksFollowUpTab
+              departmentId={deptId}
+              departmentName="Operations"
+            />
           ) : activeTab === 'projects' ? (
             <DepartmentProjectsTab
               departmentId={deptId}

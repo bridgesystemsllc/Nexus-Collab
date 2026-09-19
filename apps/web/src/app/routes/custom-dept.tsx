@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Boxes, CheckCircle2, FolderKanban, Loader2 } from 'lucide-react'
+import { Boxes, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, Loader2 } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { DepartmentProjectsTab } from '@/modules/projects/ProjectsModule'
+import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
+import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
 
 // ─── Generic department page ─────────────────────────────────
 // Every department that is not R&D, Operations or Finance lands here —
@@ -14,16 +16,18 @@ import { DepartmentProjectsTab } from '@/modules/projects/ProjectsModule'
 // tomorrow gets a working page with a Projects tab and no code change. That is
 // the requirement: the module reaches every department, now and future.
 
-type Tab = 'projects' | 'modules'
+type Tab = 'overview' | 'tasks-followup' | 'projects' | 'modules'
 
 const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
+  { key: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { key: 'tasks-followup', label: 'Tasks & Follow-up', icon: ClipboardList },
   { key: 'projects', label: 'Projects', icon: FolderKanban },
   { key: 'modules', label: 'Modules', icon: Boxes },
 ]
 
 export function CustomDeptPage() {
   const selectedDeptId = useAppStore((s) => s.selectedDeptId)
-  const [tab, setTab] = useState<Tab>('projects')
+  const [tab, setTab] = useState<Tab>('overview')
 
   const { data: departments, isLoading: deptsLoading } = useDepartments()
 
@@ -109,7 +113,18 @@ export function CustomDeptPage() {
       </div>
 
       <div className="stagger">
-        {tab === 'projects' ? (
+        {tab === 'overview' ? (
+          <DepartmentOverviewTab
+            departmentId={department.id}
+            departmentName={department.name}
+            onNavigateToTab={(t) => setTab(t as Tab)}
+          />
+        ) : tab === 'tasks-followup' ? (
+          <DepartmentTasksFollowUpTab
+            departmentId={department.id}
+            departmentName={department.name}
+          />
+        ) : tab === 'projects' ? (
           <DepartmentProjectsTab
             departmentId={department.id}
             departmentName={department.name}
