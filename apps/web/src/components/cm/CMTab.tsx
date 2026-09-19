@@ -1,10 +1,12 @@
 import { useState, useMemo, useEffect } from 'react'
-import { AlertTriangle, Edit3, Eye, Plus, Trash2, Users } from 'lucide-react'
+import { AlertTriangle, Edit3, Eye, ExternalLink, Plus, RefreshCw, Trash2, Users } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { api } from '@/lib/api'
+import { useIntegrations, useSyncIntegration } from '@/hooks/useData'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 import { StatusBadge, ActionsMenu, DeleteConfirmDialog } from '@/components/shared/TablePrimitives'
 import { CMDetailModal } from '@/components/rd/CMDetailModal'
+import { Toast, type ToastData } from '@/components/shared/Toast'
 
 // ─── ERP field display helpers ─────────────────────────────
 function dash(v: unknown): string {
@@ -99,6 +101,36 @@ export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
   const [viewingCM, setViewingCM] = useState<any>(null)
   const [deletingItem, setDeletingItem] = useState<{ id: string; name: string } | null>(null)
+  const [toast, setToast] = useState<ToastData | null>(null)
+  const [syncReturnedZero, setSyncReturnedZero] = useState(false)
+
+  // ERP integration status
+  const { data: integrations } = useIntegrations()
+  const syncMutation = useSyncIntegration()
+  const erpIntegration = integrations?.find((i: any) => i.type === 'ERP_KAREVE_SYNC')
+  const isErpConnected = erpIntegration?.status === 'CONNECTED'
+  const isSyncing = syncMutation.isPending || erpIntegration?.status === 'SYNCING'
+
+  const handleSyncFromErp = async () => {
+    setSyncReturnedZero(false)
+    try {
+      await syncMutation.mutateAsync('ERP_KAREVE_SYNC')
+      // Wait briefly for the async sync to complete, then refresh
+      await new Promise((r) => setTimeout(r, 3000))
+      onRefresh()
+      // Check if sync returned zero CMs (items still empty after refresh)
+      // We'll set a flag and the caller's onRefresh will update items
+      setTimeout(() => {
+        // If items are still 0 after sync, mark as "ERP returned no CMs"
+        if (items.length === 0) {
+          setSyncReturnedZero(true)
+        }
+        setToast({ message: 'Synced contract manufacturers', type: 'success' })
+      }, 500)
+    } catch {
+      setToast({ message: 'Could not sync contract manufacturers', type: 'error' })
+    }
+  }
 
   const cmList = useMemo(() =>
     items.map((item: any) => {
@@ -172,9 +204,21 @@ export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [
             </button>
           ))}
         </div>
-        <button onClick={() => openCMForm('create')} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
-          <Plus size={15} /> Add CM
-        </button>
+        <div className="flex items-center gap-2">
+          {isErpConnected && (
+            <button
+              onClick={handleSyncFromErp}
+              disabled={isSyncing}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+              {isSyncing ? 'Syncing…' : 'Sync from ERP'}
+            </button>
+          )}
+          <button onClick={() => openCMForm('create')} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
+            <Plus size={15} /> Add CM
+          </button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -195,8 +239,46 @@ export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [
       ) : cmList.length === 0 ? (
         <div className="text-center py-12">
           <Users size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
-          <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No contract manufacturers yet</p>
-          <button onClick={() => openCMForm('create')} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Add Your First CM</button>
+          {!isErpConnected ? (
+            <>
+              <p className="text-[14px] text-[var(--text-tertiary)] mb-4">
+                Connect Kareve Sync in Integrations to import contract manufacturers.
+              </p>
+              <a
+                href="/integrations"
+                className="inline-flex items-center gap-1.5 btn-primary px-5 py-2.5 rounded-lg text-[14px]"
+              >
+                <ExternalLink size={15} />
+                Open Integrations
+              </a>
+            </>
+          ) : syncReturnedZero ? (
+            <>
+              <p className="text-[14px] text-[var(--text-tertiary)] mb-4">
+                ERP returned no contract manufacturers.
+              </p>
+              <button
+                onClick={() => openCMForm('create')}
+                className="px-5 py-2.5 rounded-lg text-[14px] font-medium border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                Add CM
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-[14px] text-[var(--text-tertiary)] mb-4">
+                No contract manufacturers synced yet.
+              </p>
+              <button
+                onClick={handleSyncFromErp}
+                disabled={isSyncing}
+                className="flex items-center gap-1.5 btn-primary px-5 py-2.5 rounded-lg text-[14px] mx-auto disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RefreshCw size={15} className={isSyncing ? 'animate-spin' : ''} />
+                {isSyncing ? 'Syncing…' : 'Sync from ERP'}
+              </button>
+            </>
+          )}
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -338,6 +420,7 @@ export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [
 
       <CMDetailModal open={!!viewingCM} cm={viewingCM} onClose={() => setViewingCM(null)} onEdit={() => { if (viewingCM) { const c = viewingCM; setViewingCM(null); openCMForm('edit', c) } }} onDelete={() => { if (viewingCM) setDeletingItem({ id: viewingCM.id, name: viewingCM.name }) }} onUpdate={handleCMUpdate} briefItems={briefItems} productionItems={productionItems} />
       <DeleteConfirmDialog open={!!deletingItem} itemName={deletingItem?.name || ''} onConfirm={handleDelete} onCancel={() => setDeletingItem(null)} />
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
   )
 }
