@@ -1,12 +1,13 @@
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
-import morgan from 'morgan'
 import compression from 'compression'
 import { createServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
 import { PrismaClient } from '@prisma/client'
 import path from 'path'
+import { logger, initSentry, captureException } from './lib/logger'
+import pinoHttp from 'pino-http'
 
 import { departmentRoutes } from './routes/departments'
 import { taskRoutes } from './routes/tasks'
@@ -47,6 +48,7 @@ import { taskConversationRoutes } from './routes/taskConversations'
 import { rbacRoutes } from './routes/rbac'
 import { userRoutes } from './routes/users'
 import { auditRoutes } from './routes/audit'
+import { systemRoutes } from './routes/system'
 import { billingRoutes } from './routes/billing'
 import { meRoutes } from './routes/me'
 import { jobRoutes } from './routes/jobs'
@@ -107,7 +109,7 @@ app.use(helmet({
 }))
 app.use(cors({ origin: isReplit ? '*' : frontendUrl, credentials: !isReplit }))
 app.use(compression())
-app.use(morgan('dev'))
+app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === '/health' } }))
 
 // The Stripe webhook MUST be mounted here — above express.json() — with its
 // own express.raw() parser. Stripe signs the exact bytes it sent; express.json()
@@ -127,8 +129,11 @@ app.use('/api/v1/webhooks/stripe', express.raw({ type: 'application/json' }), bi
 app.use(express.json({ limit: '10mb' }))
 
 // ─── Health Check ───────────────────────────────────────────
+// Shape: { ok, version, time } — consumed by Docker HEALTHCHECK and readiness
+// probes. Kept outside the API router so it is always reachable.
+const API_VERSION = process.env.npm_package_version || '0.1.0'
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() })
+  res.json({ ok: true, version: API_VERSION, time: new Date().toISOString() })
 })
 
 // ─── API Routes ─────────────────────────────────────────────
@@ -222,6 +227,7 @@ api.use('/users', userRoutes)
 api.use('/me', meRoutes)
 api.use('/audit', auditRoutes)
 api.use('/billing', billingRoutes)
+api.use('/system', systemRoutes)
 // Turns a getActingOrgId() throw (no session-derived org) into the module's
 // 401 envelope instead of Express's default 500. Must be mounted immediately
 // after billingRoutes — an Express error handler only catches errors from
@@ -240,7 +246,7 @@ api.use('/emails', emailRoutes)
 
 // ─── WebSocket ──────────────────────────────────────────────
 io.on('connection', (socket) => {
-  console.log(`[WS] Client connected: ${socket.id}`)
+  logger.debug({ socketId: socket.id }, 'WebSocket client connected')
 
   socket.on('join_space', (spaceId: string) => {
     socket.join(`space:${spaceId}`)
@@ -260,7 +266,7 @@ io.on('connection', (socket) => {
   })
 
   socket.on('disconnect', () => {
-    console.log(`[WS] Client disconnected: ${socket.id}`)
+    logger.debug({ socketId: socket.id }, 'WebSocket client disconnected')
   })
 })
 
@@ -268,6 +274,9 @@ io.on('connection', (socket) => {
 const PORT = parseInt(process.env.PORT || '3000', 10)
 
 async function start() {
+  // Initialize Sentry early — no-op if SENTRY_DSN is unset.
+  initSentry()
+
   // A deployment with no encryption key would otherwise discover that the
   // first time someone connects Outlook — at which point encryption.ts's
   // getKey() falls back to a key published in this repository and silently
@@ -275,9 +284,7 @@ async function start() {
   // start instead. Local development is unaffected: isLocalDevelopment() is
   // true there, so this check is skipped.
   if (!isLocalDevelopment() && !process.env.TOKEN_ENCRYPTION_KEY) {
-    console.error(
-      '[NEXUS] TOKEN_ENCRYPTION_KEY environment variable is required outside local development. Refusing to start.',
-    )
+    logger.fatal('TOKEN_ENCRYPTION_KEY environment variable is required outside local development. Refusing to start.')
     process.exit(1)
   }
 
@@ -338,9 +345,7 @@ async function start() {
   }
 
   httpServer.listen(PORT, () => {
-    console.log(`\n⚡ NEXUS API running on http://localhost:${PORT}`)
-    console.log(`📡 WebSocket ready`)
-    console.log(`🔗 API base: http://localhost:${PORT}/api/v1\n`)
+    logger.info({ port: PORT, base: `/api/v1` }, 'NEXUS API started')
   })
 
   // Establish the Graph mail subscription that drives the email agent and the
@@ -352,26 +357,27 @@ async function start() {
     ensureSubscription()
       .then((state) => {
         if (state.action === 'failed') {
-          console.error(`[EmailAgent] Graph subscription failed: ${state.reason}`)
+          logger.error({ reason: state.reason }, 'Graph subscription failed')
         } else {
-          console.log(
-            `[EmailAgent] Graph subscription ${state.action}` +
-              (state.expiresAt ? ` — expires ${state.expiresAt}` : ''),
-          )
+          logger.info({ action: state.action, expiresAt: state.expiresAt }, 'Graph subscription ready')
         }
       })
-      .catch((err) => console.error('[EmailAgent] Graph subscription error:', err?.message))
+      .catch((err) => {
+        logger.error({ err }, 'Graph subscription error')
+        captureException(err instanceof Error ? err : new Error(String(err)))
+      })
   }
 }
 
 start().catch((err) => {
-  console.error('[NEXUS] Failed to start API:', err)
+  logger.fatal({ err }, 'Failed to start API')
+  captureException(err instanceof Error ? err : new Error(String(err)))
   process.exit(1)
 })
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('Shutting down...')
+  logger.info('Shutting down...')
   await prisma.$disconnect()
   httpServer.close()
   process.exit(0)
@@ -379,10 +385,13 @@ process.on('SIGTERM', async () => {
 
 // Prevent unhandled errors from crashing the process
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('[NEXUS] Unhandled promise rejection:', reason)
-  console.error('[NEXUS] Promise:', promise)
+  logger.error({ reason, promise }, 'Unhandled promise rejection')
+  if (reason instanceof Error) {
+    captureException(reason)
+  }
 })
 
 process.on('uncaughtException', (error) => {
-  console.error('[NEXUS] Uncaught exception:', error)
+  logger.error({ err: error }, 'Uncaught exception')
+  captureException(error)
 })
