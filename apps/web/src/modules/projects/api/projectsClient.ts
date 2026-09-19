@@ -284,6 +284,11 @@ export const summariseCheckins = (projectId: string) =>
 export const reportExportUrl = (reportId: string, format: 'csv' | 'json' = 'csv') =>
   `${api.defaults.baseURL ?? ''}${BASE}/reports/${reportId}/export?format=${format}`
 
+export const emailReport = (reportId: string, extraAddresses: string[] = []) =>
+  send<{ ok: boolean; sentTo: number; extraCount: number }>(
+    'post', `/reports/${reportId}/email`, { extraAddresses },
+  )
+
 // ─── Collab bridge ───────────────────────────────────────────
 // Linking never copies a project — it grants the collab's departments access to
 // the same row. These calls go to /collabs, which the API also serves under

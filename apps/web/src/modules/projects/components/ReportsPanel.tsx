@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertTriangle, Download, FileText, Send, Sparkles, Check, X, Pencil,
+  AlertTriangle, Download, FileText, Send, Sparkles, Check, X, Pencil, Mail,
 } from 'lucide-react'
 import * as client from '../api/projectsClient'
 import { useModalBehaviour } from '../lib/useModalBehaviour'
@@ -175,6 +175,9 @@ export function ReportViewer({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [showEmailDialog, setShowEmailDialog] = useState(false)
+  const [emailExtras, setEmailExtras] = useState('')
+  const [emailSuccess, setEmailSuccess] = useState<string | null>(null)
 
   // Escape closes, Tab is trapped, focus returns to the opener.
   const dialogRef = useModalBehaviour(onClose)
@@ -201,6 +204,29 @@ export function ReportViewer({
       qc.invalidateQueries({ queryKey: invalidateKey })
     },
     onError: (err: any) => setError(err?.message ?? 'Could not publish'),
+  })
+
+  const emailReport = useMutation({
+    mutationFn: (extraAddresses: string[]) => client.emailReport(reportId, extraAddresses),
+    onSuccess: (res) => {
+      setShowEmailDialog(false)
+      setEmailExtras('')
+      setEmailSuccess(`Update emailed to ${res.data.sentTo} recipients`)
+      setTimeout(() => setEmailSuccess(null), 4000)
+    },
+    onError: (err: any) => {
+      const code = (err as client.ProjectsApiError)?.code
+      if (code === 'mail_not_configured') {
+        setError('Mail is not configured')
+      } else if (code === 'invalid_body' && err.message?.includes('recipients')) {
+        setError('No recipients')
+      } else if (code === 'invalid_body' && err.message?.includes('email')) {
+        setError('Invalid email address')
+      } else {
+        setError('Could not send email')
+      }
+      setShowEmailDialog(false)
+    },
   })
 
   // Portalled to the body on purpose. The detail view animates its tab panel
@@ -311,6 +337,16 @@ export function ReportViewer({
               <PayloadView payload={report.payload} />
             </div>
 
+            {emailSuccess && (
+              <div
+                role="status"
+                className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-white shadow-lg"
+                style={{ background: 'var(--success)' }}
+              >
+                <Check size={12} /> {emailSuccess}
+              </div>
+            )}
+
             <footer className="flex items-center justify-between gap-2 border-t border-[var(--border-subtle)] px-5 py-3">
               <div className="flex gap-2">
                 <button
@@ -334,6 +370,13 @@ export function ReportViewer({
                 >
                   <Download size={11} /> CSV
                 </a>
+                <button
+                  data-testid="btn-email-report"
+                  onClick={() => { setError(null); setShowEmailDialog(true) }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
+                >
+                  <Mail size={11} /> Email
+                </button>
               </div>
               {canPublish && !report.isPublished && (
                 <button
@@ -347,6 +390,55 @@ export function ReportViewer({
               )}
             </footer>
           </>
+        )}
+
+        {showEmailDialog && (
+          <div
+            className="absolute inset-0 flex items-center justify-center rounded-2xl"
+            style={{ background: 'rgba(0,0,0,0.5)' }}
+            onClick={() => setShowEmailDialog(false)}
+          >
+            <div
+              className="w-full max-w-md rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-5 shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">
+                Email project update
+              </h3>
+              <p className="text-xs text-[var(--text-secondary)] mb-3">
+                This will email the report to all project participants. You can add extra recipients below (one email per line, max 20).
+              </p>
+              <textarea
+                value={emailExtras}
+                onChange={(e) => setEmailExtras(e.target.value)}
+                placeholder="extra@example.com&#10;another@example.com"
+                rows={4}
+                className="w-full rounded-lg border border-[var(--border-default)] bg-[var(--bg-base)] px-3 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--border-strong)] mb-4"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => { setShowEmailDialog(false); setEmailExtras('') }}
+                  className="px-3 py-1.5 rounded-lg text-[11px] font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const extras = emailExtras
+                      .split(/[\n,;]+/)
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                    emailReport.mutate(extras)
+                  }}
+                  disabled={emailReport.isPending}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium text-white disabled:opacity-50 transition-all active:scale-[0.98]"
+                  style={{ background: 'var(--accent-secondary)' }}
+                >
+                  <Mail size={11} /> {emailReport.isPending ? 'Sending…' : 'Send email'}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>,
