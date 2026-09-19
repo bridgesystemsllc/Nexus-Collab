@@ -21,8 +21,9 @@ export interface DistributionEntry {
 }
 
 /**
- * Recipients for a project report: PM, sponsor, and lane leads, deduplicated
- * by email. Members without an email are dropped rather than failing the send.
+ * Recipients for a project report: all project members (explicit ProjectMember
+ * rows), plus the PM, executive sponsor, and lane leads. Deduplicated by email.
+ * Members without an email are dropped rather than failing the send.
  */
 export async function resolveProjectRecipients(
   prisma: PrismaClient,
@@ -34,6 +35,7 @@ export async function resolveProjectRecipients(
       projectManager: { select: { name: true, email: true } },
       executiveSponsor: { select: { name: true, email: true } },
       departments: { select: { laneLead: { select: { name: true, email: true } } } },
+      members: { select: { member: { select: { name: true, email: true } } } },
     },
   })
   if (!project) return []
@@ -42,6 +44,7 @@ export async function resolveProjectRecipients(
     project.projectManager,
     project.executiveSponsor,
     ...project.departments.map((d) => d.laneLead),
+    ...project.members.map((m) => m.member),
   ]
   return dedupe(candidates)
 }

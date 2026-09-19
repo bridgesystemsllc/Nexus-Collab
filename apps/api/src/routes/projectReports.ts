@@ -12,6 +12,10 @@ import {
 } from '../services/projects/reports/generate'
 import { summariseCheckins, isNarrativeConfigured } from '../services/projects/reports/narrative'
 import { logActivity } from '../services/projects/activity'
+import { isMailConfigured, sendTeamEmail } from '../services/emailAgent/sendMail'
+import { resolveProjectRecipients } from '../services/projects/reports/distribute'
+import { renderReportEmail } from '../services/projects/reports/html'
+import type { ReportType } from '../services/projects/reports/payload'
 
 export const projectReportRoutes: ReturnType<typeof Router> = Router()
 
@@ -134,6 +138,106 @@ projectReportRoutes.post('/reports/:reportId/publish', async (req: Request, res:
     }
 
     return ok(res, updated)
+  } catch (err) {
+    return fail(res, err)
+  }
+})
+
+// ─── Email report ────────────────────────────────────────────
+// Sends the report to project participants plus optional extra addresses.
+// Uses Microsoft Graph via sendTeamEmail — same path as production updates.
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+projectReportRoutes.post('/reports/:reportId/email', async (req: Request, res: Response) => {
+  try {
+    const actor = await resolveActor(prisma, req)
+
+    if (!isMailConfigured()) {
+      return res.status(503).json({
+        error: { code: 'mail_not_configured', message: 'Mail is not configured' },
+      })
+    }
+
+    const body = parseOrThrow(
+      z.object({
+        extraAddresses: z.array(z.string().email()).max(20).default([]),
+      }).strict(),
+      req.body ?? {},
+    )
+
+    for (const addr of body.extraAddresses) {
+      if (!EMAIL_REGEX.test(addr)) {
+        return res.status(400).json({
+          error: { code: 'invalid_body', message: 'Invalid email address' },
+        })
+      }
+    }
+
+    const report = await prisma.projectReport.findUnique({
+      where: { id: req.params.reportId as string },
+      select: {
+        id: true, title: true, reportType: true, narrative: true, payload: true,
+        projectId: true, orgId: true,
+      },
+    })
+    if (!report || report.orgId !== actor.orgId) {
+      throw new NotFoundError('Report not found')
+    }
+
+    if (!report.projectId) {
+      return res.status(400).json({
+        error: { code: 'invalid_body', message: 'Only project reports can be emailed via this endpoint' },
+      })
+    }
+
+    const project = await requireProject(report.projectId)
+    assertCan(actor, 'PUBLISH_REPORT', project)
+
+    const projectRecipients = await resolveProjectRecipients(prisma, report.projectId)
+
+    const seen = new Map<string, { email: string; name?: string }>()
+    for (const r of projectRecipients) {
+      const key = r.email.toLowerCase()
+      if (!seen.has(key)) seen.set(key, r)
+    }
+    for (const addr of body.extraAddresses) {
+      const key = addr.toLowerCase()
+      if (!seen.has(key)) seen.set(key, { email: addr })
+    }
+    const recipients = [...seen.values()]
+
+    if (recipients.length === 0) {
+      return res.status(400).json({
+        error: { code: 'invalid_body', message: 'No recipients' },
+      })
+    }
+
+    const baseUrl = process.env.FRONTEND_URL ?? null
+    const html = renderReportEmail({
+      title: report.title,
+      reportType: report.reportType as ReportType,
+      narrative: report.narrative,
+      payload: report.payload as Record<string, any>,
+      viewUrl: baseUrl ? `${baseUrl.replace(/\/$/, '')}/?report=${report.id}` : null,
+    })
+
+    try {
+      await sendTeamEmail({ subject: report.title, html, recipients })
+    } catch (err: any) {
+      console.error(`[reports] email send failed for ${report.id}:`, err?.message ?? err)
+      return res.status(502).json({
+        error: { code: 'send_failed', message: 'Could not send email' },
+      })
+    }
+
+    return res.json({
+      data: {
+        ok: true,
+        sentTo: recipients.length,
+        extraCount: body.extraAddresses.length,
+      },
+    })
   } catch (err) {
     return fail(res, err)
   }
