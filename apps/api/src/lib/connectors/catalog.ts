@@ -98,6 +98,7 @@ export const SINGLETON_TYPES = new Set([
   'MICROSOFT_OUTLOOK',
   'MICROSOFT_TEAMS',
   'MICROSOFT_ONEDRIVE',
+  'NOTION',
   'ZAPIER',
 ])
 

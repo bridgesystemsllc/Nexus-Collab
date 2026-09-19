@@ -8,7 +8,15 @@ import {
   validateState,
   exchangeMicrosoftToken,
   exchangeGoogleToken,
+  exchangeNotionToken,
 } from '../lib/oauth'
+import {
+  getNotionConfig,
+  searchNotionPages,
+  createNotionPage,
+  NotionNotConnectedError,
+  NotionApiError,
+} from '../lib/notionClient'
 import { syncErp, syncErpOpenOrders } from '../lib/erpSync'
 import { getErpConfig, erpBaseCandidates, looksLikeJson } from '../lib/erpClient'
 import {
@@ -459,6 +467,38 @@ integrationRoutes.post('/:type/connect', requirePermission('settings:manage'), a
       return res.json({ authUrl })
     }
 
+    // ── Notion OAuth ─────────────────────────────────────────
+    if (type === 'NOTION') {
+      const clientId = process.env.NOTION_CLIENT_ID
+      const redirectUri = process.env.NOTION_REDIRECT_URI
+
+      if (!clientId || !redirectUri) {
+        return res.status(400).json({
+          error: 'configuration_required',
+          provider: 'notion',
+          message: 'Notion OAuth credentials are not configured.',
+          required: [
+            { key: 'NOTION_CLIENT_ID', description: 'Notion OAuth client ID from your integration' },
+            { key: 'NOTION_CLIENT_SECRET', description: 'Notion OAuth client secret' },
+            { key: 'NOTION_REDIRECT_URI', description: `OAuth callback URL, e.g. https://your-app.example.com/api/v1/integrations/notion/callback` },
+          ],
+        })
+      }
+
+      const state = generateState('notion', orgId)
+
+      const params = new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        owner: 'user',
+        state,
+      })
+
+      const authUrl = `https://api.notion.com/v1/oauth/authorize?${params.toString()}`
+      return res.json({ authUrl })
+    }
+
     // ── Zapier Webhook ───────────────────────────────────────
     if (type === 'ZAPIER') {
       const webhookId = crypto.randomUUID()
@@ -684,6 +724,210 @@ integrationRoutes.get('/google/callback', requirePermission('settings:manage'), 
   } catch (error) {
     console.error('[integrations] Google callback error:', error)
     res.redirect(`${FRONTEND_URL()}/integrations?error=google_auth_failed`)
+  }
+})
+
+// ─── Notion OAuth callback ──────────────────────────────────
+integrationRoutes.get('/notion/callback', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
+  try {
+    const orgId = getActingOrgId(req)
+    const code = req.query.code as string | undefined
+    const state = req.query.state as string | undefined
+    const error = req.query.error as string | undefined
+
+    if (error) {
+      console.error('[integrations] Notion callback error param:', error)
+      return res.redirect(`${FRONTEND_URL()}/integrations?error=notion_auth_failed`)
+    }
+
+    if (!code || !state) {
+      return res.redirect(`${FRONTEND_URL()}/integrations?error=invalid_state`)
+    }
+
+    if (!validateState(state, 'notion', orgId)) {
+      return res.redirect(`${FRONTEND_URL()}/integrations?error=invalid_state`)
+    }
+
+    const tokens = await exchangeNotionToken(code)
+
+    const encryptedTokens = encryptJson({
+      accessToken: tokens.access_token,
+      workspaceId: tokens.workspace_id,
+      workspaceName: tokens.workspace_name,
+      botId: tokens.bot_id,
+    })
+
+    await prisma.integration.updateMany({
+      where: { type: 'NOTION', orgId },
+      data: {
+        status: 'CONNECTED',
+        config: encryptedTokens,
+        lastSyncAt: new Date(),
+      },
+    })
+
+    res.redirect(`${FRONTEND_URL()}/integrations?connected=notion`)
+  } catch (error) {
+    console.error('[integrations] Notion callback error:', error)
+    res.redirect(`${FRONTEND_URL()}/integrations?error=notion_auth_failed`)
+  }
+})
+
+// ─── Notion sync (pull pages) ────────────────────────────────
+integrationRoutes.post('/NOTION/sync', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
+  try {
+    const orgId = getActingOrgId(req)
+    const integration = await prisma.integration.findFirst({
+      where: { type: 'NOTION', orgId },
+    })
+
+    if (!integration || integration.status !== 'CONNECTED') {
+      return res.status(503).json({ error: 'not_connected', message: 'Notion is not connected' })
+    }
+
+    const syncLog = await prisma.syncLog.create({
+      data: {
+        integrationId: integration.id,
+        status: 'RUNNING',
+        orgId,
+      },
+    })
+
+    await prisma.integration.update({
+      where: { id: integration.id, orgId },
+      data: { status: 'SYNCING' },
+    })
+
+    const runSync = async () => {
+      try {
+        const result = await searchNotionPages(prisma, orgId)
+        let recordsProcessed = 0
+
+        for (const page of result.pages) {
+          await prisma.notionPageLink.upsert({
+            where: { orgId_notionPageId: { orgId, notionPageId: page.id } },
+            create: {
+              orgId,
+              notionPageId: page.id,
+              notionUrl: page.url,
+              title: page.title,
+              lastSyncedAt: new Date(),
+            },
+            update: {
+              notionUrl: page.url,
+              title: page.title,
+              lastSyncedAt: new Date(),
+            },
+          })
+          recordsProcessed++
+        }
+
+        await prisma.syncLog.update({
+          where: { id: syncLog.id },
+          data: { status: 'COMPLETE', completedAt: new Date(), recordsProcessed },
+        })
+
+        await prisma.integration.update({
+          where: { id: integration.id, orgId },
+          data: {
+            status: 'CONNECTED',
+            lastSyncAt: new Date(),
+            syncCount: { increment: 1 },
+          },
+        })
+      } catch (err) {
+        console.error('[integrations] Notion sync error:', err)
+        try {
+          await prisma.syncLog.update({
+            where: { id: syncLog.id },
+            data: { status: 'FAILED', completedAt: new Date(), errors: { message: String(err) } },
+          })
+          await prisma.integration.update({
+            where: { id: integration.id, orgId },
+            data: { status: 'CONNECTED', lastError: 'Sync failed' },
+          })
+        } catch (recordErr) {
+          console.error('[integrations] failed to record Notion sync failure:', recordErr)
+        }
+      }
+    }
+
+    setTimeout(() => {
+      void runSync()
+    }, 1000)
+
+    res.json({ success: true, syncLogId: syncLog.id })
+  } catch (error) {
+    if (error instanceof NoActingOrgError) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
+    console.error('[integrations] POST /NOTION/sync error:', error)
+    res.status(500).json({ error: 'Failed to trigger sync' })
+  }
+})
+
+// ─── Notion create page ──────────────────────────────────────
+integrationRoutes.post('/NOTION/pages', requirePermission('settings:manage'), async (req: RbacRequest, res: Response) => {
+  try {
+    const orgId = getActingOrgId(req)
+    const { title, body, noteId } = req.body
+
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      return res.status(400).json({ error: 'invalid_body', message: 'title is required' })
+    }
+
+    const { configured } = await getNotionConfig(prisma, orgId)
+    if (!configured) {
+      return res.status(503).json({ error: 'not_connected', message: 'Notion is not connected' })
+    }
+
+    let note = null
+    if (noteId) {
+      note = await prisma.note.findFirst({
+        where: { id: noteId },
+        include: { author: { select: { orgId: true } } },
+      })
+      if (!note || note.author.orgId !== orgId) {
+        return res.status(404).json({ error: 'not_found', message: 'Note not found' })
+      }
+    }
+
+    const result = await createNotionPage(prisma, orgId, title.trim(), body?.trim())
+
+    const link = await prisma.notionPageLink.create({
+      data: {
+        orgId,
+        notionPageId: result.id,
+        notionUrl: result.url,
+        title: title.trim(),
+        noteId: noteId || null,
+        lastSyncedAt: new Date(),
+      },
+    })
+
+    res.json({
+      ok: true,
+      notionPageId: result.id,
+      url: result.url,
+      linkId: link.id,
+    })
+  } catch (error) {
+    if (error instanceof NoActingOrgError) {
+      return res.status(401).json({ error: 'Authentication required' })
+    }
+    if (error instanceof NotionNotConnectedError) {
+      return res.status(503).json({ error: 'not_connected', message: 'Notion is not connected' })
+    }
+    if (error instanceof NotionApiError) {
+      console.error('[integrations] Notion API error:', error)
+      return res.status(502).json({
+        error: 'notion_error',
+        message: 'Could not create page',
+        code: error.code,
+      })
+    }
+    console.error('[integrations] POST /NOTION/pages error:', error)
+    res.status(500).json({ error: 'Failed to create page' })
   }
 })
 
