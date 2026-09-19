@@ -36,6 +36,7 @@ import { sharepointRoutes } from './routes/sharepoint'
 import { uploadRoutes } from './routes/uploads'
 import { inventoryImportRoutes } from './routes/inventoryImport'
 import { oorRoutes } from './routes/oor'
+import { partNumberRoutes } from './routes/partNumbers'
 import { projectRoutes } from './routes/projects'
 import { projectTaskRoutes } from './routes/projectTasks'
 import { projectTimelineRoutes } from './routes/projectTimeline'
@@ -206,6 +207,7 @@ api.use('/uploads', uploadRoutes)
 // Supplier inventory feeds (Geodis 3PL stock imports).
 api.use('/inventory-import', inventoryImportRoutes)
 api.use('/operations/oor', oorRoutes)
+api.use('/ops/part-numbers', partNumberRoutes)
 // Projects & Initiatives. The task router mounts on the same base so its
 // /tasks/* paths sit alongside /projects/:id/*; it is registered first because
 // its specific paths (/tasks/my, /tasks/bulk) must win over /:id.
