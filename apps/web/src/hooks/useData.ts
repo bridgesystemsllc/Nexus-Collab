@@ -11,6 +11,22 @@ export function useDepartment(id: string) {
   return useQuery({ queryKey: ['department', id], queryFn: () => api.get(`/departments/${id}`).then(r => r.data), enabled: !!id })
 }
 
+export interface DepartmentOverviewData {
+  departmentId: string
+  pendingTasks: any[]
+  assignedTasks: any[]
+  openProjects: any[]
+  openModuleItems: Record<string, any[]>
+}
+
+export function useDepartmentOverview(departmentId: string) {
+  return useQuery<DepartmentOverviewData>({
+    queryKey: ['department-overview', departmentId],
+    queryFn: () => api.get(`/departments/${departmentId}/overview`).then(r => r.data),
+    enabled: !!departmentId,
+  })
+}
+
 export function useCreateDepartment() {
   const qc = useQueryClient()
   return useMutation({

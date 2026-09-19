@@ -154,6 +154,144 @@ departmentRoutes.get('/:id', async (req: Request, res: Response) => {
   }
 })
 
+// ─── Department Overview ────────────────────────────────────
+// GET /api/v1/departments/:departmentId/overview
+// Returns a rollup of open tasks, assigned tasks, open projects, and open
+// module items for the department.
+const OVERVIEW_MODULE_MAP: Record<string, string> = {
+  BRIEFS: 'briefs',
+  TECH_TRANSFERS: 'transfers',
+  FORMULATIONS: 'formulations',
+  NPD_PIPELINE: 'npd',
+  INVENTORY_HEALTH: 'inventory',
+  PRODUCTION_TRACKING: 'production',
+  BILL_OF_MATERIALS: 'bom',
+}
+
+const BRIEF_STATUS_TERMINALS = ['Completed', 'Formula Approved'] as const
+const TASK_CLOSED_STATUSES = ['COMPLETE', 'CANCELLED'] as const
+const PROJECT_CLOSED_STATUSES = ['COMPLETED', 'CANCELLED', 'ARCHIVED'] as const
+
+departmentRoutes.get('/:departmentId/overview', async (req: Request, res: Response) => {
+  try {
+    const { departmentId } = req.params
+
+    const dept = await prisma.department.findUnique({
+      where: { id: departmentId },
+      include: {
+        modules: { include: { items: true } },
+      },
+    })
+
+    if (!dept) {
+      return res.status(404).json({ error: 'Department not found' })
+    }
+
+    // pendingTasks: dept tasks not COMPLETE/CANCELLED (cap 100)
+    const pendingTasks = await prisma.task.findMany({
+      where: {
+        departmentId,
+        status: { notIn: [...TASK_CLOSED_STATUSES] },
+      },
+      include: {
+        owner: { select: { id: true, name: true, avatar: true } },
+        project: { select: { id: true, title: true } },
+      },
+      orderBy: [{ priority: 'asc' }, { dueDate: 'asc' }],
+      take: 100,
+    })
+
+    // assignedTasks: same filter + has an ownerId
+    const assignedTasks = await prisma.task.findMany({
+      where: {
+        departmentId,
+        status: { notIn: [...TASK_CLOSED_STATUSES] },
+        ownerId: { not: null },
+      },
+      include: {
+        owner: { select: { id: true, name: true, avatar: true } },
+        project: { select: { id: true, title: true } },
+      },
+      orderBy: [{ priority: 'asc' }, { dueDate: 'asc' }],
+      take: 100,
+    })
+
+    // openProjects: owned by or laned to this department, not closed
+    const openProjects = await prisma.project.findMany({
+      where: {
+        OR: [
+          { ownerDepartmentId: departmentId },
+          { departments: { some: { departmentId } } },
+        ],
+        status: { notIn: [...PROJECT_CLOSED_STATUSES] },
+      },
+      include: {
+        ownerDepartment: { select: { id: true, name: true, color: true } },
+        projectManager: { select: { id: true, name: true, avatar: true } },
+        _count: { select: { tasks: true } },
+      },
+      orderBy: { targetEndDate: 'asc' },
+      take: 50,
+    })
+
+    // openModuleItems: collect from modules by type
+    const openModuleItems: Record<string, any[]> = {}
+
+    for (const mod of dept.modules || []) {
+      const modType = mod.type
+      // Exclude CM_PRODUCTIVITY by default
+      if (modType === 'CM_PRODUCTIVITY') continue
+
+      const mapKey = OVERVIEW_MODULE_MAP[modType]
+      // Handle CUSTOM_* modules
+      const outputKey = mapKey || (modType.startsWith('CUSTOM_') ? 'modules' : null)
+      if (!outputKey) continue
+
+      let openItems: any[] = []
+
+      if (modType === 'BRIEFS') {
+        // Briefs: exclude terminal statuses
+        openItems = ((mod.items as any[]) || []).filter((item: any) => {
+          const briefStatus = item.data?.briefStatus
+          return !BRIEF_STATUS_TERMINALS.includes(briefStatus)
+        })
+      } else if (modType === 'FINANCE_COSTING') {
+        // Only include if needsReview
+        openItems = ((mod.items as any[]) || []).filter((item: any) => item.data?.needsReview === true)
+      } else {
+        // All other modules: include all items (they have various status fields)
+        openItems = (mod.items as any[]) || []
+      }
+
+      // Cap at 100 per category
+      openItems = openItems.slice(0, 100)
+
+      // Aggregate CUSTOM_* into a single 'modules' array
+      if (outputKey === 'modules') {
+        openModuleItems.modules = [...(openModuleItems.modules || []), ...openItems]
+      } else {
+        openModuleItems[outputKey] = openItems
+      }
+    }
+
+    // Ensure modules array is capped at 100 total
+    if (openModuleItems.modules) {
+      openModuleItems.modules = openModuleItems.modules.slice(0, 100)
+    }
+
+    res.json({
+      departmentId,
+      pendingTasks,
+      assignedTasks,
+      openProjects,
+      openModuleItems,
+    })
+  } catch (error) {
+    console.error('[departments] GET /:departmentId/overview error:', error)
+    res.status(500).json({ error: 'Failed to fetch department overview' })
+  }
+})
+
 // ─── Create department ──────────────────────────────────────
 const createDeptSchema = z.object({
   name: z.string().min(1).max(100),

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   BarChart3,
   Boxes,
+  ClipboardList,
   DollarSign,
   FolderKanban,
   Download,
@@ -9,6 +10,7 @@ import {
   FileText,
   FlaskConical,
   Layers,
+  LayoutDashboard,
   Loader2,
   Users,
 } from 'lucide-react'
@@ -20,10 +22,14 @@ import { MoqCostingTab } from '@/components/finance/MoqCostingTab'
 import { exportCostingXlsx, exportCostingPdf } from '@/components/finance/financeReport'
 import { CMTab } from '@/components/cm/CMTab'
 import { DepartmentProjectsTab } from '@/modules/projects/ProjectsModule'
+import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
+import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
 
-type FinanceTab = 'projects' | 'costing' | 'analysis' | 'components' | 'moq' | 'cm'
+type FinanceTab = 'overview' | 'tasks-followup' | 'projects' | 'costing' | 'analysis' | 'components' | 'moq' | 'cm'
 
 const TABS: { key: FinanceTab; label: string; icon: React.ElementType }[] = [
+  { key: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { key: 'tasks-followup', label: 'Tasks & Follow-up', icon: ClipboardList },
   { key: 'projects', label: 'Projects', icon: FolderKanban },
   { key: 'costing', label: 'Costing (COGS)', icon: DollarSign },
   { key: 'analysis', label: 'Cost Analysis', icon: FlaskConical },
@@ -87,7 +93,7 @@ function ExportMenu() {
 }
 
 export function FinancePage() {
-  const [activeTab, setActiveTab] = useState<FinanceTab>('costing')
+  const [activeTab, setActiveTab] = useState<FinanceTab>('overview')
   const { data: departments } = useDepartments()
 
   const finDept = useMemo(() => {
@@ -173,7 +179,18 @@ export function FinancePage() {
       {/* Tab Content */}
       <div className="stagger">
         <div>
-          {activeTab === 'projects' ? (
+          {activeTab === 'overview' ? (
+            <DepartmentOverviewTab
+              departmentId={finDept?.id ?? null}
+              departmentName="Finance"
+              onNavigateToTab={(tab) => setActiveTab(tab as FinanceTab)}
+            />
+          ) : activeTab === 'tasks-followup' ? (
+            <DepartmentTasksFollowUpTab
+              departmentId={finDept?.id ?? null}
+              departmentName="Finance"
+            />
+          ) : activeTab === 'projects' ? (
             <DepartmentProjectsTab
               departmentId={finDept?.id ?? null}
               departmentName="Finance"
