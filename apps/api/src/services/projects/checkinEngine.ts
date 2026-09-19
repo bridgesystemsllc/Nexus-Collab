@@ -48,6 +48,27 @@ export async function runCheckinEngine(
 
 // ─── 1. Request check-ins that have come due ─────────────────
 
+export const OPEN_TASK_STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'IN_REVIEW', 'BLOCKED']
+
+export async function findOldestOpenTaskForRespondent(
+  prisma: PrismaClient,
+  projectId: string,
+  respondentId: string | null,
+): Promise<string | null> {
+  if (!respondentId) return null
+  const task = await prisma.task.findFirst({
+    where: {
+      projectId,
+      ownerId: respondentId,
+      status: { in: OPEN_TASK_STATUSES },
+      deletedAt: null,
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  })
+  return task?.id ?? null
+}
+
 async function requestDueCheckins(prisma: PrismaClient, now: Date, result: EngineResult) {
   const projects = await prisma.project.findMany({
     where: {
@@ -74,6 +95,7 @@ async function requestDueCheckins(prisma: PrismaClient, now: Date, result: Engin
         // fallback so a lane with no lead still gets chased rather than
         // silently skipped.
         const respondentId = dept.laneLeadId ?? project.projectManagerId ?? null
+        const taskId = await findOldestOpenTaskForRespondent(prisma, project.id, respondentId)
 
         try {
           await prisma.projectCheckin.create({
@@ -84,6 +106,7 @@ async function requestDueCheckins(prisma: PrismaClient, now: Date, result: Engin
               dueAt,
               status: 'PENDING',
               respondentId,
+              taskId,
             },
           })
           result.checkinsRequested++

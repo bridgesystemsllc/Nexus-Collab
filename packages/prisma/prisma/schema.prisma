@@ -602,6 +602,7 @@ model Task {
   dependenciesIn  TaskDependency[]    @relation("Successor")
   checklist       TaskChecklistItem[]
   projectComments ProjectComment[]
+  checkins        ProjectCheckin[]    @relation("CheckinTask")
 
   createdById String?
   createdAt   DateTime  @default(now())
@@ -1136,6 +1137,8 @@ model ProjectCheckin {
   respondedAt  DateTime?
   respondentId String?
   respondent   Member?     @relation("CheckinRespondent", fields: [respondentId], references: [id])
+  taskId       String?
+  task         Task?       @relation("CheckinTask", fields: [taskId], references: [id], onDelete: SetNull)
   status       String      @default("PENDING") // PENDING | RESPONDED | OVERDUE | SKIPPED
 
   progressSummary String?
@@ -1155,6 +1158,7 @@ model ProjectCheckin {
   @@index([status, dueAt])
   // Compliance analytics and the report builders both window on requestedAt.
   @@index([projectId, requestedAt])
+  @@index([taskId])
 }
 
 // ─── Reports ────────────────────────────────────────────────

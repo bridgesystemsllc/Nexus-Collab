@@ -30,6 +30,7 @@ interface Checkin {
   confidence: Confidence | null
   department?: { id: string; name: string; color?: string | null } | null
   respondent?: { id: string; name: string } | null
+  task?: { id: string; title: string; status: string } | null
 }
 
 interface ComplianceRow {
@@ -118,7 +119,10 @@ export function CheckInPanel({
                   >
                     <div className="min-w-0">
                       <p className="text-xs font-medium text-[var(--text-primary)]">
-                        {c.department?.name ?? 'All hands'}
+                        {c.respondent?.name ?? 'Unassigned'}
+                      </p>
+                      <p className="text-[11px] text-[var(--text-secondary)] truncate">
+                        {c.task?.title ?? 'No open task linked'}
                       </p>
                       <p className="text-[11px] flex items-center gap-1" style={{ color: overdue ? 'var(--danger)' : 'var(--text-tertiary)' }}>
                         <Clock size={10} />
@@ -150,15 +154,19 @@ export function CheckInPanel({
                 return (
                   <li key={c.id} className="border-l-2 pl-3" style={{ borderColor: tone?.color ?? 'var(--border-default)' }}>
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-medium text-[var(--text-primary)]">
-                        {c.department?.name ?? 'All hands'}
-                        {tone && (
-                          <span className="ml-2 font-normal" style={{ color: tone.color }}>{tone.label}</span>
-                        )}
-                      </p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-[var(--text-primary)]">
+                          {c.respondent?.name ?? 'Unassigned'}
+                          {tone && (
+                            <span className="ml-2 font-normal" style={{ color: tone.color }}>{tone.label}</span>
+                          )}
+                        </p>
+                        <p className="text-[11px] text-[var(--text-secondary)] truncate">
+                          {c.task?.title ?? 'No open task linked'}
+                        </p>
+                      </div>
                       <span className="text-[10px] text-[var(--text-tertiary)] shrink-0">
                         {formatDate(c.respondedAt)}
-                        {c.respondent ? ` · ${c.respondent.name}` : ''}
                       </span>
                     </div>
                     {c.progressSummary && (
@@ -266,7 +274,7 @@ function CheckInResponseForm({
       >
         <div className="px-5 py-4 border-b border-[var(--border-subtle)]">
           <h3 className="text-sm font-semibold text-[var(--text-primary)]">
-            {checkin.department?.name ?? 'All hands'} check-in
+            User Check-In Response
           </h3>
           <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
             Due {formatDate(checkin.dueAt)} · four questions, keep it short
