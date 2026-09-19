@@ -53,7 +53,7 @@ export const ERP_FEEDS: ErpFeed[] = [
     key: 'cm',
     label: 'Contract Manufacturers / Vendors',
     defaultModuleType: 'CM_PRODUCTIVITY',
-    description: 'Contract manufacturer / vendor records and productivity (not yet implemented).',
+    description: 'Contract manufacturer / vendor records and productivity metrics.',
   },
   {
     key: 'openOrders',
