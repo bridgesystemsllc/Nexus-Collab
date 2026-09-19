@@ -9,6 +9,7 @@ import {
   Copy,
   Database,
   ExternalLink,
+  FileText,
   Globe,
   Hash,
   History,
@@ -83,6 +84,7 @@ const ICON_MAP: Record<string, typeof Database> = {
   MICROSOFT_OUTLOOK: Mail,
   MICROSOFT_TEAMS: MessageCircle,
   MICROSOFT_ONEDRIVE: Cloud,
+  NOTION: FileText,
   AMAZON_VENDOR_CENTRAL: ShoppingCart,
   SLACK: Hash,
   GOOGLE_GMAIL: Mail,
@@ -738,6 +740,7 @@ function IntegrationSettingsDrawer({
 
   const group = AUTH_GROUP[integration.type]
   const isOAuth = group === 'microsoft' || group === 'google'
+  const isNotion = integration.type === 'NOTION'
   const isZapier = integration.type === 'ZAPIER'
   const isErp = integration.type === 'ERP_KAREVE_SYNC'
 
@@ -830,6 +833,22 @@ function IntegrationSettingsDrawer({
             <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">OAuth Connection</h3>
             <p className="text-[12px] text-[var(--text-secondary)]">
               Connected via {group === 'microsoft' ? 'Microsoft' : 'Google'} OAuth 2.0
+            </p>
+            <button
+              onClick={() => onReconnect(integration)}
+              className="btn-ghost text-[13px] flex items-center gap-2"
+            >
+              <RefreshCw size={13} />
+              Reconnect
+            </button>
+          </div>
+        )}
+
+        {isNotion && (
+          <div className="p-4 rounded-[12px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] space-y-3">
+            <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">Notion Connection</h3>
+            <p className="text-[12px] text-[var(--text-secondary)]">
+              Connected via Notion public OAuth
             </p>
             <button
               onClick={() => onReconnect(integration)}
@@ -2271,8 +2290,8 @@ export function IntegrationsPage() {
     const connected = params.get('connected')
     const error = params.get('error')
 
-    if (connected === 'microsoft' || connected === 'google') {
-      const label = connected === 'microsoft' ? 'Microsoft' : 'Google'
+    if (connected === 'microsoft' || connected === 'google' || connected === 'notion') {
+      const label = connected === 'microsoft' ? 'Microsoft' : connected === 'google' ? 'Google' : 'Notion'
       setToast({ type: 'success', message: `${label} account connected successfully` })
       refetch()
       window.history.replaceState({}, '', window.location.pathname)
@@ -2321,6 +2340,9 @@ export function IntegrationsPage() {
       if (group === 'microsoft' || group === 'google') {
         const connectType = group === 'microsoft' ? 'MICROSOFT_OUTLOOK' : 'GOOGLE_GMAIL'
         const { data } = await api.post(`/integrations/${connectType}/connect`)
+        window.open(data.authUrl, '_blank', 'noopener,noreferrer')
+      } else if (type === 'NOTION') {
+        const { data } = await api.post('/integrations/NOTION/connect')
         window.open(data.authUrl, '_blank', 'noopener,noreferrer')
       } else if (type === 'ZAPIER') {
         const { data } = await api.post('/integrations/ZAPIER/connect')
@@ -2376,6 +2398,18 @@ export function IntegrationsPage() {
       const connectType = group === 'microsoft' ? 'MICROSOFT_OUTLOOK' : 'GOOGLE_GMAIL'
       try {
         const { data } = await api.post(`/integrations/${connectType}/connect`)
+        window.open(data.authUrl, '_blank', 'noopener,noreferrer')
+      } catch (err: any) {
+        const errData = err?.response?.data
+        if (errData?.error === 'configuration_required') {
+          setOauthSetup({ provider: errData.provider, required: errData.required })
+        } else {
+          setToast({ type: 'error', message: errData?.message || 'Failed to reconnect' })
+        }
+      }
+    } else if (integration.type === 'NOTION') {
+      try {
+        const { data } = await api.post('/integrations/NOTION/connect')
         window.open(data.authUrl, '_blank', 'noopener,noreferrer')
       } catch (err: any) {
         const errData = err?.response?.data

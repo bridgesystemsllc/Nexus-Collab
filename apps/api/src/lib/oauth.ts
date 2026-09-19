@@ -147,3 +147,42 @@ export async function refreshGoogleToken(refreshToken: string): Promise<{
     expires_in: number
   }
 }
+
+// ─── Notion Token Exchange ────────────────────────────────────
+export async function exchangeNotionToken(code: string): Promise<{
+  access_token: string
+  workspace_id: string
+  workspace_name: string | null
+  workspace_icon: string | null
+  bot_id: string
+  owner: { type: string; user?: { id: string; name: string; avatar_url: string | null } }
+}> {
+  const clientId = process.env.NOTION_CLIENT_ID || ''
+  const clientSecret = process.env.NOTION_CLIENT_SECRET || ''
+  const redirectUri = process.env.NOTION_REDIRECT_URI || ''
+
+  const response = await fetch('https://api.notion.com/v1/oauth/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+    },
+    body: JSON.stringify({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri,
+    }),
+  })
+  if (!response.ok) {
+    const err = await response.text()
+    throw new Error(`Notion token exchange failed: ${err}`)
+  }
+  return (await response.json()) as {
+    access_token: string
+    workspace_id: string
+    workspace_name: string | null
+    workspace_icon: string | null
+    bot_id: string
+    owner: { type: string; user?: { id: string; name: string; avatar_url: string | null } }
+  }
+}

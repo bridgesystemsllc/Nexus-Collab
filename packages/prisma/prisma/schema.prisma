@@ -746,13 +746,35 @@ model Note {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  notionPageLinks NotionPageLink[]
+
   @@index([taskId])
+}
+
+// ─── Notion Page Link ───────────────────────────────────────
+// Links a Nexus Note to a synced Notion page. Created when pushing a note to
+// Notion or when Sync Now discovers a page that matches an existing note.
+model NotionPageLink {
+  id              String   @id @default(cuid())
+  orgId           String
+  notionPageId    String
+  notionUrl       String
+  title           String
+  noteId          String?
+  note            Note?    @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  lastSyncedAt    DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([orgId, notionPageId])
+  @@index([orgId])
+  @@index([noteId])
 }
 
 // ─── Integration ────────────────────────────────────────────
 model Integration {
   id         String       @id @default(cuid())
-  type       String // ERP_KAREVE_SYNC, MICROSOFT_OUTLOOK, MICROSOFT_TEAMS, MICROSOFT_ONEDRIVE, AMAZON_VENDOR_CENTRAL, SHOPIFY, GS1_SYNC, SLACK, ZAPIER, GENERIC_HTTP, GENERIC_MCP, GENERIC_WEBHOOK
+  type       String // ERP_KAREVE_SYNC, MICROSOFT_OUTLOOK, MICROSOFT_TEAMS, MICROSOFT_ONEDRIVE, NOTION, AMAZON_VENDOR_CENTRAL, SHOPIFY, GS1_SYNC, SLACK, ZAPIER, GENERIC_HTTP, GENERIC_MCP, GENERIC_WEBHOOK
   name       String
   status     String       @default("DISCONNECTED") // CONNECTED, DISCONNECTED, ERROR, SYNCING
   config     Json         @default("{}")

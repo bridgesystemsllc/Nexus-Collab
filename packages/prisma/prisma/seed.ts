@@ -359,8 +359,9 @@ async function main() {
     { type: 'GOOGLE_GMAIL', name: 'Google Gmail', status: 'DISCONNECTED', orgId: org.id },
     { type: 'GOOGLE_SHEETS', name: 'Google Sheets', status: 'DISCONNECTED', orgId: org.id },
     { type: 'ZAPIER', name: 'Zapier', status: 'DISCONNECTED', orgId: org.id },
+    { type: 'NOTION', name: 'Notion', status: 'DISCONNECTED', orgId: org.id },
   ] })
-  console.log('✅ Integrations: 9')
+  console.log('✅ Integrations: 10')
 
   // ─── Pulse
   await prisma.pulse.createMany({ data: [
