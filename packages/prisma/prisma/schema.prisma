@@ -2022,3 +2022,35 @@ model ComponentAttachment {
   @@unique([orgId, componentId, kind, version])
   @@index([orgId, componentId, kind])
 }
+
+// ─── Part Numbers ────────────────────────────────────────────
+// Operations part number registry. Each row is a distinct part number; the
+// counter allocates sequential numbers starting from 200001.
+model PartNumber {
+  id              String   @id @default(cuid())
+  orgId           String
+  partsNumber     Int
+  brand           String?
+  itemDescription String?
+  itemNumber      String?
+  itemType        String?
+  componentId     String?
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([orgId, partsNumber])
+  @@index([orgId])
+  @@index([orgId, brand])
+  @@index([componentId])
+}
+
+// ─── Part Number Counter ─────────────────────────────────────
+// Allocates sequential part numbers per organization. lastValue is the most
+// recently issued number; next allocation returns lastValue + 1.
+model PartNumberCounter {
+  id        String   @id @default(cuid())
+  orgId     String   @unique
+  lastValue Int      @default(200000)
+  updatedAt DateTime @updatedAt
+}
