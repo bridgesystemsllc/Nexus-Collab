@@ -13,6 +13,7 @@ import {
   Eye,
   Factory,
   FolderKanban,
+  Hash,
   LayoutDashboard,
   LayoutGrid,
   Mail,
@@ -40,6 +41,7 @@ import { ProductionEmailModal } from '@/components/ops/production/ProductionEmai
 import { ProductionOrderDrawer } from '@/components/ops/production/ProductionOrderDrawer'
 import { CMTab } from '@/components/cm/CMTab'
 import { ComponentsTab } from '@/components/ops/ComponentsTab'
+import { PartNumbersTab } from '@/components/ops/PartNumbersTab'
 import { BOMTab } from '@/components/ops/BOMTab'
 import { PoTrackingOverlay, type PoTrackingScope } from '@/components/ops/poTracking/PoTrackingTab'
 import { brandLabel } from '@/components/ops/brandLabel'
@@ -47,12 +49,13 @@ import { useAppStore } from '@/stores/appStore'
 
 
 // ─── Types ─────────────────────────────────────────────────
-type OpsTab = 'projects' | 'inventory' | 'production' | 'components' | 'bom' | 'cm'
+type OpsTab = 'projects' | 'inventory' | 'production' | 'part-numbers' | 'components' | 'bom' | 'cm'
 
 const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'projects', label: 'Projects', icon: FolderKanban },
   { key: 'inventory', label: 'Inventory Health', icon: Box },
   { key: 'production', label: 'Production Tracking', icon: Factory },
+  { key: 'part-numbers', label: 'Part Numbers', icon: Hash },
   { key: 'components', label: 'Components', icon: Boxes },
   { key: 'bom', label: 'Bill of Materials', icon: ClipboardList },
   { key: 'cm', label: 'CM Productivity', icon: Users },
@@ -1128,6 +1131,8 @@ const MODULE_TYPE_BY_TAB: Record<OpsTab, string> = {
   projects: '',
   inventory: 'INVENTORY_HEALTH',
   production: 'PRODUCTION_TRACKING',
+  // Part numbers have their own Prisma model, not a DepartmentModule.
+  'part-numbers': '',
   components: 'COMPONENTS',
   bom: 'BILL_OF_MATERIALS',
   cm: 'CM_PRODUCTIVITY',
@@ -1348,6 +1353,8 @@ export function OpsPage() {
             <InventoryHealthTab items={moduleData.inventory} geodisItems={moduleData.geodisInventory} moduleId={moduleIds.inventory} geodisModuleId={moduleIds.geodisInventory} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })} />
           ) : activeTab === 'production' ? (
             <ProductionTab items={moduleData.production} moduleId={moduleIds.production} departmentId={deptId} onSelect={(item) => setSelectedItem({ item, type: 'PRODUCTION_TRACKING' })} openOrders={moduleData.openOrders} openOrderModuleId={moduleIds.openOrders} onRefresh={() => refetchDept()} />
+          ) : activeTab === 'part-numbers' ? (
+            <PartNumbersTab departmentId={deptId} onRefresh={() => refetchDept()} components={moduleData.components} />
           ) : activeTab === 'components' ? (
             <ComponentsTab items={moduleData.components} moduleId={moduleIds.components} departmentId={deptId} onRefresh={() => refetchDept()} />
           ) : activeTab === 'bom' ? (
