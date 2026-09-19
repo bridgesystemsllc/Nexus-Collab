@@ -147,7 +147,7 @@ export async function getManufacturerMapping(
   orgId: string,
   manufacturerName: string,
 ) {
-  const [mapping, codes] = await Promise.all([
+  const [mapping, oorLineCodes, moduleItemCodes] = await Promise.all([
     prisma.oorManufacturerMapping.findUnique({
       where: {
         orgId_erpManufacturerNameNormalized: {
@@ -159,11 +159,37 @@ export async function getManufacturerMapping(
     prisma.oorLine.findMany({
       where: { orgId, fulfillmentType: 'CONTRACT_MFG', cmCode: { not: null } },
       distinct: ['cmCode'],
-      orderBy: { cmCode: 'asc' },
       select: { cmCode: true },
     }),
+    prisma.moduleItem.findMany({
+      where: { module: { type: 'CM_PRODUCTIVITY', department: { orgId } } },
+      select: { data: true },
+    }),
   ])
-  return { mapping, cmCodes: codes.flatMap((row) => row.cmCode ? [row.cmCode] : []) }
+
+  const oorCodes = oorLineCodes.flatMap((row) => (row.cmCode ? [row.cmCode] : []))
+
+  const masterCodes = moduleItemCodes.flatMap((item) => {
+    const data = (item.data as Record<string, unknown>) || {}
+    const cmCode = typeof data.cmCode === 'string' ? data.cmCode.trim() : ''
+    const code = typeof data.code === 'string' ? data.code.trim() : ''
+    const effectiveCode = cmCode || code
+    if (!effectiveCode) return []
+    return [effectiveCode]
+  })
+
+  const seenLower = new Set<string>()
+  const deduped: string[] = []
+  for (const c of [...oorCodes, ...masterCodes]) {
+    const lower = c.toLowerCase()
+    if (!seenLower.has(lower)) {
+      seenLower.add(lower)
+      deduped.push(c)
+    }
+  }
+  deduped.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+
+  return { mapping, cmCodes: deduped }
 }
 
 export async function upsertManufacturerMapping(

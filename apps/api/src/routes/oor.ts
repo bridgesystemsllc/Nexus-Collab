@@ -130,12 +130,38 @@ oorRoutes.put('/manufacturer-mapping', requirePermission('oor:admin'), async (re
   try {
     const orgId = orgIdOf(req)
     const { manufacturerName, cmCode } = upsertManufacturerMappingSchema.parse(req.body)
-    const codeExists = await prisma.oorLine.findFirst({
-      where: { orgId, fulfillmentType: 'CONTRACT_MFG', cmCode: { equals: cmCode, mode: 'insensitive' } },
-      select: { cmCode: true },
-    })
-    if (!codeExists?.cmCode) return fail(res, 422, 'Choose a CM code found in an imported report.')
-    const mapping = await upsertManufacturerMapping(prisma, orgId, actorOf(req), manufacturerName, codeExists.cmCode)
+
+    const [oorLineCode, moduleItems] = await Promise.all([
+      prisma.oorLine.findFirst({
+        where: { orgId, fulfillmentType: 'CONTRACT_MFG', cmCode: { equals: cmCode, mode: 'insensitive' } },
+        select: { cmCode: true },
+      }),
+      prisma.moduleItem.findMany({
+        where: { module: { type: 'CM_PRODUCTIVITY', department: { orgId } } },
+        select: { data: true },
+      }),
+    ])
+
+    let resolvedCode = oorLineCode?.cmCode ?? null
+
+    if (!resolvedCode) {
+      for (const item of moduleItems) {
+        const data = (item.data as Record<string, unknown>) || {}
+        const itemCmCode = typeof data.cmCode === 'string' ? data.cmCode.trim() : ''
+        const itemCode = typeof data.code === 'string' ? data.code.trim() : ''
+        const effectiveCode = itemCmCode || itemCode
+        if (effectiveCode && effectiveCode.toLowerCase() === cmCode.trim().toLowerCase()) {
+          resolvedCode = effectiveCode
+          break
+        }
+      }
+    }
+
+    if (!resolvedCode) {
+      return fail(res, 422, 'Choose a CM code from an imported report or Ops/R&D Contract Manufacturers.')
+    }
+
+    const mapping = await upsertManufacturerMapping(prisma, orgId, actorOf(req), manufacturerName, resolvedCode)
     res.json({ mapping })
   } catch (error) {
     handleError(res, error)

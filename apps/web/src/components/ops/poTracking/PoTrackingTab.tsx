@@ -189,7 +189,7 @@ export function PoTrackingTab({
                 <p className="mt-2 text-xs text-[var(--text-secondary)]">Ask an OOR administrator to set this mapping.</p>
               )}
               {mapping.data?.canManage && mapping.data.cmCodes.length === 0 ? (
-                <p className="mt-2 text-xs text-[var(--text-secondary)]">Import a CM report first so its codes are available.</p>
+                <p className="mt-2 text-xs text-[var(--text-secondary)]">Import a CM report or add a CM code on Ops/R&D Contract Manufacturers.</p>
               ) : null}
               {saveMapping.isError ? (
                 <p className="mt-2 text-xs text-[var(--danger)]">The mapping could not be saved. Refresh and try again.</p>
