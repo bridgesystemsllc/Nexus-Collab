@@ -209,6 +209,7 @@ export const createEmailSchema = z.object({
   ccAddresses: z.array(z.string()).optional(),
   sentAt: z.coerce.date().optional(),
   bodyText: z.string().optional(),
+  webLink: z.string().url().optional(),
   source: z.enum(['paste', 'eml_upload', 'graph', 'gmail']).default('paste'),
 })
 
