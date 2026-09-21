@@ -1070,7 +1070,7 @@ model CmCandidate {
 // ─── Attachment (polymorphic) ────────────────────────────────
 model Attachment {
   id             String    @id @default(cuid())
-  attachableType String // task, formulation, tech_transfer, tech_transfer_stage, product, brief, component
+  attachableType String // task, formulation, tech_transfer, tech_transfer_stage, product, brief, component, at_risk_issue
   attachableId   String // ID of the parent entity
   module         String? // npd, active_brief, cm_productivity, etc. (for task-scoped attachments)
   type           String // email, file, comment
@@ -2108,4 +2108,82 @@ model PartNumberCounter {
   orgId     String   @unique
   lastValue Int      @default(200000)
   updatedAt DateTime @updatedAt
+}
+
+// ─── At-Risk Products ────────────────────────────────────────
+// User-curated inventory items requiring manual watch. Distinct from the
+// auto-graded emergency/critical status in inventoryStatus.ts — users can
+// flag a healthy SKU that deserves manual attention.
+model AtRiskProduct {
+  id              String              @id @default(cuid())
+  orgId           String
+  departmentId    String?
+  inventoryItemId String
+
+  addedById       String?
+  addedReason     String?
+  riskCategory    String?
+  priority        String              @default("HIGH")
+
+  status          String              @default("ACTIVE")
+  resolvedAt      DateTime?
+  resolvedById    String?
+  resolutionNote  String?
+
+  links           AtRiskProductLink[]
+  issues          AtRiskProductIssue[]
+
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([orgId, inventoryItemId])
+  @@index([orgId, departmentId, status])
+  @@index([orgId, status, priority])
+}
+
+model AtRiskProductLink {
+  id              String        @id @default(cuid())
+  atRiskProductId String
+  atRiskProduct   AtRiskProduct @relation(fields: [atRiskProductId], references: [id], onDelete: Cascade)
+
+  linkType        String
+  linkId          String
+  linkLabel       String?
+  linkContext     String?
+
+  createdAt       DateTime      @default(now())
+  createdById     String?
+
+  @@unique([atRiskProductId, linkType, linkId])
+  @@index([linkType, linkId])
+}
+
+model AtRiskProductIssue {
+  id              String        @id @default(cuid())
+  atRiskProductId String
+  atRiskProduct   AtRiskProduct @relation(fields: [atRiskProductId], references: [id], onDelete: Cascade)
+
+  issueType       String
+  title           String
+  description     String?
+  severity        String        @default("HIGH")
+
+  dueDate         DateTime?
+  etaDate         DateTime?
+  etaConfidence   String?
+
+  ownerId         String?
+
+  status          String        @default("OPEN")
+  resolvedAt      DateTime?
+  resolvedById    String?
+  resolutionNote  String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  createdById     String?
+
+  @@index([atRiskProductId])
+  @@index([status, dueDate])
+  @@index([issueType, status])
 }
