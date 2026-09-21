@@ -39,6 +39,7 @@ import { uploadRoutes } from './routes/uploads'
 import { inventoryImportRoutes } from './routes/inventoryImport'
 import { oorRoutes } from './routes/oor'
 import { partNumberRoutes } from './routes/partNumbers'
+import { atRiskProductRoutes } from './routes/atRiskProducts'
 import { bomImportRoutes } from './routes/bomImport'
 import { componentsImportRoutes } from './routes/componentsImport'
 import { projectRoutes } from './routes/projects'
@@ -218,6 +219,7 @@ api.use('/inventory-import', inventoryImportRoutes)
 api.use('/operations/oor', oorRoutes)
 api.use('/ops/part-numbers', partNumberRoutes)
 api.use('/ops/components', componentsImportRoutes)
+api.use('/at-risk-products', atRiskProductRoutes)
 api.use('/bom/import', bomImportRoutes)
 // Projects & Initiatives. The task router mounts on the same base so its
 // /tasks/* paths sit alongside /projects/:id/*; it is registered first because
