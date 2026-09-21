@@ -13,12 +13,14 @@ import {
   FolderKanban,
   Loader2,
   Package,
+  Radar,
   Repeat2,
   Rocket,
   Target,
   Users,
 } from 'lucide-react'
-import { useDepartmentOverview } from '@/hooks/useData'
+import { OOR_RISK_META, type OorRiskLevel } from '@nexus/shared'
+import { useDepartmentOverview, type LowStockSku, type AtRiskOpenOrder } from '@/hooks/useData'
 import { StatusBadge } from '@/components/shared/TablePrimitives'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 
@@ -372,6 +374,117 @@ export function DepartmentOverviewTab({
           color="var(--info)"
         />
       </div>
+
+      {/* Operations Radar — BUILTIN_OPS only */}
+      {((data.lowStockSkus?.length ?? 0) > 0 || (data.atRiskOpenOrders?.length ?? 0) > 0) && (
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium text-[var(--text-primary)] flex items-center gap-2">
+            <Radar size={14} className="text-[var(--danger)]" />
+            Operations Radar
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Low Stock SKUs — Top 10 */}
+            {(data.lowStockSkus?.length ?? 0) > 0 && (
+              <div className="data-cell space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Box size={16} className="text-[var(--warning)]" />
+                    <span className="text-sm font-medium text-[var(--text-primary)]">Low Stock SKUs</span>
+                  </div>
+                  <span className="text-xs text-[var(--text-tertiary)] tabular-nums">{data.lowStockSkus!.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {data.lowStockSkus!.slice(0, 10).map((item: LowStockSku) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors cursor-pointer"
+                      onClick={() => onNavigateToTab?.('inventory')}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[12px] text-[var(--accent)] truncate">{item.sku}</span>
+                        </div>
+                        {item.description && (
+                          <p className="text-[11px] text-[var(--text-tertiary)] truncate">{item.description}</p>
+                        )}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-[12px] font-semibold tabular-nums text-[var(--danger)]">{item.qtyOnHand}</p>
+                        <p className="text-[10px] text-[var(--text-tertiary)]">of {item.reorderPoint}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {(data.lowStockSkus?.length ?? 0) > 10 && (
+                  <p className="text-xs text-[var(--text-tertiary)] text-center">
+                    +{data.lowStockSkus!.length - 10} more
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* At-Risk Open Orders — Top 5 */}
+            {(data.atRiskOpenOrders?.length ?? 0) > 0 && (
+              <div className="data-cell space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Factory size={16} className="text-[var(--danger)]" />
+                    <span className="text-sm font-medium text-[var(--text-primary)]">At-Risk Open Orders</span>
+                  </div>
+                  <span className="text-xs text-[var(--text-tertiary)] tabular-nums">{data.atRiskOpenOrders!.length}</span>
+                </div>
+                <div className="space-y-2">
+                  {data.atRiskOpenOrders!.slice(0, 5).map((order: AtRiskOpenOrder) => {
+                    const riskMeta = OOR_RISK_META[order.riskLevel as OorRiskLevel]
+                    return (
+                      <div
+                        key={order.id}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors cursor-pointer"
+                        onClick={() => onNavigateToTab?.('po-tracking')}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-mono text-[12px] text-[var(--accent)]">{order.customerPoNumber || '—'}</span>
+                            {riskMeta && (
+                              <span
+                                className="badge text-[10px]"
+                                style={{
+                                  background: `var(--${riskMeta.tone === 'danger' ? 'danger' : 'warning'})20`,
+                                  color: `var(--${riskMeta.tone === 'danger' ? 'danger' : 'warning'})`,
+                                }}
+                              >
+                                {riskMeta.label}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-[var(--text-tertiary)] truncate">
+                            {order.itemNumber && <span className="font-mono">{order.itemNumber}</span>}
+                            {order.itemNumber && order.description && ' — '}
+                            {order.description}
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-[12px] font-semibold tabular-nums text-[var(--text-secondary)]">{order.qtyRemaining.toLocaleString()}</p>
+                          {order.requiredDeliveryDate && (
+                            <p className="text-[10px] text-[var(--text-tertiary)]">
+                              Due {formatDate(order.requiredDeliveryDate)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                {(data.atRiskOpenOrders?.length ?? 0) > 5 && (
+                  <p className="text-xs text-[var(--text-tertiary)] text-center">
+                    +{data.atRiskOpenOrders!.length - 5} more
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Urgent Tasks */}
       {urgentTasks.length > 0 && (

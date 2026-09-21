@@ -11,12 +11,34 @@ export function useDepartment(id: string) {
   return useQuery({ queryKey: ['department', id], queryFn: () => api.get(`/departments/${id}`).then(r => r.data), enabled: !!id })
 }
 
+export interface LowStockSku {
+  id: string
+  sku: string
+  description: string | null
+  qtyOnHand: number
+  reorderPoint: number
+  lastUpdated: string | null
+}
+
+export interface AtRiskOpenOrder {
+  id: string
+  customerPoNumber: string | null
+  itemNumber: string | null
+  description: string | null
+  riskLevel: string
+  requiredDeliveryDate: string | null
+  qtyRemaining: number
+  lineStatus: string
+}
+
 export interface DepartmentOverviewData {
   departmentId: string
   pendingTasks: any[]
   assignedTasks: any[]
   openProjects: any[]
   openModuleItems: Record<string, any[]>
+  lowStockSkus: LowStockSku[]
+  atRiskOpenOrders: AtRiskOpenOrder[]
 }
 
 export function useDepartmentOverview(departmentId: string) {

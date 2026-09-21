@@ -5,6 +5,7 @@
 // years. Renaming them to something tidier would make the screen harder to use,
 // not easier.
 
+import { OOR_RISK_META, inferRiskDriversFromLine, type OorRiskLevel } from '@nexus/shared'
 import type { OorLineRow } from './useOorQueries'
 import { formatCurrency, formatQty, formatShortDate } from './oorFormat'
 
@@ -49,6 +50,16 @@ export const CUSTOMER_OPEN_ORDER_COLUMNS: OorColumn[] = [
   { key: 'shipDate', header: 'ShipDt', width: 88, mono: true, value: (r) => formatShortDate(r.shipDate) },
   { key: 'origRequiredDate', header: 'Orig Date', width: 88, mono: true, sortKey: 'origRequiredDate', value: (r) => formatShortDate(r.origRequiredDate) },
   { key: 'requiredDeliveryDate', header: 'Req.Del', width: 88, mono: true, sortKey: 'requiredDeliveryDate', value: (r) => formatShortDate(r.requiredDeliveryDate) },
+  { key: 'riskLevel', header: 'Risk', width: 90, sortKey: 'riskLevel',
+    value: (r) => OOR_RISK_META[r.riskLevel as OorRiskLevel]?.label ?? r.riskLevel,
+    title: (r) => {
+      const drivers = inferRiskDriversFromLine({
+        lineStatus: r.lineStatus,
+        riskLevel: r.riskLevel as OorRiskLevel,
+        requiredDeliveryDate: r.requiredDeliveryDate,
+      })
+      return drivers.length > 0 ? drivers.join(' • ') : undefined
+    } },
   { key: 'workOrderNumber', header: 'WO', width: 120, mono: true, value: (r) => r.workOrderNumber ?? '' },
 ]
 
@@ -61,6 +72,16 @@ export const SHORTAGE_COLUMNS: OorColumn[] = [
   { key: 'custPartNumber', header: 'Cust Part', width: 110, mono: true, value: (r) => r.custPartNumber ?? '' },
   { key: 'description', header: 'Description', width: 260, value: (r) => r.description ?? '' },
   { key: 'requiredDeliveryDate', header: "Req'd Date", width: 100, mono: true, sortKey: 'requiredDeliveryDate', value: (r) => formatShortDate(r.requiredDeliveryDate) },
+  { key: 'riskLevel', header: 'Risk', width: 90, sortKey: 'riskLevel',
+    value: (r) => OOR_RISK_META[r.riskLevel as OorRiskLevel]?.label ?? r.riskLevel,
+    title: (r) => {
+      const drivers = inferRiskDriversFromLine({
+        lineStatus: r.lineStatus,
+        riskLevel: r.riskLevel as OorRiskLevel,
+        requiredDeliveryDate: r.requiredDeliveryDate,
+      })
+      return drivers.length > 0 ? drivers.join(' • ') : undefined
+    } },
   { key: 'qtyRemaining', header: 'Qty Due', width: 90, align: 'right', mono: true, sortKey: 'qtyRemaining', value: (r) => formatQty(r.qtyRemaining) },
   { key: 'unitPrice', header: 'Unit Price', width: 100, align: 'right', mono: true, sortKey: 'unitPrice', value: (r) => formatCurrency(r.unitPrice) },
   { key: 'jobNumber', header: 'Job Num', width: 120, mono: true, value: (r) => r.jobNumber ?? raw(r, 'Job Num') },

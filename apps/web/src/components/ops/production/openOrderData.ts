@@ -188,3 +188,60 @@ export function openOrderKpis(orders: OpenOrder[]): OpenOrderKpis {
   }
   return { activePOs: orders.length, lineItems, toReceive, received, pastDue }
 }
+
+export type PORiskLevel = 'on_track' | 'at_risk' | 'critical'
+
+export interface PORiskResult {
+  level: PORiskLevel
+  drivers: string[]
+}
+
+/**
+ * Derive a risk level for a PO from header-level data (eta, deliveryDue, urgency).
+ * Simpler than the full line-level scoring but provides useful risk signals.
+ */
+export function derivePORisk(o: OpenOrder): PORiskResult {
+  const today = new Date().toISOString().slice(0, 10)
+  const drivers: string[] = []
+
+  // Closed/complete orders are on track
+  if (o.qtyRemaining <= 0 || o.poStatus === 'Received') {
+    return { level: 'on_track', drivers: [] }
+  }
+
+  const due = o.deliveryDue
+  const eta = o.eta
+
+  // ETA past delivery due is critical
+  if (eta && due && eta > due) {
+    drivers.push('ETA past delivery due')
+  }
+
+  // No ETA with qty remaining is concerning
+  if (!eta && o.qtyRemaining > 0) {
+    drivers.push('No ETA set')
+  }
+
+  // Delivery due past today is critical
+  if (due && due < today) {
+    drivers.push('Delivery overdue')
+  } else if (due) {
+    const daysRemaining = Math.floor((new Date(due).getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+    if (daysRemaining <= 14 && daysRemaining >= 0) {
+      drivers.push('Due within 14 days')
+    }
+  }
+
+  // Urgent flag elevates risk
+  if (o.urgency === 'Urgent') {
+    drivers.push('Marked urgent')
+  }
+
+  // Determine level from drivers
+  const criticalDrivers = ['ETA past delivery due', 'Delivery overdue', 'No ETA set']
+  const hasCritical = drivers.some((d) => criticalDrivers.includes(d))
+
+  if (hasCritical) return { level: 'critical', drivers }
+  if (drivers.length > 0) return { level: 'at_risk', drivers }
+  return { level: 'on_track', drivers: [] }
+}
