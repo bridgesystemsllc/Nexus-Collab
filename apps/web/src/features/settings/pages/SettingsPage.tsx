@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Bell, CreditCard, KeyRound, Plug, ScrollText, Server, ShieldCheck, SlidersHorizontal, User,
+  Bell, Building2, CreditCard, KeyRound, Plug, ScrollText, Server, ShieldCheck, SlidersHorizontal, User,
 } from 'lucide-react'
 import { ApiError } from '@/features/users/api/usersApi'
 import { fetchMeBundle, verifyEmailChange } from '../api/settingsApi'
@@ -15,6 +15,7 @@ import { AccessSection } from '../sections/AccessSection'
 import { AuditSection } from '../sections/AuditSection'
 import { IntegrationsSection } from '../sections/IntegrationsSection'
 import { SystemSection } from '../sections/SystemSection'
+import { OrganizationSection } from '../sections/OrganizationSection'
 import { OverviewSection } from '@/features/billing/sections/OverviewSection'
 
 // ─── Settings ────────────────────────────────────────────────
@@ -22,7 +23,7 @@ import { OverviewSection } from '@/features/billing/sections/OverviewSection'
 // present; the two that concern the workspace appear only for people who can
 // act on them — a read-only Access screen is a screen that teaches nothing.
 
-type SectionKey = 'account' | 'preferences' | 'notifications' | 'security' | 'access' | 'integrations' | 'audit' | 'billing' | 'system'
+type SectionKey = 'account' | 'preferences' | 'notifications' | 'security' | 'access' | 'integrations' | 'audit' | 'billing' | 'organization' | 'system'
 
 interface SectionDef {
   key: SectionKey
@@ -41,6 +42,7 @@ const SECTIONS: SectionDef[] = [
   { key: 'integrations', label: 'Integrations', icon: Plug, permission: 'integrations:manage' },
   { key: 'audit', label: 'Audit log', icon: ScrollText, permission: 'audit:read' },
   { key: 'billing', label: 'Billing', icon: CreditCard, permission: 'billing:read' },
+  { key: 'organization', label: 'Organization', icon: Building2, permission: 'billing:write' },
   { key: 'system', label: 'System', icon: Server, permission: 'roles:read' },
 ]
 
@@ -152,6 +154,7 @@ export function SettingsPage() {
                   <OverviewSection />
                 </div>
               )}
+              {active === 'organization' && <OrganizationSection />}
               {active === 'system' && <SystemSection />}
             </>
           )}

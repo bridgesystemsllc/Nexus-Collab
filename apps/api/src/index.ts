@@ -55,6 +55,7 @@ import { userRoutes } from './routes/users'
 import { auditRoutes } from './routes/audit'
 import { systemRoutes } from './routes/system'
 import { billingRoutes } from './routes/billing'
+import { organizationRoutes } from './routes/organization'
 import { meRoutes } from './routes/me'
 import { jobRoutes } from './routes/jobs'
 import { emailRoutes } from './routes/emails'
@@ -237,6 +238,7 @@ api.use('/users', userRoutes)
 api.use('/me', meRoutes)
 api.use('/audit', auditRoutes)
 api.use('/billing', billingRoutes)
+api.use('/organization', organizationRoutes)
 api.use('/system', systemRoutes)
 // Turns a getActingOrgId() throw (no session-derived org) into the module's
 // 401 envelope instead of Express's default 500. Must be mounted immediately

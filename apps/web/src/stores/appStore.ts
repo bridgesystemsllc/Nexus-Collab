@@ -18,6 +18,7 @@ type Page =
   | 'people'
   | 'billing'
   | 'settings'
+  | 'organization'
   | 'custom-dept'
   | 'projects'
   | 'agent-settings'

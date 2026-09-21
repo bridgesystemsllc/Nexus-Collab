@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, CreditCard } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useUserStore } from '@/stores/userStore'
+import { useAppStore } from '@/stores/appStore'
 import { useDepartments } from '@/hooks/useData'
 
 // ─── Self-service profile editor ─────────────────────────────
@@ -10,6 +11,7 @@ import { useDepartments } from '@/hooks/useData'
 export function ProfileModal({ onClose }: { onClose: () => void }) {
   const currentUser = useUserStore((s) => s.currentUser)
   const setCurrentUser = useUserStore((s) => s.setCurrentUser)
+  const setPage = useAppStore((s) => s.setPage)
   const { data: departments } = useDepartments()
 
   const [name, setName] = useState(currentUser?.name ?? '')
@@ -83,6 +85,19 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
           <div className="text-xs text-[var(--text-tertiary)]">
             Signed in as <span className="text-[var(--text-secondary)]">{currentUser.email}</span>
           </div>
+
+          {/* Billing link */}
+          <button
+            onClick={() => {
+              setPage('billing')
+              onClose()
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left hover:bg-[var(--bg-hover)] transition-colors"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <CreditCard size={16} />
+            <span>Billing</span>
+          </button>
 
           {error && <div className="text-xs text-[var(--danger)]">{error}</div>}
         </div>

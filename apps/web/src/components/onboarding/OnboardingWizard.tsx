@@ -1,25 +1,28 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { Check, Building2, Plus, X, Search } from 'lucide-react'
+import { Check, Building2, Plus, X, ArrowRight, ArrowLeft } from 'lucide-react'
+import type { IndustryKey, TierKey, BillingInterval } from '@nexus/shared'
+import { INDUSTRY_OPTIONS } from '@nexus/shared'
 
-const INDUSTRIES = [
-  'Contract Manufacturing',
-  'Beauty & Cosmetics',
-  'Hair Care',
-  'Fragrances & Perfumery',
-  'Retail',
-  'Technology',
-  'Healthcare',
-  'Education',
-  'Finance',
-  'Food & Beverage',
-]
+interface TierInfo {
+  key: TierKey
+  displayName: string
+  description: string
+  unitAmountMonthlyCents: number
+  unitAmountAnnualCents: number
+  minSeats: number
+  maxSeats: number | null
+  isCustomQuote: boolean
+}
 
 interface OnboardingData {
   name: string
-  industry: string
+  industry: IndustryKey | ''
   brands: string[]
+  tierKey: TierKey
+  seats: number
+  interval: BillingInterval
 }
 
 interface Props {
@@ -30,7 +33,10 @@ interface Props {
 const INITIAL_DATA: OnboardingData = {
   name: '',
   industry: '',
-  brands: [''],
+  brands: [],
+  tierKey: 'starter',
+  seats: 5,
+  interval: 'monthly',
 }
 
 const LOADING_MESSAGES = [
@@ -41,22 +47,33 @@ const LOADING_MESSAGES = [
 ]
 
 export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
+  const [step, setStep] = useState<'org' | 'plan'>('org')
   const [data, setData] = useState<OnboardingData>(INITIAL_DATA)
   const [showSuccess, setShowSuccess] = useState(false)
   const [loadingMessage, setLoadingMessage] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
-  const [industrySearch, setIndustrySearch] = useState('')
-  const [showOtherIndustry, setShowOtherIndustry] = useState(false)
-  const [customIndustry, setCustomIndustry] = useState('')
+
+  const { data: tiersData } = useQuery({
+    queryKey: ['billing', 'tiers'],
+    queryFn: async () => {
+      const res = await api.get('/billing/tiers')
+      return res.data as { tiers: TierInfo[] }
+    },
+  })
+
+  const tiers = tiersData?.tiers ?? []
 
   const submitMutation = useMutation({
     mutationFn: async (payload: OnboardingData) => {
       const cleanBrands = payload.brands.filter((b) => b.trim())
       return api.post('/onboarding', {
         name: payload.name.trim(),
-        industry: payload.industry.trim(),
-        brands: cleanBrands,
+        industry: payload.industry,
+        brands: cleanBrands.length > 0 ? cleanBrands : undefined,
+        tierKey: payload.tierKey,
+        seats: payload.seats,
+        interval: payload.interval,
       }).then((r) => r.data)
     },
     onSuccess: () => {
@@ -108,16 +125,16 @@ export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
 
   // Validation
   const nameValid = data.name.trim().length >= 2
-  const industryValid = data.industry.trim().length > 0
-  const filledBrands = data.brands.filter((b) => b.trim().length > 0)
-  const brandsValid = filledBrands.length > 0
+  const industryValid = data.industry !== ''
 
-  const canCreate = nameValid && industryValid && brandsValid
+  // For step navigation
+  const canProceedToPlans = nameValid && industryValid
+  const selectedTier = tiers.find((t) => t.key === data.tierKey)
+  const canCreate = canProceedToPlans && selectedTier && !selectedTier.isCustomQuote
 
-  // Inline errors (shown when field is touched and invalid)
+  // Inline errors
   const nameError = touched.name && !nameValid ? 'Company name must be at least 2 characters' : fieldErrors.name
   const industryError = touched.industry && !industryValid ? 'Please select an industry' : fieldErrors.industry
-  const brandsError = touched.brands && !brandsValid ? 'Add at least one brand' : fieldErrors.brands
 
   // Brand management
   const addBrand = () => {
@@ -128,41 +145,29 @@ export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
 
   const removeBrand = (index: number) => {
     const next = data.brands.filter((_, i) => i !== index)
-    if (next.length === 0) {
-      update('brands', [''])
-    } else {
-      update('brands', next)
-    }
+    update('brands', next)
   }
 
   const updateBrand = (index: number, newValue: string) => {
     const next = [...data.brands]
     next[index] = newValue
     update('brands', next)
-    markTouched('brands')
   }
 
-  // Industry selection
-  const filteredIndustries = INDUSTRIES.filter((i) =>
-    i.toLowerCase().includes(industrySearch.toLowerCase())
-  )
-
-  const handleSelectIndustry = (industry: string) => {
-    update('industry', industry)
-    markTouched('industry')
-    setShowOtherIndustry(false)
+  // Handle tier selection
+  const handleSelectTier = (key: TierKey) => {
+    const tier = tiers.find((t) => t.key === key)
+    if (!tier || tier.isCustomQuote) return
+    update('tierKey', key)
+    if (data.seats < tier.minSeats) {
+      update('seats', tier.minSeats)
+    }
+    if (tier.maxSeats && data.seats > tier.maxSeats) {
+      update('seats', tier.maxSeats)
+    }
   }
 
-  const handleOtherIndustry = () => {
-    setShowOtherIndustry(true)
-    update('industry', customIndustry)
-    markTouched('industry')
-  }
-
-  const handleCustomIndustryChange = (val: string) => {
-    setCustomIndustry(val)
-    update('industry', val)
-  }
+  const formatPrice = (cents: number) => `$${(cents / 100).toFixed(0)}`
 
   // Success screen (3.3)
   if (showSuccess) {
@@ -203,7 +208,7 @@ export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
     )
   }
 
-  // Main form (3.1 - single card with all fields)
+  // Main form with steps: Organization -> Plan
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--bg-base)' }}>
       {/* Left panel — brand / context */}
@@ -220,10 +225,12 @@ export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
 
         <div className="text-white max-w-md">
           <h1 className="text-[36px] font-bold leading-[1.1] tracking-tight">
-            Set up your workspace
+            {step === 'org' ? 'Set up your workspace' : 'Choose your plan'}
           </h1>
           <p className="text-[16px] opacity-85 mt-5 leading-relaxed">
-            Enter your company details to create your NEXUS workspace with departments, brands, and team ready to go.
+            {step === 'org'
+              ? 'Enter your company details to create your NEXUS workspace.'
+              : 'Select a plan that fits your team\'s needs.'}
           </p>
         </div>
 
@@ -232,7 +239,7 @@ export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
         </div>
       </div>
 
-      {/* Right panel — single form card */}
+      {/* Right panel */}
       <div className="flex-1 flex items-center justify-center p-8 overflow-y-auto">
         <div className="w-full max-w-lg">
           {/* Mobile header */}
@@ -244,11 +251,11 @@ export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
               </div>
             </div>
             <div className="text-[13px]" style={{ color: 'var(--text-tertiary)' }}>
-              Company Onboarding
+              Step {step === 'org' ? '1' : '2'} of 2
             </div>
           </div>
 
-          {/* Error banner (3.4 - fields preserved) */}
+          {/* Error banner */}
           {submitMutation.isError && Object.keys(fieldErrors).length === 0 && (
             <div
               className="mb-6 rounded-lg px-4 py-3 text-[13px]"
@@ -262,220 +269,311 @@ export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
             </div>
           )}
 
-          {/* Form card */}
-          <div
-            className="rounded-xl p-6 space-y-6"
-            style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-default)',
-            }}
-          >
-            <div>
-              <h2 className="text-[20px] font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
-                Create your workspace
-              </h2>
-              <p className="text-[13px] mt-1" style={{ color: 'var(--text-secondary)' }}>
-                Fill in your company details to get started.
-              </p>
-            </div>
+          {/* Step 1: Organization details */}
+          {step === 'org' && (
+            <div
+              className="rounded-xl p-6 space-y-6"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-default)',
+              }}
+            >
+              <div>
+                <h2 className="text-[20px] font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+                  Create your workspace
+                </h2>
+                <p className="text-[13px] mt-1" style={{ color: 'var(--text-secondary)' }}>
+                  Fill in your company details to get started.
+                </p>
+              </div>
 
-            {/* Company Name (3.5 inline error) */}
-            <div>
-              <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                Company name *
-              </label>
-              <input
-                type="text"
-                placeholder="e.g., Acme Corporation"
-                value={data.name}
-                onChange={(e) => update('name', e.target.value)}
-                onBlur={() => markTouched('name')}
-                className="w-full rounded-lg px-3 py-2.5 text-[14px] transition-colors focus:outline-none"
-                style={{
-                  background: 'var(--bg-base)',
-                  color: 'var(--text-primary)',
-                  border: `1px solid ${nameError ? 'var(--danger)' : 'var(--border-default)'}`,
-                }}
-              />
-              {nameError && (
-                <span className="block mt-1.5 text-[11px]" style={{ color: 'var(--danger)' }}>
-                  {nameError}
-                </span>
-              )}
-            </div>
-
-            {/* Industry (3.7 inline error) */}
-            <div>
-              <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                Industry *
-              </label>
-
-              {/* Search */}
-              <div className="relative mb-2">
-                <Search
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2"
-                  style={{ color: 'var(--text-tertiary)' }}
-                />
+              {/* Company Name */}
+              <div>
+                <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                  Business name *
+                </label>
                 <input
                   type="text"
-                  placeholder="Search industries..."
-                  value={industrySearch}
-                  onChange={(e) => setIndustrySearch(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 rounded-lg text-[13px] transition-colors focus:outline-none"
+                  placeholder="e.g., Acme Corporation"
+                  value={data.name}
+                  onChange={(e) => update('name', e.target.value)}
+                  onBlur={() => markTouched('name')}
+                  className="w-full rounded-lg px-3 py-2.5 text-[14px] transition-colors focus:outline-none"
                   style={{
                     background: 'var(--bg-base)',
                     color: 'var(--text-primary)',
-                    border: '1px solid var(--border-default)',
+                    border: `1px solid ${nameError ? 'var(--danger)' : 'var(--border-default)'}`,
                   }}
                 />
+                {nameError && (
+                  <span className="block mt-1.5 text-[11px]" style={{ color: 'var(--danger)' }}>
+                    {nameError}
+                  </span>
+                )}
               </div>
 
-              {/* Industry chips */}
-              <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto">
-                {filteredIndustries.map((industry) => (
+              {/* Industry */}
+              <div>
+                <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                  Industry *
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {INDUSTRY_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => {
+                        update('industry', opt.key)
+                        markTouched('industry')
+                      }}
+                      className="px-3 py-2 rounded-lg text-[13px] font-medium transition-all"
+                      style={{
+                        background: data.industry === opt.key ? 'var(--accent)' : 'var(--bg-base)',
+                        color: data.industry === opt.key ? 'white' : 'var(--text-primary)',
+                        border: `1px solid ${data.industry === opt.key ? 'var(--accent)' : 'var(--border-default)'}`,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {industryError && (
+                  <span className="block mt-1.5 text-[11px]" style={{ color: 'var(--danger)' }}>
+                    {industryError}
+                  </span>
+                )}
+              </div>
+
+              {/* Brands (optional) */}
+              <div>
+                <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                  Brands <span className="font-normal" style={{ color: 'var(--text-tertiary)' }}>(optional)</span>
+                </label>
+                <div className="space-y-2">
+                  {data.brands.map((brand, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder={`Brand ${index + 1}`}
+                        value={brand}
+                        onChange={(e) => updateBrand(index, e.target.value)}
+                        className="flex-1 rounded-lg px-3 py-2 text-[13px] focus:outline-none"
+                        style={{
+                          background: 'var(--bg-base)',
+                          color: 'var(--text-primary)',
+                          border: '1px solid var(--border-default)',
+                        }}
+                      />
+                      {data.brands.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => removeBrand(index)}
+                          className="p-1.5 rounded-lg hover:opacity-70"
+                          style={{ color: 'var(--text-tertiary)' }}
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {data.brands.length < 20 && (
                   <button
-                    key={industry}
                     type="button"
-                    onClick={() => handleSelectIndustry(industry)}
-                    className="px-3 py-1.5 rounded-full text-[12px] font-medium transition-all"
+                    onClick={addBrand}
+                    className="mt-2 flex items-center gap-1.5 text-[12px] font-medium hover:opacity-80"
+                    style={{ color: 'var(--accent)' }}
+                  >
+                    <Plus size={14} />
+                    Add brand
+                  </button>
+                )}
+              </div>
+
+              {/* Continue button */}
+              <button
+                type="button"
+                onClick={() => setStep('plan')}
+                disabled={!canProceedToPlans}
+                className="w-full py-3 rounded-lg text-[14px] font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-40"
+                style={{ background: 'var(--accent)' }}
+              >
+                Continue <ArrowRight size={16} />
+              </button>
+            </div>
+          )}
+
+          {/* Step 2: Plan selection */}
+          {step === 'plan' && (
+            <div
+              className="rounded-xl p-6 space-y-6"
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-default)',
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setStep('org')}
+                  className="p-2 rounded-lg hover:bg-[var(--bg-hover)]"
+                  style={{ color: 'var(--text-tertiary)' }}
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <div>
+                  <h2 className="text-[20px] font-semibold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+                    Choose your plan
+                  </h2>
+                  <p className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>
+                    Select a plan for {data.name}
+                  </p>
+                </div>
+              </div>
+
+              {/* Billing interval toggle */}
+              <div className="flex justify-center">
+                <div className="inline-flex rounded-lg p-1" style={{ background: 'var(--bg-base)' }}>
+                  <button
+                    onClick={() => update('interval', 'monthly')}
+                    className="px-4 py-2 rounded-md text-sm font-medium"
                     style={{
-                      background: data.industry === industry
-                        ? 'var(--accent)'
-                        : 'var(--bg-base)',
-                      color: data.industry === industry
-                        ? 'white'
-                        : 'var(--text-primary)',
-                      border: `1px solid ${data.industry === industry ? 'var(--accent)' : 'var(--border-default)'}`,
+                      background: data.interval === 'monthly' ? 'var(--bg-surface)' : 'transparent',
+                      color: data.interval === 'monthly' ? 'var(--text-primary)' : 'var(--text-secondary)',
                     }}
                   >
-                    {industry}
+                    Monthly
                   </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={handleOtherIndustry}
-                  className="px-3 py-1.5 rounded-full text-[12px] font-medium transition-all"
-                  style={{
-                    background: showOtherIndustry && !INDUSTRIES.includes(data.industry)
-                      ? 'var(--accent)'
-                      : 'var(--bg-base)',
-                    color: showOtherIndustry && !INDUSTRIES.includes(data.industry)
-                      ? 'white'
-                      : 'var(--text-primary)',
-                    border: `1px solid ${showOtherIndustry && !INDUSTRIES.includes(data.industry) ? 'var(--accent)' : 'var(--border-default)'}`,
-                  }}
-                >
-                  Other
-                </button>
+                  <button
+                    onClick={() => update('interval', 'annual')}
+                    className="px-4 py-2 rounded-md text-sm font-medium"
+                    style={{
+                      background: data.interval === 'annual' ? 'var(--bg-surface)' : 'transparent',
+                      color: data.interval === 'annual' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    Annual <span className="text-xs ml-1" style={{ color: 'var(--success)' }}>Save 17%</span>
+                  </button>
+                </div>
               </div>
 
-              {showOtherIndustry && (
-                <input
-                  type="text"
-                  placeholder="Enter your industry..."
-                  value={customIndustry}
-                  onChange={(e) => handleCustomIndustryChange(e.target.value)}
-                  autoFocus
-                  className="w-full mt-2 rounded-lg px-3 py-2 text-[13px] transition-colors focus:outline-none"
-                  style={{
-                    background: 'var(--bg-base)',
-                    color: 'var(--text-primary)',
-                    border: '1px solid var(--border-default)',
-                  }}
-                />
-              )}
-
-              {industryError && (
-                <span className="block mt-1.5 text-[11px]" style={{ color: 'var(--danger)' }}>
-                  {industryError}
-                </span>
-              )}
-            </div>
-
-            {/* Brands (3.8 inline error) */}
-            <div>
-              <label className="block text-[12px] font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
-                Brands * <span className="font-normal" style={{ color: 'var(--text-tertiary)' }}>(at least one)</span>
-              </label>
-
-              <div className="space-y-2">
-                {data.brands.map((brand, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder={`Brand ${index + 1}`}
-                      value={brand}
-                      onChange={(e) => updateBrand(index, e.target.value)}
-                      className="flex-1 rounded-lg px-3 py-2 text-[13px] transition-colors focus:outline-none"
+              {/* Plan cards */}
+              <div className="space-y-3">
+                {tiers.filter(t => !t.isCustomQuote).map((tier) => {
+                  const price = data.interval === 'monthly' ? tier.unitAmountMonthlyCents : tier.unitAmountAnnualCents / 12
+                  const isSelected = data.tierKey === tier.key
+                  return (
+                    <button
+                      key={tier.key}
+                      onClick={() => handleSelectTier(tier.key)}
+                      className="w-full text-left rounded-xl p-4 transition-all"
                       style={{
-                        background: 'var(--bg-base)',
-                        color: 'var(--text-primary)',
-                        border: '1px solid var(--border-default)',
+                        border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border-default)'}`,
+                        background: isSelected ? 'var(--accent-subtle)' : 'var(--bg-base)',
                       }}
-                    />
-                    {data.brands.length > 1 && (
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                            {tier.displayName}
+                          </div>
+                          <div className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                            {tier.minSeats}-{tier.maxSeats ?? '∞'} seats
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                            {formatPrice(price)}
+                          </span>
+                          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>/seat/mo</span>
+                        </div>
+                      </div>
+                      <p className="text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>
+                        {tier.description}
+                      </p>
+                    </button>
+                  )
+                })}
+
+                {/* Enterprise card */}
+                {tiers.filter(t => t.isCustomQuote).map((tier) => (
+                  <div
+                    key={tier.key}
+                    className="rounded-xl p-4"
+                    style={{ border: '1px solid var(--border-default)', background: 'var(--bg-base)' }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                          {tier.displayName}
+                        </div>
+                        <div className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                          Custom pricing
+                        </div>
+                      </div>
                       <button
-                        type="button"
-                        onClick={() => removeBrand(index)}
-                        className="p-1.5 rounded-lg transition-colors hover:opacity-70"
-                        style={{ color: 'var(--text-tertiary)' }}
-                        aria-label="Remove brand"
+                        onClick={() => window.open('mailto:sales@nexus.app?subject=Enterprise%20inquiry', '_blank')}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium"
+                        style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
                       >
-                        <X size={14} />
+                        Contact sales
                       </button>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>
 
-              {data.brands.length < 20 && (
-                <button
-                  type="button"
-                  onClick={addBrand}
-                  className="mt-2 flex items-center gap-1.5 text-[12px] font-medium transition-colors hover:opacity-80"
-                  style={{ color: 'var(--accent)' }}
-                >
-                  <Plus size={14} />
-                  Add another brand
-                </button>
-              )}
-
-              {brandsError && (
-                <span className="block mt-1.5 text-[11px]" style={{ color: 'var(--danger)' }}>
-                  {brandsError}
-                </span>
-              )}
-
-              {filledBrands.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {filledBrands.map((brand, index) => (
-                    <span
-                      key={index}
-                      className="px-2 py-0.5 rounded-full text-[11px] font-medium"
-                      style={{
-                        background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
-                        color: 'var(--accent)',
-                      }}
-                    >
-                      {brand}
-                    </span>
-                  ))}
+              {/* Seats selector */}
+              {selectedTier && (
+                <div className="flex items-center justify-center gap-4 py-2">
+                  <label className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    Number of seats:
+                  </label>
+                  <input
+                    type="number"
+                    value={data.seats}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10)
+                      if (!isNaN(val) && val >= selectedTier.minSeats) {
+                        if (selectedTier.maxSeats === null || val <= selectedTier.maxSeats) {
+                          update('seats', val)
+                        }
+                      }
+                    }}
+                    min={selectedTier.minSeats}
+                    max={selectedTier.maxSeats ?? undefined}
+                    className="w-20 px-3 py-2 rounded-lg text-sm text-center"
+                    style={{
+                      background: 'var(--bg-base)',
+                      border: '1px solid var(--border-default)',
+                      color: 'var(--text-primary)',
+                    }}
+                  />
                 </div>
               )}
-            </div>
 
-            {/* Create button */}
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!canCreate}
-              className="w-full py-3 rounded-lg text-[14px] font-semibold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: 'var(--accent)' }}
-            >
-              Create workspace
-            </button>
-          </div>
+              {/* Total */}
+              {selectedTier && (
+                <div className="text-center text-sm" style={{ color: 'var(--text-tertiary)' }}>
+                  Total: {formatPrice((data.interval === 'monthly' ? selectedTier.unitAmountMonthlyCents : selectedTier.unitAmountAnnualCents / 12) * data.seats)}/month
+                </div>
+              )}
+
+              {/* Create button */}
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!canCreate}
+                className="w-full py-3 rounded-lg text-[14px] font-semibold text-white disabled:opacity-40"
+                style={{ background: 'var(--accent)' }}
+              >
+                Create workspace & subscribe
+              </button>
+
+              <p className="text-center text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                T2 GATE: Sandbox mode — no real charges will be made
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
