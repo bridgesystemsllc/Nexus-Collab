@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { useUserStore } from '@/stores/userStore'
 import { useDepartments } from '@/hooks/useData'
 
@@ -31,8 +31,8 @@ export function ProfileModal({ onClose }: { onClose: () => void }) {
       })
       setCurrentUser(res.data)
       onClose()
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Failed to save profile')
+    } catch (e: unknown) {
+      setError(getApiErrorMessage(e, 'Failed to save profile'))
     } finally {
       setSaving(false)
     }

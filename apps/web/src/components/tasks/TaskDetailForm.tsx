@@ -18,6 +18,7 @@ import { FullPageForm } from '@/components/shared/FullPageForm'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { useAppStore, type ActiveForm } from '@/stores/appStore'
+import { getApiErrorMessage } from '@/lib/api'
 import {
   useTask,
   useUpdateTask,
@@ -104,8 +105,8 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
       { id: taskId, ...data },
       {
         onSuccess: () => { refreshTask(); onDone?.() },
-        onError: (err: any) =>
-          setSaveError(err?.response?.data?.error || err?.message || 'Failed to save changes'),
+        onError: (err: unknown) =>
+          setSaveError(getApiErrorMessage(err, 'Failed to save changes')),
       },
     )
   }
@@ -135,8 +136,8 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
       { title: subtaskText.trim(), parentId: taskId, departmentId: task?.departmentId ?? undefined },
       {
         onSuccess: () => { setSubtaskText(''); refreshTask() },
-        onError: (err: any) =>
-          setSaveError(err?.response?.data?.error || err?.message || 'Failed to add subtask'),
+        onError: (err: unknown) =>
+          setSaveError(getApiErrorMessage(err, 'Failed to add subtask')),
       },
     )
   }
@@ -146,9 +147,9 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
     setSaveError('')
     deleteTask.mutate(subtaskToDelete.id, {
       onSuccess: () => { setSubtaskToDelete(null); refreshTask() },
-      onError: (err: any) => {
+      onError: (err: unknown) => {
         setSubtaskToDelete(null)
-        setSaveError(err?.response?.data?.error || err?.message || 'Failed to delete subtask')
+        setSaveError(getApiErrorMessage(err, 'Failed to delete subtask'))
       },
     })
   }

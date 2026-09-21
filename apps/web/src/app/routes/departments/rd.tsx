@@ -40,7 +40,7 @@ import { FormulationDetailModal } from '@/components/rd/FormulationDetailModal'
 import { FormulationDetailDrawer } from '@/components/rd/FormulationDetailDrawer'
 import { FormulationsGate } from '@/components/rd/FormulationsGate'
 import { NewFormulationModal, type FormulationFormData } from '@/components/rd/NewFormulationModal'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { NewNPDProjectModal, type NPDFormData } from '@/components/rd/npd/NewNPDProjectModal'
 import { NPDProjectDetail } from '@/components/rd/npd/NPDProjectDetail'
 import { STAGE_CONFIG, createDefaultTasks, getStageProgress, getOverallProgress, getCurrentStage, isStageUnlocked, type NPDTask } from '@/components/rd/npd/npdChecklist'
@@ -202,8 +202,8 @@ function ImportBriefModal({
       }
 
       onImported(briefData)
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to parse document')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to parse document'))
     } finally {
       setParsing(false)
     }

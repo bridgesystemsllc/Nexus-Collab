@@ -71,7 +71,7 @@ import {
 } from '@/hooks/useData'
 import { useUserStore } from '@/stores/userStore'
 import { useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { ConnectMicrosoft } from '@/components/shared/ConnectMicrosoft'
 import { formatDistanceToNow } from 'date-fns'
 import { Dialog } from '@/components/Dialog'
@@ -134,8 +134,8 @@ function ErpSettingsSection({
       )
       setEditing(false)
       setApiKey('')
-    } catch (err: any) {
-      setSaveMsg(err?.response?.data?.error || 'Failed to save')
+    } catch (err: unknown) {
+      setSaveMsg(getApiErrorMessage(err, 'Failed to save'))
     } finally {
       setSaving(false)
     }
@@ -413,11 +413,11 @@ function ErpDataRoutingSection() {
       await updateRouting.mutateAsync(draft)
       setDraft({})
       setMsg({ type: 'success', text: 'Data routing saved' })
-    } catch (err: any) {
-      const status = err?.response?.status
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
       setMsg({
         type: 'error',
-        text: status === 403 ? 'Admin access required' : err?.response?.data?.error || 'Failed to save routing',
+        text: status === 403 ? 'Admin access required' : getApiErrorMessage(err, 'Failed to save routing'),
       })
     }
   }
@@ -614,11 +614,11 @@ function ErpOutboundSection() {
       await updateOutbound.mutateAsync(draft)
       setDraft({})
       setMsg({ type: 'success', text: 'Outbound config saved' })
-    } catch (err: any) {
-      const status = err?.response?.status
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
       setMsg({
         type: 'error',
-        text: status === 403 ? 'Admin access required' : err?.response?.data?.error || 'Failed to save',
+        text: status === 403 ? 'Admin access required' : getApiErrorMessage(err, 'Failed to save'),
       })
     }
   }
@@ -629,11 +629,11 @@ function ErpOutboundSection() {
     try {
       const res = await pushToErp.mutateAsync({ feeds: enabledKeys })
       setPushResults(res.feeds ?? {})
-    } catch (err: any) {
-      const status = err?.response?.status
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
       setMsg({
         type: 'error',
-        text: status === 403 ? 'Admin access required' : err?.response?.data?.error || 'Push failed',
+        text: status === 403 ? 'Admin access required' : getApiErrorMessage(err, 'Push failed'),
       })
     }
   }
@@ -755,10 +755,10 @@ function IntegrationSettingsDrawer({
     try {
       const { data } = await api.post(`/integrations/${integration.type}/test`)
       setTestResult({ ok: true, message: data?.message || 'Connection successful' })
-    } catch (err: any) {
+    } catch (err: unknown) {
       setTestResult({
         ok: false,
-        message: err?.response?.data?.error || 'Connection failed',
+        message: getApiErrorMessage(err, 'Connection failed'),
       })
     } finally {
       setTesting(false)
@@ -1084,12 +1084,18 @@ function ErpConfigModal({
             'Credentials saved, but live ERP data could not be verified. Check the API URL and key.',
         )
       }
-    } catch (err: any) {
-      setError(
-        err?.response?.data?.error ||
-          err?.response?.data?.message ||
-          'Connection failed. Check your credentials and try again.',
-      )
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: unknown; message?: string } } }
+      const rawError = axiosErr?.response?.data?.error
+      const rawMessage = axiosErr?.response?.data?.message
+      const msg =
+        (typeof rawError === 'string' && rawError) ||
+        (typeof rawError === 'object' && rawError !== null && typeof (rawError as { message?: unknown }).message === 'string'
+          ? (rawError as { message: string }).message
+          : null) ||
+        rawMessage ||
+        'Connection failed. Check your credentials and try again.'
+      setError(msg)
     } finally {
       setLoading(false)
     }
@@ -1328,8 +1334,8 @@ function AddConnectorModal({
       })
       onSuccess(`${name} connector created successfully`)
       onClose()
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to create connector')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to create connector'))
     }
   }
 
@@ -1723,8 +1729,8 @@ function AutomationModal({
         onSuccess('Automation created successfully')
       }
       onClose()
-    } catch (err: any) {
-      setError(err?.response?.data?.error || `Failed to ${isEdit ? 'update' : 'create'} automation`)
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, `Failed to ${isEdit ? 'update' : 'create'} automation`))
     }
   }
 
@@ -1973,8 +1979,8 @@ function AutomationsPanel({
     try {
       await pauseAutomation.mutateAsync(automation.id)
       onToast({ type: 'success', message: `${automation.name} paused` })
-    } catch (err: any) {
-      onToast({ type: 'error', message: err?.response?.data?.error || 'Failed to pause' })
+    } catch (err: unknown) {
+      onToast({ type: 'error', message: getApiErrorMessage(err, 'Failed to pause') })
     }
   }
 
@@ -1982,8 +1988,8 @@ function AutomationsPanel({
     try {
       await resumeAutomation.mutateAsync(automation.id)
       onToast({ type: 'success', message: `${automation.name} resumed` })
-    } catch (err: any) {
-      onToast({ type: 'error', message: err?.response?.data?.error || 'Failed to resume' })
+    } catch (err: unknown) {
+      onToast({ type: 'error', message: getApiErrorMessage(err, 'Failed to resume') })
     }
   }
 
@@ -1992,8 +1998,8 @@ function AutomationsPanel({
     try {
       await activateAutomation.mutateAsync(automation.id)
       onToast({ type: 'success', message: `${automation.name} activated` })
-    } catch (err: any) {
-      onToast({ type: 'error', message: err?.response?.data?.error || 'Failed to activate' })
+    } catch (err: unknown) {
+      onToast({ type: 'error', message: getApiErrorMessage(err, 'Failed to activate') })
     }
   }
 
@@ -2002,8 +2008,8 @@ function AutomationsPanel({
     try {
       await runAutomation.mutateAsync(automation.id)
       onToast({ type: 'success', message: `${automation.name} executed` })
-    } catch (err: any) {
-      onToast({ type: 'error', message: err?.response?.data?.error || 'Failed to run' })
+    } catch (err: unknown) {
+      onToast({ type: 'error', message: getApiErrorMessage(err, 'Failed to run') })
     }
   }
 
@@ -2012,8 +2018,8 @@ function AutomationsPanel({
     try {
       await deleteAutomation.mutateAsync(automation.id)
       onToast({ type: 'success', message: `${automation.name} deleted` })
-    } catch (err: any) {
-      onToast({ type: 'error', message: err?.response?.data?.error || 'Failed to delete' })
+    } catch (err: unknown) {
+      onToast({ type: 'error', message: getApiErrorMessage(err, 'Failed to delete') })
     }
   }
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Users, Plus, Link2, Search, Check, X, Loader2, AlertCircle } from 'lucide-react'
 import { Dialog } from '@/components/Dialog'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { useMembers, useCoworkSpaces } from '@/hooks/useData'
 
 export interface AddToCoworkItem {
@@ -164,8 +164,8 @@ function AddToCoworkDialog({
 
       onAdded?.({ spaceId, taskId: taskRes.data.id, memberIds: selectedMembers })
       onClose()
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || 'Failed to add to co-work space')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to add to co-work space'))
     } finally {
       setSubmitting(false)
     }

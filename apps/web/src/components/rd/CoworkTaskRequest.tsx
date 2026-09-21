@@ -16,7 +16,7 @@ import {
   Link2,
   RefreshCw,
 } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { useCoworkSpaces } from '@/hooks/useData'
 
 // ─── Types ─────────────────────────────────────────────────
@@ -296,8 +296,8 @@ export function CreateCoworkTaskModal({
       })
 
       onClose()
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || 'Failed to create task')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to create task'))
     } finally {
       setSubmitting(false)
     }

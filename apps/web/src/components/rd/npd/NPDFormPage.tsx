@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Rocket, Loader2 } from 'lucide-react'
 import { FullPageForm } from '@/components/shared/FullPageForm'
 import { useAppStore, type ActiveForm } from '@/stores/appStore'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { createDefaultTasks } from '@/components/rd/npd/npdChecklist'
 import {
   StepProjectSetup,
@@ -155,8 +155,8 @@ export function NPDFormPage({ form: activeForm }: { form: ActiveForm }) {
         await qc.invalidateQueries({ queryKey: ['department', ctx.departmentId] })
       }
       closeForm()
-    } catch (err: any) {
-      setSaveError(err?.response?.data?.error || err?.message || 'Failed to save NPD project')
+    } catch (err: unknown) {
+      setSaveError(getApiErrorMessage(err, 'Failed to save NPD project'))
     } finally {
       setSubmitting(false)
     }

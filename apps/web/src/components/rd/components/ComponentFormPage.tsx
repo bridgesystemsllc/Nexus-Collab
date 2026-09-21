@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { FullPageForm } from '@/components/shared/FullPageForm'
 import { useAppStore, type ActiveForm } from '@/stores/appStore'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { generatePartNumber } from './componentData'
 import {
   Step1,
@@ -96,8 +96,8 @@ export function ComponentFormPage({ form: activeForm }: { form: ActiveForm }) {
         await qc.invalidateQueries({ queryKey: ['department', ctx.departmentId] })
       }
       closeForm()
-    } catch (err: any) {
-      setSaveError(err?.response?.data?.error || err?.message || 'Failed to save component')
+    } catch (err: unknown) {
+      setSaveError(getApiErrorMessage(err, 'Failed to save component'))
     } finally {
       setSubmitting(false)
     }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Search, Plus, X, Loader2, AlertCircle } from 'lucide-react'
+import { getApiErrorMessage } from '@/lib/api'
 import {
   useComponentProductLinks,
   useSearchProductsByUpc,
@@ -67,9 +68,8 @@ export function UpcAProductSearch({ componentId, onAssigned }: UpcAProductSearch
       setSearchInput('')
       setShowDropdown(false)
       onAssigned?.()
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || 'Failed to assign product'
-      setAssignError(msg)
+    } catch (err: unknown) {
+      setAssignError(getApiErrorMessage(err, 'Failed to assign product'))
     }
   }
 
@@ -101,9 +101,8 @@ export function UpcAProductSearch({ componentId, onAssigned }: UpcAProductSearch
       setSearchInput('')
       setShowDropdown(false)
       onAssigned?.()
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || 'Failed to assign product'
-      setAssignError(msg)
+    } catch (err: unknown) {
+      setAssignError(getApiErrorMessage(err, 'Failed to assign product'))
     }
   }
 

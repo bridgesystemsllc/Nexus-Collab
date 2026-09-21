@@ -13,7 +13,7 @@ import {
   Search,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { Dialog } from '@/components/Dialog'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { brandLabel } from '@/components/ops/brandLabel'
@@ -72,8 +72,8 @@ function PartNumberFormDialog({
       }
       onSuccess()
       onClose()
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || 'Failed to save')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to save'))
     } finally {
       setSaving(false)
     }
@@ -204,8 +204,8 @@ function LinkComponentDialog({
       })
       onSuccess()
       onClose()
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || 'Failed to link')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to link'))
     } finally {
       setLinking(false)
     }
@@ -221,8 +221,8 @@ function LinkComponentDialog({
       })
       onSuccess()
       onClose()
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || 'Failed to create component')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to create component'))
     } finally {
       setLinking(false)
     }
@@ -405,8 +405,8 @@ function ImportDialog({
         setResults(data)
       }
       onSuccess()
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || 'Import failed')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Import failed'))
     } finally {
       setImporting(false)
     }

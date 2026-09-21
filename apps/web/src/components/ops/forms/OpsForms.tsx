@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Save, Loader2, Box, Factory, Repeat2 } from 'lucide-react'
 import { FullPageForm } from '@/components/shared/FullPageForm'
 import { useAppStore, type ActiveForm } from '@/stores/appStore'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 
 // ─── Shared context shape ───────────────────────────────────
 interface OpsFormContext {
@@ -105,8 +105,8 @@ function useOpsPersist(activeForm: ActiveForm) {
         await qc.invalidateQueries({ queryKey: ['department', ctx.departmentId] })
       }
       closeForm()
-    } catch (err: any) {
-      setSaveError(err?.response?.data?.error || err?.message || 'Failed to save')
+    } catch (err: unknown) {
+      setSaveError(getApiErrorMessage(err, 'Failed to save'))
     } finally {
       setSubmitting(false)
     }

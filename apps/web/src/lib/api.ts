@@ -1,5 +1,39 @@
 import axios from 'axios'
 
+/**
+ * Extract a human-readable error message from an Axios error or unknown value.
+ *
+ * The API envelope returns `{ error: { code, message, requestId } }`. This
+ * helper safely extracts the `message` string regardless of shape, falling
+ * back to the provided default when the error is missing or malformed.
+ */
+export function getApiErrorMessage(err: unknown, fallback: string): string {
+  if (err == null) return fallback
+
+  const errObj = err as Record<string, unknown>
+
+  // Axios error with response.data.error (object or string)
+  const axiosError = (errObj.response as Record<string, unknown> | undefined)?.data as
+    | Record<string, unknown>
+    | undefined
+  const envelope = axiosError?.error
+
+  if (typeof envelope === 'string') {
+    return envelope
+  }
+  if (envelope != null && typeof envelope === 'object') {
+    const msg = (envelope as Record<string, unknown>).message
+    if (typeof msg === 'string') return msg
+  }
+
+  // Plain error with .message
+  if (typeof errObj.message === 'string' && errObj.message) {
+    return errObj.message
+  }
+
+  return fallback
+}
+
 export const api = axios.create({
   baseURL: '/api/v1',
   headers: { 'Content-Type': 'application/json' },
