@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
-import { Boxes, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, Loader2 } from 'lucide-react'
+import { Boxes, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, Loader2, Palette } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { DepartmentProjectsTab } from '@/modules/projects/ProjectsModule'
 import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
 import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
+import { MarketingArtworkTab } from '@/components/marketing/artwork'
 
 // ─── Generic department page ─────────────────────────────────
 // Every department that is not R&D, Operations or Finance lands here —
@@ -16,14 +17,25 @@ import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentT
 // tomorrow gets a working page with a Projects tab and no code change. That is
 // the requirement: the module reaches every department, now and future.
 
-type Tab = 'overview' | 'tasks-followup' | 'projects' | 'modules'
+type Tab = 'overview' | 'tasks-followup' | 'projects' | 'artwork' | 'modules'
 
-const TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
+const BASE_TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: 'overview', label: 'Overview', icon: LayoutDashboard },
   { key: 'tasks-followup', label: 'Tasks & Follow-up', icon: ClipboardList },
   { key: 'projects', label: 'Projects', icon: FolderKanban },
-  { key: 'modules', label: 'Modules', icon: Boxes },
 ]
+
+const ARTWORK_TAB: { key: Tab; label: string; icon: React.ElementType } = {
+  key: 'artwork',
+  label: 'Artwork',
+  icon: Palette,
+}
+
+const MODULES_TAB: { key: Tab; label: string; icon: React.ElementType } = {
+  key: 'modules',
+  label: 'Modules',
+  icon: Boxes,
+}
 
 export function CustomDeptPage() {
   const selectedDeptId = useAppStore((s) => s.selectedDeptId)
@@ -46,6 +58,19 @@ export function CustomDeptPage() {
 
   const { data: detail } = useDepartment(department?.id ?? '')
   const modules = (detail?.modules as any[]) ?? []
+
+  const hasArtworkModule = useMemo(() => {
+    return modules.some((m: any) => m.type === 'ARTWORK')
+  }, [modules])
+
+  const TABS = useMemo(() => {
+    const tabs = [...BASE_TABS]
+    if (hasArtworkModule) {
+      tabs.push(ARTWORK_TAB)
+    }
+    tabs.push(MODULES_TAB)
+    return tabs
+  }, [hasArtworkModule])
 
   if (deptsLoading) {
     return (
@@ -130,30 +155,37 @@ export function CustomDeptPage() {
             departmentName={department.name}
             departmentCode={department.code ?? null}
           />
-        ) : modules.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-[var(--border-default)] py-12 text-center">
-            <Boxes size={24} className="mx-auto text-[var(--text-tertiary)] mb-2" />
-            <p className="text-sm text-[var(--text-secondary)]">No modules configured yet</p>
-            <p className="text-xs text-[var(--text-tertiary)] mt-1">
-              Add modules to {department.name} from the Department Manager.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {modules.map((m: any) => (
-              <div key={m.id} className="data-cell">
-                <p className="text-xs uppercase tracking-[0.06em] text-[var(--text-tertiary)]">
-                  {m.type.replace(/_/g, ' ').toLowerCase()}
-                </p>
-                <p className="text-sm font-medium text-[var(--text-primary)] mt-1">{m.name}</p>
-                <p className="text-2xl font-semibold tabular-nums mt-2 text-[var(--text-primary)]">
-                  {m.items?.length ?? 0}
-                </p>
-                <p className="text-xs text-[var(--text-tertiary)]">records</p>
-              </div>
-            ))}
-          </div>
-        )}
+        ) : tab === 'artwork' ? (
+          <MarketingArtworkTab
+            departmentId={department.id}
+            departmentName={department.name}
+          />
+        ) : tab === 'modules' ? (
+          modules.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[var(--border-default)] py-12 text-center">
+              <Boxes size={24} className="mx-auto text-[var(--text-tertiary)] mb-2" />
+              <p className="text-sm text-[var(--text-secondary)]">No modules configured yet</p>
+              <p className="text-xs text-[var(--text-tertiary)] mt-1">
+                Add modules to {department.name} from the Department Manager.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {modules.map((m: any) => (
+                <div key={m.id} className="data-cell">
+                  <p className="text-xs uppercase tracking-[0.06em] text-[var(--text-tertiary)]">
+                    {m.type.replace(/_/g, ' ').toLowerCase()}
+                  </p>
+                  <p className="text-sm font-medium text-[var(--text-primary)] mt-1">{m.name}</p>
+                  <p className="text-2xl font-semibold tabular-nums mt-2 text-[var(--text-primary)]">
+                    {m.items?.length ?? 0}
+                  </p>
+                  <p className="text-xs text-[var(--text-tertiary)]">records</p>
+                </div>
+              ))}
+            </div>
+          )
+        ) : null}
       </div>
 
       <div className="data-cell flex items-start gap-3">

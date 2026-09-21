@@ -14,7 +14,8 @@ import type { PrismaClient } from '@prisma/client'
 // FINANCE_COSTING module present as an invariant and never touch archive flags
 // again — so an admin can later un-archive a department without the boot
 // re-archiving it on the next restart.
-const ARCHIVE_NAMES = ['vendor mgmt', 'vendor management', 'sales', 'marketing']
+// Marketing is no longer archived — it has an ARTWORK module for artwork tracking.
+const ARCHIVE_NAMES = ['vendor mgmt', 'vendor management', 'sales']
 
 export async function ensureDepartmentStructure(prisma: PrismaClient): Promise<void> {
   try {
@@ -37,6 +38,24 @@ export async function ensureDepartmentStructure(prisma: PrismaClient): Promise<v
         data: { name: 'Costing', type: 'FINANCE_COSTING', departmentId: finance.id, sortOrder: 0 },
       })
       console.log('[structure] created FINANCE_COSTING module under Finance')
+    }
+
+    // Invariant: Marketing exists, is not archived, and has an ARTWORK module.
+    const marketing = await prisma.department.findFirst({
+      where: { name: { equals: 'Marketing', mode: 'insensitive' } },
+      include: { modules: { select: { type: true } } },
+    })
+    if (marketing) {
+      if (marketing.archived) {
+        await prisma.department.update({ where: { id: marketing.id }, data: { archived: false } })
+        console.log('[structure] Marketing department -> archived: false')
+      }
+      if (!marketing.modules.some((m) => m.type === 'ARTWORK')) {
+        await prisma.departmentModule.create({
+          data: { name: 'Artwork', type: 'ARTWORK', departmentId: marketing.id, sortOrder: 0 },
+        })
+        console.log('[structure] created ARTWORK module under Marketing')
+      }
     }
 
     // One-time only: archive the retired stub departments. Skipped once Finance

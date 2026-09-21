@@ -57,6 +57,83 @@ export function useCreateDepartment() {
   })
 }
 
+// ─── Module Items ────────────────────────────────────────────
+export interface ModuleItem {
+  id: string
+  moduleId: string
+  data: Record<string, unknown>
+  status?: string | null
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export function useModuleItems(departmentId: string, moduleId: string) {
+  return useQuery<ModuleItem[]>({
+    queryKey: ['module-items', departmentId, moduleId],
+    queryFn: () => api.get(`/departments/${departmentId}/modules/${moduleId}/items`).then(r => r.data),
+    enabled: !!departmentId && !!moduleId,
+  })
+}
+
+export function useCreateModuleItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ departmentId, moduleId, data, status, sortOrder }: {
+      departmentId: string
+      moduleId: string
+      data: Record<string, unknown>
+      status?: string
+      sortOrder?: number
+    }) => api.post(`/departments/${departmentId}/modules/${moduleId}/items`, { data, status, sortOrder }).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['module-items', vars.departmentId, vars.moduleId] })
+      qc.invalidateQueries({ queryKey: ['department', vars.departmentId] })
+    },
+  })
+}
+
+export function useUpdateModuleItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ departmentId, moduleId, itemId, data, status, sortOrder }: {
+      departmentId: string
+      moduleId: string
+      itemId: string
+      data?: Record<string, unknown>
+      status?: string
+      sortOrder?: number
+    }) => api.patch(`/departments/${departmentId}/modules/${moduleId}/items/${itemId}`, { data, status, sortOrder }).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['module-items', vars.departmentId, vars.moduleId] })
+      qc.invalidateQueries({ queryKey: ['department', vars.departmentId] })
+    },
+  })
+}
+
+export function useDeleteModuleItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ departmentId, moduleId, itemId }: {
+      departmentId: string
+      moduleId: string
+      itemId: string
+    }) => api.delete(`/departments/${departmentId}/modules/${moduleId}/items/${itemId}`).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['module-items', vars.departmentId, vars.moduleId] })
+      qc.invalidateQueries({ queryKey: ['department', vars.departmentId] })
+    },
+  })
+}
+
+// ─── Upload URL ──────────────────────────────────────────────
+export function useRequestUploadUrl() {
+  return useMutation({
+    mutationFn: (params: { name: string; size: number; contentType?: string }) =>
+      api.post('/uploads/request-url', params).then(r => r.data),
+  })
+}
+
 // ─── Microsoft account (per-user Graph connection) ──────────
 export function useMicrosoftStatus() {
   return useQuery({
