@@ -2,8 +2,79 @@ import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma, io } from '../index'
 import { userScopedTasksListWhere } from '../lib/departmentVisibility'
+import { resolveActor, UnauthenticatedError } from '../services/projects/context'
+import type { Prisma } from '@prisma/client'
 
 export const taskRoutes: ReturnType<typeof Router> = Router()
+
+// ─── Constants for my-tasks filtering ───────────────────────
+const TASK_CLOSED = ['COMPLETE', 'CANCELLED'] as const
+const FOLLOW_UP_TAG = 'follow-up' as const
+
+function myTasksWhere(
+  actorId: string,
+  opts: { open: boolean; followUp: boolean },
+): Prisma.TaskWhereInput {
+  const where: Prisma.TaskWhereInput = {
+    deletedAt: null,
+    OR: [{ ownerId: actorId }, { createdById: actorId }],
+  }
+  if (opts.open) {
+    where.status = { notIn: [...TASK_CLOSED] }
+  }
+  if (opts.followUp) {
+    where.brandNames = { has: FOLLOW_UP_TAG }
+  } else {
+    where.NOT = { brandNames: { has: FOLLOW_UP_TAG } }
+  }
+  return where
+}
+
+// ─── My tasks (personal queue) ──────────────────────────────
+// GET /tasks/mine?open=true&followUp=false|true
+// Must be registered BEFORE /:id to avoid "mine" being captured as an id
+const myTasksQuerySchema = z.object({
+  open: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  followUp: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+  page: z.string().default('1').transform((v) => Math.max(1, parseInt(v, 10))),
+  limit: z.string().default('50').transform((v) => Math.min(100, Math.max(1, parseInt(v, 10)))),
+})
+
+taskRoutes.get('/mine', async (req: Request, res: Response) => {
+  try {
+    const actor = await resolveActor(prisma, req)
+    const parsed = myTasksQuerySchema.safeParse(req.query)
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors })
+    }
+    const { open, followUp, page, limit } = parsed.data
+    const skip = (page - 1) * limit
+    const where = myTasksWhere(actor.id, { open, followUp })
+
+    const [tasks, total] = await Promise.all([
+      prisma.task.findMany({
+        where,
+        include: {
+          owner: { select: { id: true, name: true, avatar: true } },
+          department: { select: { id: true, name: true, color: true } },
+          project: { select: { id: true, title: true } },
+        },
+        orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { priority: 'asc' }],
+        skip,
+        take: limit,
+      }),
+      prisma.task.count({ where }),
+    ])
+
+    res.json({ tasks, total, page, limit })
+  } catch (error) {
+    if (error instanceof UnauthenticatedError) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
+    console.error('[tasks] GET /mine error:', error)
+    res.status(500).json({ error: 'Failed to fetch tasks' })
+  }
+})
 
 // ─── List tasks with filters ────────────────────────────────
 taskRoutes.get('/', async (req: Request, res: Response) => {
