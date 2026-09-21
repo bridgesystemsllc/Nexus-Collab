@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, CreditCard } from 'lucide-react'
 import { api, getApiErrorMessage } from '@/lib/api'
 import { useUserStore } from '@/stores/userStore'
 import { useAppStore } from '@/stores/appStore'

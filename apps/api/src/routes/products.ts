@@ -38,12 +38,18 @@ productRoutes.get('/', async (req: Request, res: Response) => {
     // above), so the acting member's org is always available here.
     const orgId = getActingOrgId(req)
 
-    const { search, brand, status, category } = req.query as Record<string, string>
+    const { search, brand, status, category, erpSynced } = req.query as Record<string, string>
 
     const where: any = { orgId }
     if (brand) where.brand = brand
     if (status) where.status = status
     if (category) where.category = category
+
+    // ERP-synced filter: when erpSynced=1/true/yes, only return products with kareveId set
+    if (erpSynced === '1' || erpSynced === 'true' || erpSynced === 'yes') {
+      where.kareveId = { not: null }
+    }
+
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
