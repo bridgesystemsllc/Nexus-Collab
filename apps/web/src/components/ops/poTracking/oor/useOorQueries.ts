@@ -11,6 +11,7 @@ const BASE = '/operations/oor'
 
 export interface OorLineRow {
   id: string
+  productionOrderItemId: string | null
   customerPoNumber: string | null
   channelTag: string | null
   salesOrderNumber: string | null

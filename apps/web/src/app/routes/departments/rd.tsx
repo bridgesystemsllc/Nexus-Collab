@@ -1312,11 +1312,16 @@ export function RDPage() {
   }, [departments])
 
   const { data: deptDetail, isLoading: detailLoading, refetch: refetchDept } = useDepartment(rdDept?.id || '')
-  const { data: opsDetail } = useDepartment(opsDept?.id || '')
+  const {
+    data: opsDetail,
+    isLoading: opsLoading,
+    isError: opsError,
+    refetch: refetchOps,
+  } = useDepartment(opsDept?.id || '')
 
-  const productionItems = useMemo(() => {
+  const openOrderItems = useMemo(() => {
     const modules = (opsDetail?.modules as any[]) || []
-    return modules.find((m: any) => m.type === 'PRODUCTION_TRACKING')?.items || []
+    return modules.find((m: any) => m.type === 'OPEN_ORDERS')?.items || []
   }, [opsDetail])
 
   const skuItems = useMemo(() => {
@@ -1432,7 +1437,7 @@ export function RDPage() {
           ) : activeTab === 'briefs' ? (
             <BriefsTab items={moduleData.briefs} moduleId={moduleData.briefsModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} transferItems={moduleData.transfers} formulationItems={moduleData.formulations} openBriefId={pendingBriefId} onOpenBriefHandled={() => setPendingBriefId(null)} onOpenCm={handleOpenCm} />
           ) : activeTab === 'cm' ? (
-            <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} productionItems={productionItems} openCmId={pendingCmId} onOpenCmHandled={() => setPendingCmId(null)} />
+            <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} openOrderItems={openOrderItems} openOrdersLoading={opsLoading} openOrdersError={opsError} onRefreshOpenOrders={() => refetchOps()} openCmId={pendingCmId} onOpenCmHandled={() => setPendingCmId(null)} />
           ) : activeTab === 'transfers' ? (
             <TransfersTab items={moduleData.transfers} moduleId={moduleData.transfersModuleId} departmentId={rdDept?.id || null} briefs={moduleData.briefs} cmItems={moduleData.cm} onRefresh={() => refetchDept()} onSelect={(item) => setViewingTransfer(item)} />
           ) : activeTab === 'formulations' ? (

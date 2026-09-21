@@ -1,7 +1,18 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { IssueLogger, type Issue } from '@/components/rd/IssueLogger'
 import { AddToCowork } from '@/components/shared/AddToCowork'
+import { api } from '@/lib/api'
+import {
+  buildProductionUpdates,
+  isActiveOpenOrder,
+  linesForOrders,
+  normalizeManufacturer,
+  selectCmOpenOrders,
+  statusesByPo,
+  type ManufacturerCodeMapping,
+} from './cmOpenOrderData'
 import {
   X,
   Edit3,
@@ -19,6 +30,8 @@ import {
   ChevronUp,
   ArrowUpDown,
   ExternalLink,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react'
 
 // ─── Types ─────────────────────────────────────────────────
@@ -31,7 +44,10 @@ interface CMDetailModalProps {
   onDelete: () => void
   onUpdate?: (data: any) => void
   briefItems?: any[]
-  productionItems?: any[]
+  openOrderItems?: any[]
+  openOrdersLoading?: boolean
+  openOrdersError?: boolean
+  onRefreshOpenOrders?: () => void | Promise<unknown>
 }
 
 type SortField = 'productName' | 'brand' | 'unitsOrdered' | 'unitsDelivered' | 'status' | 'lastActivity'
@@ -165,45 +181,139 @@ function normalizeIssue(iss: any, i: number): Issue {
 
 // ─── Main Modal ────────────────────────────────────────────
 
-export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, briefItems, productionItems = [] }: CMDetailModalProps) {
+export function CMDetailModal({
+  open,
+  cm,
+  onClose,
+  onEdit,
+  onDelete,
+  onUpdate,
+  briefItems,
+  openOrderItems = [],
+  openOrdersLoading = false,
+  openOrdersError = false,
+  onRefreshOpenOrders,
+}: CMDetailModalProps) {
   const issuesRef = useRef<HTMLDivElement>(null)
   const [sortField, setSortField] = useState<SortField>('unitsOrdered')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const queryClient = useQueryClient()
 
   const data = cm?.data || cm || {}
   const products = data.products || []
   const issues = data.issues || []
   const contacts = data.contacts || []
 
-  // Aggregated production updates: notes from all production orders assigned to this CM.
-  const cmNameKey = (data.name || '').trim().toLowerCase()
-  const productionUpdates = useMemo(() => {
-    if (!cmNameKey) return [] as any[]
-    const rows: any[] = []
-    for (const po of productionItems as any[]) {
-      const pd = po?.data || {}
-      if ((pd.cm || '').trim().toLowerCase() !== cmNameKey) continue
-      for (const n of (pd.notes || [])) {
-        rows.push({ ...n, _po: pd.poNumber || '', _product: pd.product || '' })
-      }
-    }
-    return rows.sort(
-      (a, b) => new Date(b.createdAt || b.noteDate || 0).getTime() - new Date(a.createdAt || a.noteDate || 0).getTime(),
-    )
-  }, [productionItems, cmNameKey])
+  const manufacturerNames = useMemo(
+    () => Array.from(new Set([
+      data.name,
+      ...openOrderItems.map((item: any) => item?.data?.manufacturer ?? item?.data?.cm),
+    ].map((name) => String(name ?? '').trim()).filter(Boolean))).sort(),
+    [data.name, openOrderItems],
+  )
 
-  // Purchase orders (production orders) assigned to this CM.
-  const purchaseOrders = useMemo(() => {
-    if (!cmNameKey) return [] as any[]
-    return (productionItems as any[])
-      .filter((po) => ((po?.data?.cm || '').trim().toLowerCase() === cmNameKey))
-      .map((po) => ({ id: po.id, ...(po.data || {}) }))
-  }, [productionItems, cmNameKey])
+  // Mapping lookups are server/org scoped. Do not fall back to the old
+  // PRODUCTION_TRACKING name field if these fail: that would silently show a
+  // stale or cross-CM subset.
+  const mappingsQuery = useQuery({
+    queryKey: ['oor', 'cm-detail-manufacturer-mappings', manufacturerNames],
+    enabled: open && manufacturerNames.length > 0,
+    queryFn: async () => {
+      const results = await Promise.all(manufacturerNames.map(async (manufacturerName) => {
+        const { data: response } = await api.get('/operations/oor/manufacturer-mapping', { params: { manufacturerName } })
+        return response.mapping as ManufacturerCodeMapping | null
+      }))
+      return results.filter(Boolean) as ManufacturerCodeMapping[]
+    },
+  })
+
+  const purchaseOrders = useMemo(
+    () => selectCmOpenOrders(openOrderItems, data, mappingsQuery.data ?? []),
+    [openOrderItems, data, mappingsQuery.data],
+  )
+
+  const oorLinesQuery = useQuery({
+    queryKey: ['oor', 'cm-detail-lines', purchaseOrders.map((order) => `${order.id}:${order.poNumber}`).sort()],
+    enabled: open && mappingsQuery.isSuccess && purchaseOrders.length > 0,
+    queryFn: async () => {
+      const all: any[] = []
+      const poNumbers = Array.from(new Set(purchaseOrders.map((order) => order.poNumber).filter(Boolean)))
+      for (const customerPoNumber of poNumbers) {
+        let page = 1
+        let total = 0
+        let received = 0
+        do {
+          const { data: response } = await api.get('/operations/oor/lines', {
+            params: { customerPoNumber, openOnly: 'false', page, pageSize: 200 },
+          })
+          all.push(...response.rows)
+          received += response.rows.length
+          total = response.total
+          page += 1
+        } while (received < total)
+      }
+      return all
+    },
+  })
+
+  const relevantOorLines = useMemo(
+    () => linesForOrders(oorLinesQuery.data ?? [], purchaseOrders),
+    [oorLinesQuery.data, purchaseOrders],
+  )
+
+  const activityQuery = useQuery({
+    queryKey: ['oor', 'cm-detail-activity', relevantOorLines.map((line) => line.id).sort()],
+    enabled: open && relevantOorLines.length > 0,
+    queryFn: async () => {
+      const entries = await Promise.all(relevantOorLines.map(async (line) => {
+        const rows: any[] = []
+        let page = 1
+        let total = 0
+        do {
+          const { data: response } = await api.get(`/operations/oor/lines/${line.id}/activity`, {
+            params: { page, pageSize: 200 },
+          })
+          rows.push(...response.rows)
+          total = response.total
+          page += 1
+        } while (rows.length < total)
+        return [line.id, rows] as const
+      }))
+      return Object.fromEntries(entries)
+    },
+  })
+
+  const productionUpdates = useMemo(
+    () => buildProductionUpdates(purchaseOrders, relevantOorLines, activityQuery.data ?? {}),
+    [purchaseOrders, relevantOorLines, activityQuery.data],
+  )
+  const operationalStatuses = useMemo(() => statusesByPo(relevantOorLines), [relevantOorLines])
+  const canonicalLoading = openOrdersLoading || mappingsQuery.isLoading || oorLinesQuery.isLoading || activityQuery.isLoading
+  const canonicalError = openOrdersError || mappingsQuery.isError || oorLinesQuery.isError || activityQuery.isError
+
+  const refreshCanonicalOrders = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['oor'] }),
+      Promise.resolve(onRefreshOpenOrders?.()),
+    ])
+  }
+
+  // The department detail and OOR caches are independent and neither currently
+  // has a socket event for these records. Keep an open drawer fresh without
+  // polling elsewhere in the application.
+  useEffect(() => {
+    if (!open) return
+    const timer = window.setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ['oor'] })
+      onRefreshOpenOrders?.()
+    }, 30_000)
+    return () => window.clearInterval(timer)
+  }, [open, onRefreshOpenOrders, queryClient])
 
   // Computed KPIs
   const onTime = data.onTime ?? 0
   const quality = data.quality ?? 0
-  const activePOs = data.activePOs ?? 0
+  const activePOs = canonicalError ? '—' : purchaseOrders.filter(isActiveOpenOrder).length
   const openIssues = data.openIssues ?? issues.filter((i: any) => i.status?.toLowerCase() === 'open' || i.status?.toLowerCase() === 'in progress').length
   // Seeded CMs store the contract status under data.status (legacy);
   // app-created CMs use data.contractStatus.
@@ -549,8 +659,26 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
 
           {/* Purchase Orders — production orders assigned to this CM */}
           <div>
-            <SectionHeader icon={Package} label={`Purchase Orders${purchaseOrders.length ? ` (${purchaseOrders.length})` : ''}`} />
-            {purchaseOrders.length === 0 ? (
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1"><SectionHeader icon={Package} label={`Purchase Orders${purchaseOrders.length ? ` (${purchaseOrders.length})` : ''}`} /></div>
+              <button
+                type="button"
+                onClick={refreshCanonicalOrders}
+                disabled={canonicalLoading}
+                className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                aria-label="Refresh purchase orders"
+              >
+                <RefreshCw size={14} className={canonicalLoading ? 'animate-spin' : ''} />
+              </button>
+            </div>
+            {canonicalError ? (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--danger)] bg-[var(--danger-light)] p-3">
+                <p className="text-[13px] text-[var(--danger)]">Purchase orders could not be loaded. No legacy data is being shown.</p>
+                <button type="button" onClick={refreshCanonicalOrders} className="text-[12px] font-medium text-[var(--danger)] underline">Retry</button>
+              </div>
+            ) : canonicalLoading ? (
+              <p className="flex items-center gap-2 text-[13px] text-[var(--text-tertiary)]"><Loader2 size={14} className="animate-spin" /> Loading canonical purchase orders…</p>
+            ) : purchaseOrders.length === 0 ? (
               <p className="text-[13px] text-[var(--text-tertiary)] italic">No purchase orders for this CM yet.</p>
             ) : (
               <div className="overflow-x-auto rounded-lg border border-[var(--border-subtle)]">
@@ -565,15 +693,26 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
                     </tr>
                   </thead>
                   <tbody>
-                    {purchaseOrders.map((po: any) => (
+                    {purchaseOrders.map((po) => {
+                      const lineStatuses = operationalStatuses.get(normalizeManufacturer(po.poNumber)) ?? []
+                      return (
                       <tr key={po.id} className="border-b border-[var(--border-subtle)] last:border-0">
                         <td className="px-3 py-2 font-mono text-[var(--accent)]">{po.poNumber || '—'}</td>
-                        <td className="px-3 py-2 text-[var(--text-primary)]">{po.product || '—'}</td>
-                        <td className="px-3 py-2 text-[var(--text-secondary)]">{po.status || '—'}</td>
-                        <td className="px-3 py-2 tabular-nums text-right text-[var(--text-secondary)]">{po.qty != null ? Number(po.qty).toLocaleString() : '—'}</td>
+                        <td className="px-3 py-2 text-[var(--text-primary)]">
+                          {po.lines[0]?.description || po.lines[0]?.sku || '—'}
+                          {po.lines.length > 1 ? ` +${po.lines.length - 1} more` : ''}
+                        </td>
+                        <td className="px-3 py-2 text-[var(--text-secondary)]">
+                          <div>{po.poStatus || '—'}</div>
+                          {lineStatuses.length > 0 && (
+                            <div className="mt-0.5 text-[10px] text-[var(--text-tertiary)]">{lineStatuses.join(' · ')}</div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 tabular-nums text-right text-[var(--text-secondary)]">{po.qtyOrdered.toLocaleString()}</td>
                         <td className="px-3 py-2 text-[var(--text-tertiary)]">{po.eta || '—'}</td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -583,17 +722,22 @@ export function CMDetailModal({ open, cm, onClose, onEdit, onDelete, onUpdate, b
           {/* Production Updates — aggregated from this CM's production orders */}
           <div>
             <SectionHeader icon={Factory} label="Production Updates" />
-            {productionUpdates.length === 0 ? (
+            {canonicalError ? (
+              <p className="text-[13px] text-[var(--danger)]">Production updates could not be loaded.</p>
+            ) : canonicalLoading ? (
+              <p className="flex items-center gap-2 text-[13px] text-[var(--text-tertiary)]"><Loader2 size={14} className="animate-spin" /> Loading production updates…</p>
+            ) : productionUpdates.length === 0 ? (
               <p className="text-[13px] text-[var(--text-tertiary)] italic">No production updates for this CM yet.</p>
             ) : (
               <div className="space-y-3">
-                {productionUpdates.map((n: any, i: number) => (
-                  <div key={n.id || i} className="relative pl-4 border-l-2 border-[var(--border-default)]">
+                {productionUpdates.map((update) => (
+                  <div key={update.id} className="relative pl-4 border-l-2 border-[var(--border-default)]">
                     <div className="absolute -left-[5px] top-1.5 w-2 h-2 rounded-full bg-[var(--accent)]" />
-                    <p className="text-[13px] text-[var(--text-primary)] whitespace-pre-wrap">{n.noteText}</p>
+                    <p className="text-[13px] text-[var(--text-primary)] whitespace-pre-wrap">{update.text}</p>
                     <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5">
-                      {n.noteDate || (n.createdAt ? String(n.createdAt).slice(0, 10) : '')} · {n.createdBy || 'User'}
-                      {(n._product || n._po) && <> · {n._product || n._po}</>}
+                      {update.at ? String(update.at).slice(0, 10) : '—'} · {update.actor}
+                      {update.poNumber && <> · {update.poNumber}</>}
+                      {update.kind && <> · {update.kind}</>}
                     </p>
                   </div>
                 ))}

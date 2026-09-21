@@ -1440,7 +1440,7 @@ export function OpsPage() {
           ) : activeTab === 'bom' ? (
             <BOMTab items={moduleData.bom} moduleId={moduleIds.bom} departmentId={deptId} onRefresh={() => refetchDept()} components={moduleData.components} skuItems={moduleData.sku} />
           ) : (
-            <CMTab items={cmModule?.items || []} moduleId={cmModule?.id ?? null} departmentId={rdDept?.id ?? null} onRefresh={() => refetchRd()} productionItems={moduleData.production} isLoading={rdDetailLoading} isError={rdDetailError} onRetry={() => refetchRd()} />
+            <CMTab items={cmModule?.items || []} moduleId={cmModule?.id ?? null} departmentId={rdDept?.id ?? null} onRefresh={() => refetchRd()} openOrderItems={moduleData.openOrders} onRefreshOpenOrders={() => refetchDept()} isLoading={rdDetailLoading} isError={rdDetailError} onRetry={() => refetchRd()} />
           )}
         </div>
       </div>
