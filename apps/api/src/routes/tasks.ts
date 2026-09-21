@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma, io } from '../index'
+import { userScopedTasksListWhere } from '../lib/departmentVisibility'
 
 export const taskRoutes: ReturnType<typeof Router> = Router()
 
@@ -9,15 +10,24 @@ taskRoutes.get('/', async (req: Request, res: Response) => {
   try {
     const { status, priority, dept, brand, owner, project, search, page = '1', limit = '50' } = req.query
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string)
+    const actor = (req as any).member as { id: string } | undefined
 
     const where: any = {}
     if (status) where.status = status
     if (priority) where.priority = priority
-    if (dept) where.departmentId = dept
     if (owner) where.ownerId = owner
     if (project) where.projectId = project
     if (brand) where.brandNames = { has: brand as string }
     if (search) where.title = { contains: search as string, mode: 'insensitive' }
+
+    // When dept filter is set and actor is authenticated, apply user-scope
+    // (ownerId=actor OR createdById=actor). This ensures Tasks & Follow-up
+    // dept list shows only the user's own tasks.
+    if (dept && actor) {
+      Object.assign(where, userScopedTasksListWhere(dept as string, actor.id))
+    } else if (dept) {
+      where.departmentId = dept
+    }
 
     const [tasks, total] = await Promise.all([
       prisma.task.findMany({
@@ -84,12 +94,15 @@ const createTaskSchema = z.object({
 taskRoutes.post('/', async (req: Request, res: Response) => {
   try {
     const data = createTaskSchema.parse(req.body)
+    const actor = (req as any).member as { id: string } | undefined
     const task = await prisma.task.create({
       data: {
         ...data,
         startDate: data.startDate ? new Date(data.startDate) : undefined,
         dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
         brandNames: data.brandNames || [],
+        // Set createdById to actor if missing — required for user-scope filtering
+        createdById: actor?.id ?? null,
       },
       include: { owner: { select: { id: true, name: true, avatar: true } } },
     })

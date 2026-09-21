@@ -10,6 +10,10 @@ import {
 import { requirePermission, sendError, type RbacRequest } from '../middleware/requirePermission'
 import { can } from '../services/rbac/resolve'
 import { getActingOrgId } from '../middleware/billingContext'
+import {
+  userScopedTasksWhere,
+  userScopedProjectsWhere,
+} from '../lib/departmentVisibility'
 
 export const departmentRoutes: ReturnType<typeof Router> = Router()
 
@@ -175,6 +179,13 @@ const PROJECT_CLOSED_STATUSES = ['COMPLETED', 'CANCELLED', 'ARCHIVED'] as const
 departmentRoutes.get('/:departmentId/overview', async (req: Request, res: Response) => {
   try {
     const { departmentId } = req.params
+    const actor = (req as any).member as
+      | { id: string; orgId: string }
+      | undefined
+
+    if (!actor) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
 
     const dept = await prisma.department.findUnique({
       where: { id: departmentId },
@@ -187,42 +198,42 @@ departmentRoutes.get('/:departmentId/overview', async (req: Request, res: Respon
       return res.status(404).json({ error: 'Department not found' })
     }
 
-    // pendingTasks: dept tasks not COMPLETE/CANCELLED (cap 100)
+    // pendingTasks: user-scoped (ownerId=actor OR createdById=actor), not closed
+    // Sorted by dueDate first, then priority
     const pendingTasks = await prisma.task.findMany({
       where: {
-        departmentId,
+        ...userScopedTasksWhere(departmentId, actor.id),
         status: { notIn: [...TASK_CLOSED_STATUSES] },
       },
       include: {
         owner: { select: { id: true, name: true, avatar: true } },
         project: { select: { id: true, title: true } },
       },
-      orderBy: [{ priority: 'asc' }, { dueDate: 'asc' }],
+      orderBy: [{ dueDate: 'asc' }, { priority: 'asc' }],
       take: 100,
     })
 
-    // assignedTasks: same filter + has an ownerId
+    // assignedTasks: user-scoped tasks where actor IS the owner
+    // Sorted by dueDate first
     const assignedTasks = await prisma.task.findMany({
       where: {
-        departmentId,
+        ...userScopedTasksWhere(departmentId, actor.id),
         status: { notIn: [...TASK_CLOSED_STATUSES] },
-        ownerId: { not: null },
+        ownerId: actor.id,
       },
       include: {
         owner: { select: { id: true, name: true, avatar: true } },
         project: { select: { id: true, title: true } },
       },
-      orderBy: [{ priority: 'asc' }, { dueDate: 'asc' }],
+      orderBy: [{ dueDate: 'asc' }, { priority: 'asc' }],
       take: 100,
     })
 
-    // openProjects: owned by or laned to this department, not closed
+    // openProjects: user-scoped (PM OR sponsor OR createdBy OR ProjectMember)
+    // Sorted by targetEndDate (due-date first)
     const openProjects = await prisma.project.findMany({
       where: {
-        OR: [
-          { ownerDepartmentId: departmentId },
-          { departments: { some: { departmentId } } },
-        ],
+        ...userScopedProjectsWhere(departmentId, actor.id, actor.orgId),
         status: { notIn: [...PROJECT_CLOSED_STATUSES] },
       },
       include: {
@@ -234,7 +245,8 @@ departmentRoutes.get('/:departmentId/overview', async (req: Request, res: Respon
       take: 50,
     })
 
-    // openModuleItems: collect from modules by type
+    // openModuleItems: org-wide (NO creator filter — ModuleItem has no createdById)
+    // Active Briefs, CM, Tech Transfers, Formulations, NPD stay unchanged
     const openModuleItems: Record<string, any[]> = {}
 
     for (const mod of dept.modules || []) {
