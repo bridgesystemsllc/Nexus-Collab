@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   LayoutDashboard,
   Database,
@@ -27,6 +28,7 @@ import type { ElementType } from 'react'
 import { useAppStore } from '@/stores/appStore'
 import { useDepartments } from '@/hooks/useData'
 import type { LucideIcon } from 'lucide-react'
+import { SettingsPopup } from './SettingsPopup'
 
 type StaticPage =
   | 'dashboard'
@@ -97,18 +99,8 @@ const collaborationSection: NavSection = {
   ],
 }
 
-const systemSection: NavSection = {
-  label: 'SYSTEM',
-  items: [
-    { id: 'integrations', label: 'Integrations', icon: Plug },
-    { id: 'email-agent', label: 'Email Agent', icon: Bot },
-    { id: 'dept-manager', label: 'Dept Manager', icon: Boxes },
-    { id: 'pulse', label: 'Pulse', icon: Bell },
-    { id: 'people', label: 'People', icon: UserCog },
-    { id: 'billing', label: 'Billing', icon: CreditCard },
-    { id: 'settings', label: 'Settings', icon: Cog },
-  ],
-}
+// SYSTEM section collapsed into Settings popup
+// Pulse remains accessible via TopBar bell only
 
 function buildDeptItems(departments: any[]): NavItem[] {
   return departments
@@ -141,6 +133,7 @@ export function Sidebar() {
   const sidebarCollapsed = useAppStore((s) => s.sidebarCollapsed)
   const toggleSidebar = useAppStore((s) => s.toggleSidebar)
   const toggleAIPanel = useAppStore((s) => s.toggleAIPanel)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const { data: departments, isLoading } = useDepartments()
 
@@ -235,33 +228,16 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* System section — pinned, always visible */}
+      {/* Settings button — opens popup with system settings */}
       <div style={{ padding: '8px 8px 4px', borderTop: '1px solid var(--border-default)' }}>
-        {!sidebarCollapsed && (
-          <div
-            className="px-3 mb-2 text-[11px] font-semibold tracking-[0.06em] uppercase"
-            style={{ color: 'var(--text-tertiary)' }}
-          >
-            SYSTEM
-          </div>
-        )}
-        <div className="space-y-0.5">
-          {systemSection.items.map((item) => {
-            const isActive = currentPage === item.id
-            const Icon = item.icon
-            return (
-              <button
-                key={item.id}
-                onClick={() => setPage(item.id)}
-                className={`nav-item w-full ${isActive ? 'active' : ''} ${sidebarCollapsed ? 'justify-center px-0' : ''}`}
-                title={sidebarCollapsed ? item.label : undefined}
-              >
-                {Icon && <Icon size={18} />}
-                {!sidebarCollapsed && <span>{item.label}</span>}
-              </button>
-            )
-          })}
-        </div>
+        <button
+          onClick={() => setSettingsOpen(true)}
+          className={`nav-item w-full ${sidebarCollapsed ? 'justify-center px-0' : ''}`}
+          title={sidebarCollapsed ? 'Settings' : undefined}
+        >
+          <Cog size={18} />
+          {!sidebarCollapsed && <span>Settings</span>}
+        </button>
       </div>
 
       {/* Bottom: AI Assistant */}
@@ -277,6 +253,9 @@ export function Sidebar() {
           )}
         </button>
       </div>
+
+      {/* Settings popup */}
+      {settingsOpen && <SettingsPopup onClose={() => setSettingsOpen(false)} />}
     </aside>
   )
 }
