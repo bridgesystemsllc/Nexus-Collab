@@ -7,6 +7,8 @@ import {
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 import { SharePointFolderModal } from '@/components/rd/SharePointFolderModal'
+import { StatusFormCard } from '@/components/shared/StatusFormCard'
+import { SendEmailButton } from '@/components/shared/SendEmailButton'
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -74,6 +76,12 @@ const STATUS_PILL_STYLES: Record<string, { bg: string; text: string }> = {
   'In Review': { bg: 'var(--info-light)', text: '#3B82F6' },
   Approved: { bg: 'var(--success-light)', text: '#10B981' },
   Obsolete: { bg: 'var(--danger-light)', text: '#EF4444' },
+  Rejected: { bg: 'var(--danger-light)', text: '#EF4444' },
+  Archived: { bg: 'var(--bg-hover)', text: '#6B7280' },
+  'Formula submitted': { bg: 'var(--info-light)', text: '#3B82F6' },
+  'Formula waiting for R&D approval': { bg: 'var(--warning-light)', text: '#D97706' },
+  'R&D revisions submitted': { bg: 'var(--accent-light)', text: 'var(--accent)' },
+  'Testing': { bg: 'var(--success-light)', text: '#10B981' },
 }
 
 const STABILITY_PILL_STYLES: Record<string, { bg: string; text: string }> = {
@@ -137,6 +145,20 @@ export function FormulationDetailDrawer({
   const [spError, setSpError] = useState('')
   const [spModalOpen, setSpModalOpen] = useState(false)
 
+  // Status form state
+  const [statusFormSaving, setStatusFormSaving] = useState(false)
+  const [statusFormError, setStatusFormError] = useState<string | null>(null)
+  const [statusFormDraft, setStatusFormDraft] = useState<{
+    lastUpdated: string | null
+    needsRevisions: boolean
+    needsRevisionsNotes: string
+    revisionsAssignees: { userId: string; userName: string }[]
+    approvalsAssignees: { userId: string; userName: string }[]
+    updatesAssignees: { userId: string; userName: string }[]
+    nextAction: string
+    finalApprovalVersion: string
+  } | null>(null)
+
   // Escape key handler
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -164,6 +186,9 @@ export function FormulationDetailDrawer({
       setSpDraft('')
       setSpError('')
       setSpModalOpen(false)
+      setStatusFormSaving(false)
+      setStatusFormError(null)
+      setStatusFormDraft(null)
     }
   }, [open, formulation?.id])
 
@@ -263,6 +288,50 @@ export function FormulationDetailDrawer({
       return next
     })
   }
+
+  // Status form data from formulation (must be before render guard)
+  const currentStatusForm = useMemo(() => {
+    const sfd = f.statusFormData
+    return {
+      lastUpdated: sfd?.lastUpdated ?? null,
+      needsRevisions: sfd?.needsRevisions ?? false,
+      needsRevisionsNotes: sfd?.needsRevisionsNotes ?? '',
+      revisionsAssignees: sfd?.revisionsAssignees ?? [],
+      approvalsAssignees: sfd?.approvalsAssignees ?? [],
+      updatesAssignees: sfd?.updatesAssignees ?? [],
+      nextAction: sfd?.nextAction ?? '',
+      finalApprovalVersion: sfd?.finalApprovalVersion ?? '',
+    }
+  }, [f.statusFormData])
+
+  const effectiveStatusForm = statusFormDraft ?? currentStatusForm
+
+  const handleStatusFormChange = useCallback((patch: Partial<typeof currentStatusForm>) => {
+    setStatusFormDraft((prev) => ({
+      ...(prev ?? currentStatusForm),
+      ...patch,
+    }))
+    setStatusFormError(null)
+  }, [currentStatusForm])
+
+  const handleStatusFormSave = useCallback(async () => {
+    if (!statusFormDraft) return
+    setStatusFormSaving(true)
+    setStatusFormError(null)
+    try {
+      await onUpdate({
+        statusFormData: {
+          ...statusFormDraft,
+          lastUpdated: new Date().toISOString(),
+        },
+      })
+      setStatusFormDraft(null)
+    } catch (err: any) {
+      setStatusFormError(err?.message || 'Failed to save status form')
+    } finally {
+      setStatusFormSaving(false)
+    }
+  }, [onUpdate, statusFormDraft])
 
   // ── Render guard ───────────────────────────────────────
 
@@ -928,6 +997,36 @@ export function FormulationDetailDrawer({
           {/* ──── Attachments Tab ──────────────────────── */}
           {activeTab === 'attachments' && (
             <div className="space-y-6">
+              {/* Status Form */}
+              <StatusFormCard
+                lastUpdated={effectiveStatusForm.lastUpdated}
+                needsRevisions={effectiveStatusForm.needsRevisions}
+                needsRevisionsNotes={effectiveStatusForm.needsRevisionsNotes}
+                revisionsAssignees={effectiveStatusForm.revisionsAssignees}
+                approvalsAssignees={effectiveStatusForm.approvalsAssignees}
+                updatesAssignees={effectiveStatusForm.updatesAssignees}
+                nextAction={effectiveStatusForm.nextAction}
+                finalApprovalVersion={effectiveStatusForm.finalApprovalVersion}
+                onChange={handleStatusFormChange}
+                onSave={handleStatusFormSave}
+                saving={statusFormSaving}
+                error={statusFormError}
+                labels={{
+                  needsRevisions: 'Needs R&D revisions?',
+                  revisions: 'Revisions assigned to',
+                  approvals: 'Approvals assigned to',
+                  updates: 'Updates assigned to',
+                }}
+              />
+
+              {/* Email Action */}
+              <div className="flex items-center gap-3">
+                <SendEmailButton
+                  itemId={f.id}
+                  defaultSubject={`Formulation Update: ${f.name || f.title || f.formulaName || f.product || 'Untitled'}`}
+                />
+              </div>
+
               {/* CTA banner */}
               <div className="flex items-start gap-3 p-4 rounded-lg border border-dashed border-[var(--border-default)] bg-[var(--bg-surface)]">
                 <FileText size={20} className="text-[var(--accent)] flex-shrink-0 mt-0.5" />
