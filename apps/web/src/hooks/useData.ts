@@ -333,6 +333,51 @@ export function useAddTaskNote() {
   })
 }
 
+// ─── My Tasks (personal queue) ──────────────────────────────
+export interface MyTasksParams {
+  open?: boolean
+  followUp?: boolean
+  page?: number
+  limit?: number
+}
+
+export interface MyTaskDTO {
+  id: string
+  title: string
+  description: string | null
+  status: string
+  priority: string
+  dueDate: string | null
+  brandNames: string[]
+  ownerId: string | null
+  createdById: string | null
+  department: { id: string; name: string; color: string } | null
+  project: { id: string; title: string } | null
+  owner: { id: string; name: string; avatar: string | null } | null
+}
+
+export interface MyTasksResponse {
+  tasks: MyTaskDTO[]
+  total: number
+  page: number
+  limit: number
+}
+
+export function useMyTasks(params: MyTasksParams = {}) {
+  const { open = true, followUp = false, page = 1, limit = 50 } = params
+  const queryParams = new URLSearchParams({
+    open: String(open),
+    followUp: String(followUp),
+    page: String(page),
+    limit: String(limit),
+  }).toString()
+
+  return useQuery<MyTasksResponse>({
+    queryKey: ['my-tasks', { open, followUp, page, limit }],
+    queryFn: () => api.get(`/tasks/mine?${queryParams}`).then((r) => r.data),
+  })
+}
+
 // ─── Cowork ─────────────────────────────────────────────────
 export function useCoworkSpaces() {
   return useQuery({ queryKey: ['cowork'], queryFn: () => api.get('/cowork').then(r => r.data) })

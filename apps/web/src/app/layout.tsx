@@ -22,6 +22,8 @@ import { BillingPage } from '@/app/routes/billing'
 import { SettingsPage } from '@/app/routes/settings'
 import { CustomDeptPage } from '@/app/routes/custom-dept'
 import { ProjectsPage } from '@/app/routes/projects'
+import { TasksPage } from '@/app/routes/tasks'
+import { FollowUpsPage } from '@/app/routes/follow-ups'
 import { FullPageFormHost } from '@/app/formRegistry'
 import { useRealtimePulse } from '@/hooks/useRealtimePulse'
 
@@ -70,6 +72,10 @@ function PageContent() {
       return <CustomDeptPage />
     case 'projects':
       return <ProjectsPage />
+    case 'tasks':
+      return <TasksPage />
+    case 'follow-ups':
+      return <FollowUpsPage />
     default:
       return (
         <div className="flex-1 flex items-center justify-center text-[var(--text-tertiary)]">

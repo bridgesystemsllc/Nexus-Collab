@@ -20,6 +20,8 @@ type Page =
   | 'settings'
   | 'custom-dept'
   | 'projects'
+  | 'tasks'
+  | 'follow-ups'
   | 'agent-settings'
   | 'product-catalog'
 

@@ -20,6 +20,8 @@ import {
   UserCog,
   CreditCard,
   Cog,
+  ListTodo,
+  Reply,
 } from 'lucide-react'
 import type { ElementType } from 'react'
 import { useAppStore } from '@/stores/appStore'
@@ -30,6 +32,8 @@ type StaticPage =
   | 'dashboard'
   | 'everything'
   | 'projects'
+  | 'tasks'
+  | 'follow-ups'
   | 'rd'
   | 'ops'
   | 'finance'
@@ -70,8 +74,9 @@ const overviewSection: NavSection = {
   items: [
     { id: 'dashboard', label: 'Command Center', icon: LayoutDashboard },
     { id: 'everything', label: 'Everything', icon: Database },
-    // Portfolio view of every initiative, across all departments.
     { id: 'projects', label: 'Projects', icon: FolderKanban },
+    { id: 'tasks', label: 'Tasks', icon: ListTodo },
+    { id: 'follow-ups', label: 'Follow-Ups', icon: Reply },
   ],
 }
 
