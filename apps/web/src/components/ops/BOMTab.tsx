@@ -2,7 +2,9 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ClipboardList, Plus, MoreHorizontal, Pencil, Copy, FileSpreadsheet, Printer, Archive,
+  Download, Upload, AlertTriangle, CheckCircle2, Loader2,
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { useAppStore } from '@/stores/appStore'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
@@ -10,6 +12,7 @@ import { bomFromItem, type Bom } from './bom/bomTypes'
 import { BOMPreview, BOMPrintStyles } from './bom/BOMPreview'
 import { exportBomsXlsx } from './bom/bomExcel'
 import { PushToErpButton } from '@/components/shared/PushToErpButton'
+import { Dialog } from '@/components/Dialog'
 
 interface BOMTabProps {
   items: any[]
@@ -63,6 +66,318 @@ function ActionsMenu({ actions }: { actions: { label: string; icon: React.Elemen
   )
 }
 
+// ─── Download Template ─────────────────────────────────────
+async function downloadTemplate() {
+  try {
+    const response = await api.get('/bom/import/template', { responseType: 'blob' })
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'BOM_Import_Template.xlsx')
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error('Failed to download template:', err)
+  }
+}
+
+// ─── Import Types ──────────────────────────────────────────
+interface PreviewError {
+  row: number
+  sheet: 'BOMs' | 'Lines'
+  fgPartNumber?: string
+  field?: string
+  message: string
+}
+
+interface PreviewSummary {
+  willCreate: number
+  willUpdate: number
+  matchedExisting: number
+}
+
+interface CommitError {
+  fgPartNumber: string
+  message: string
+}
+
+interface CommitResult {
+  created: number
+  updated: number
+  errors: CommitError[]
+}
+
+// ─── Import Dialog ─────────────────────────────────────────
+function ImportDialog({
+  open,
+  onClose,
+  moduleId,
+  onSuccess,
+}: {
+  open: boolean
+  onClose: () => void
+  moduleId: string | null
+  onSuccess: () => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [step, setStep] = useState<'upload' | 'preview' | 'result'>('upload')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [filename, setFilename] = useState('')
+  const [rawBoms, setRawBoms] = useState<any[]>([])
+  const [rawLines, setRawLines] = useState<any[]>([])
+  const [previewErrors, setPreviewErrors] = useState<PreviewError[]>([])
+  const [previewSummary, setPreviewSummary] = useState<PreviewSummary | null>(null)
+  const [commitResult, setCommitResult] = useState<CommitResult | null>(null)
+
+  const reset = () => {
+    setStep('upload')
+    setLoading(false)
+    setError('')
+    setFilename('')
+    setRawBoms([])
+    setRawLines([])
+    setPreviewErrors([])
+    setPreviewSummary(null)
+    setCommitResult(null)
+  }
+
+  const handleClose = () => {
+    reset()
+    onClose()
+  }
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) e.target.value = ''
+    if (!file) return
+    reset()
+    setFilename(file.name)
+    setLoading(true)
+    setError('')
+
+    try {
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array' })
+
+      // Read BOMs sheet
+      const bomsSheet = wb.Sheets['BOMs']
+      if (!bomsSheet) {
+        setError('Missing "BOMs" sheet in the workbook. Please use the template.')
+        setLoading(false)
+        return
+      }
+      const bomsRows = XLSX.utils.sheet_to_json(bomsSheet, { defval: '' }) as any[]
+
+      // Read Lines sheet
+      const linesSheet = wb.Sheets['Lines']
+      if (!linesSheet) {
+        setError('Missing "Lines" sheet in the workbook. Please use the template.')
+        setLoading(false)
+        return
+      }
+      const linesRows = XLSX.utils.sheet_to_json(linesSheet, { defval: '' }) as any[]
+
+      if (bomsRows.length === 0) {
+        setError('No data rows found in the BOMs sheet.')
+        setLoading(false)
+        return
+      }
+
+      setRawBoms(bomsRows)
+      setRawLines(linesRows)
+
+      // Call preview API
+      const { data } = await api.post('/bom/import/preview', { boms: bomsRows, lines: linesRows })
+      setPreviewErrors(data.errors || [])
+      setPreviewSummary(data.summary || null)
+      setStep('preview')
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to read file')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCommit = async () => {
+    if (!moduleId) {
+      setError('No BOM module available. Please create one first.')
+      return
+    }
+    setLoading(true)
+    setError('')
+
+    try {
+      const { data } = await api.post('/bom/import/commit', {
+        moduleId,
+        boms: rawBoms,
+        lines: rawLines,
+      })
+      setCommitResult(data)
+      setStep('result')
+      onSuccess()
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to commit import')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onClose={handleClose} title="Import BOMs" subtitle={filename || 'Excel (.xlsx)'} wide>
+      <div className="space-y-4">
+        {error && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-[var(--danger-light)] border border-[var(--danger)]">
+            <AlertTriangle size={15} className="text-[var(--danger)] mt-0.5 flex-shrink-0" />
+            <span className="text-sm text-[var(--danger)]">{error}</span>
+          </div>
+        )}
+
+        {step === 'upload' && (
+          <div className="text-center py-8">
+            <p className="text-sm text-[var(--text-secondary)] mb-2">
+              Upload an Excel file with <strong>BOMs</strong> and <strong>Lines</strong> sheets.
+            </p>
+            <p className="text-xs text-[var(--text-tertiary)] mb-4">
+              Download the template first to ensure correct column headers.
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={downloadTemplate}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+              >
+                <Download size={15} />
+                Download Template
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={handleFile}
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={loading}
+                className="flex items-center gap-2 btn-primary px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+              >
+                {loading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+                {loading ? 'Reading…' : 'Choose File'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'preview' && (
+          <div className="space-y-4">
+            {previewSummary && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-[var(--bg-surface)] rounded-lg p-3 text-center">
+                  <p className="text-2xl font-semibold text-[var(--success)]">{previewSummary.willCreate}</p>
+                  <p className="text-xs text-[var(--text-tertiary)]">New BOMs</p>
+                </div>
+                <div className="bg-[var(--bg-surface)] rounded-lg p-3 text-center">
+                  <p className="text-2xl font-semibold text-[var(--info)]">{previewSummary.willUpdate}</p>
+                  <p className="text-xs text-[var(--text-tertiary)]">Updates</p>
+                </div>
+                <div className="bg-[var(--bg-surface)] rounded-lg p-3 text-center">
+                  <p className="text-2xl font-semibold text-[var(--text-secondary)]">{previewSummary.matchedExisting}</p>
+                  <p className="text-xs text-[var(--text-tertiary)]">Matched Existing</p>
+                </div>
+              </div>
+            )}
+
+            {previewErrors.length > 0 && (
+              <div className="border border-[var(--danger)] rounded-lg p-3">
+                <p className="text-sm font-medium text-[var(--danger)] mb-2">
+                  {previewErrors.length} validation error{previewErrors.length === 1 ? '' : 's'}
+                </p>
+                <div className="max-h-40 overflow-y-auto space-y-1.5">
+                  {previewErrors.slice(0, 10).map((err, i) => (
+                    <div key={i} className="text-xs text-[var(--danger)]">
+                      <span className="font-mono">{err.sheet} row {err.row}</span>
+                      {err.fgPartNumber && <span className="text-[var(--text-tertiary)]"> ({err.fgPartNumber})</span>}
+                      {err.field && <span className="text-[var(--text-tertiary)]"> [{err.field}]</span>}
+                      : {err.message}
+                    </div>
+                  ))}
+                  {previewErrors.length > 10 && (
+                    <p className="text-xs text-[var(--text-tertiary)]">
+                      …and {previewErrors.length - 10} more errors
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {previewErrors.length === 0 && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-[var(--success-light)] border border-[var(--success)]">
+                <CheckCircle2 size={15} className="text-[var(--success)]" />
+                <span className="text-sm text-[var(--success)]">All rows validated successfully</span>
+              </div>
+            )}
+
+            <div className="text-xs text-[var(--text-tertiary)]">
+              <strong>BOMs sheet:</strong> {rawBoms.length} row{rawBoms.length === 1 ? '' : 's'} •{' '}
+              <strong>Lines sheet:</strong> {rawLines.length} row{rawLines.length === 1 ? '' : 's'}
+            </div>
+          </div>
+        )}
+
+        {step === 'result' && commitResult && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 size={20} className="text-[var(--success)]" />
+              <span className="text-sm font-medium text-[var(--text-primary)]">Import Complete</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-[var(--bg-surface)] rounded-lg p-3 text-center">
+                <p className="text-2xl font-semibold text-[var(--success)]">{commitResult.created}</p>
+                <p className="text-xs text-[var(--text-tertiary)]">Created</p>
+              </div>
+              <div className="bg-[var(--bg-surface)] rounded-lg p-3 text-center">
+                <p className="text-2xl font-semibold text-[var(--info)]">{commitResult.updated}</p>
+                <p className="text-xs text-[var(--text-tertiary)]">Updated</p>
+              </div>
+            </div>
+            {commitResult.errors.length > 0 && (
+              <div className="text-xs text-[var(--danger)]">
+                <p className="font-medium mb-1">Errors ({commitResult.errors.length}):</p>
+                {commitResult.errors.slice(0, 5).map((e, i) => (
+                  <p key={i}>{e.fgPartNumber}: {e.message}</p>
+                ))}
+                {commitResult.errors.length > 5 && <p>…and {commitResult.errors.length - 5} more</p>}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border-subtle)]">
+          <button
+            onClick={handleClose}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border border-[var(--border-default)] transition-all disabled:opacity-50"
+          >
+            {step === 'result' ? 'Done' : 'Cancel'}
+          </button>
+          {step === 'preview' && (
+            <button
+              onClick={handleCommit}
+              disabled={loading || previewErrors.length > 0}
+              className="flex items-center gap-1.5 btn-primary px-5 py-2 rounded-lg text-sm disabled:opacity-50"
+            >
+              {loading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={15} />}
+              {loading ? 'Importing…' : 'Import BOMs'}
+            </button>
+          )}
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
 /** Operations → Bill of Materials list view. */
 export function BOMTab({ items, moduleId, departmentId, onRefresh, components, skuItems = [] }: BOMTabProps) {
   const openForm = useAppStore((s) => s.openForm)
@@ -71,6 +386,7 @@ export function BOMTab({ items, moduleId, departmentId, onRefresh, components, s
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [printBom, setPrintBom] = useState<Bom | null>(null)
+  const [showImport, setShowImport] = useState(false)
 
   const boms = useMemo(() => items.map((it) => bomFromItem(it)), [items])
 
@@ -144,6 +460,11 @@ export function BOMTab({ items, moduleId, departmentId, onRefresh, components, s
       return next
     })
 
+  const handleImportSuccess = async () => {
+    await qc.invalidateQueries({ queryKey: ['department', departmentId] })
+    onRefresh()
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
@@ -157,6 +478,18 @@ export function BOMTab({ items, moduleId, departmentId, onRefresh, components, s
               <FileSpreadsheet size={14} /> Export Selected ({selected.size})
             </button>
           )}
+          <button
+            onClick={downloadTemplate}
+            className="flex items-center gap-1.5 px-3 py-2 text-[13px] rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            <Download size={14} /> Download Template
+          </button>
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-[13px] rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            <Upload size={14} /> Import
+          </button>
           <PushToErpButton feedKey="boms" label="BOMs" />
           <button onClick={openCreate} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
             <Plus size={15} /> New BOM
@@ -168,7 +501,21 @@ export function BOMTab({ items, moduleId, departmentId, onRefresh, components, s
         <div className="text-center py-12">
           <ClipboardList size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
           <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No bills of materials yet</p>
-          <button onClick={openCreate} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Create Your First BOM</button>
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            <button
+              onClick={downloadTemplate}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[14px] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+            >
+              <Download size={15} /> Download Template
+            </button>
+            <button
+              onClick={() => setShowImport(true)}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[14px] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+            >
+              <Upload size={15} /> Import
+            </button>
+            <button onClick={openCreate} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Create Your First BOM</button>
+          </div>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
@@ -232,6 +579,13 @@ export function BOMTab({ items, moduleId, departmentId, onRefresh, components, s
           </div>,
           document.body,
         )}
+
+      <ImportDialog
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        moduleId={moduleId}
+        onSuccess={handleImportSuccess}
+      />
     </div>
   )
 }
