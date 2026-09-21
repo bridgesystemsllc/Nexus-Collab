@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -11,6 +12,7 @@ import {
   Mail,
   Plus,
   Search,
+  Send,
   Tag,
   Trash2,
   User,
@@ -18,12 +20,15 @@ import {
   Users,
   X,
 } from 'lucide-react'
-import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useMembers, useSimpleProjectList } from '@/hooks/useData'
+import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useMembers, useSimpleProjectList, useMicrosoftStatus, useMailSearch, type MailSearchResult } from '@/hooks/useData'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { StatusBadge, ActionsMenu, DeleteConfirmDialog } from '@/components/shared/TablePrimitives'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { Dialog } from '@/components/Dialog'
+import { ConnectMicrosoft } from '@/components/shared/ConnectMicrosoft'
+import { api } from '@/lib/api'
+import { TASK_TEMPLATES, applyTemplate, getTemplatesByCategory, type TaskTemplate } from '@/lib/taskTemplates'
 
 interface DepartmentTasksFollowUpTabProps {
   departmentId: string | null
@@ -100,6 +105,184 @@ const EMPTY_FORM: TaskFormData = {
   tags: [],
 }
 
+function initial(str: string): string {
+  return str.charAt(0).toUpperCase()
+}
+
+interface PendingEmail {
+  messageId: string
+  subject: string
+  snippet: string
+}
+
+function EmailPickerModal({
+  open,
+  onClose,
+  onSelect,
+}: {
+  open: boolean
+  onClose: () => void
+  onSelect: (email: PendingEmail) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [debounced, setDebounced] = useState('')
+  const { data: status, isLoading: statusLoading } = useMicrosoftStatus()
+  const qc = useQueryClient()
+
+  const connected = status?.connected ?? false
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 350)
+    return () => clearTimeout(t)
+  }, [query])
+
+  const search = useMailSearch(debounced, connected)
+  const results = search.data?.messages ?? []
+  const lapsed = (search.error as any)?.response?.status === 412
+
+  useEffect(() => {
+    if (lapsed) qc.invalidateQueries({ queryKey: ['microsoft', 'status'] })
+  }, [lapsed, qc])
+
+  const handleSelect = (m: MailSearchResult) => {
+    onSelect({
+      messageId: m.id,
+      subject: m.subject,
+      snippet: m.snippet,
+    })
+  }
+
+  if (!open) return null
+
+  return (
+    <Dialog open={open} onClose={onClose} title="Create from Email" subtitle="Search your Outlook inbox to create a task">
+      {statusLoading ? (
+        <div className="py-10 flex items-center justify-center text-[var(--text-tertiary)]">
+          <Loader2 size={18} className="animate-spin" />
+        </div>
+      ) : !connected || lapsed ? (
+        <ConnectMicrosoft variant="inline" purpose="to search your Outlook inbox" />
+      ) : (
+        <div className="space-y-3">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              autoFocus
+              placeholder="Search your inbox by subject, sender, or keyword"
+              className="w-full pl-9 pr-9 py-2 rounded-lg text-[13px] text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent)] transition-colors"
+              style={{ background: 'var(--bg-input)', border: '1px solid var(--border-subtle)' }}
+            />
+            {search.isFetching && (
+              <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-[var(--text-tertiary)]" />
+            )}
+          </div>
+
+          <div className="max-h-[340px] overflow-y-auto -mx-1 px-1">
+            {debounced.length < 2 && (
+              <p className="text-[12px] text-[var(--text-tertiary)] text-center py-8">
+                Type at least 2 characters to search your Outlook mailbox.
+              </p>
+            )}
+            {debounced.length >= 2 && search.isError && !lapsed && (
+              <p className="text-[12px] text-[var(--danger)] text-center py-8">
+                Couldn't search Outlook. Please try again.
+              </p>
+            )}
+            {debounced.length >= 2 && !search.isFetching && !search.isError && results.length === 0 && (
+              <p className="text-[12px] text-[var(--text-tertiary)] text-center py-8">
+                No messages match "{debounced}".
+              </p>
+            )}
+
+            <div className="space-y-1">
+              {results.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => handleSelect(m)}
+                  className="w-full text-left p-2.5 rounded-lg border border-[var(--border-subtle)] hover:bg-[var(--bg-hover)] hover:border-[var(--border-default)] transition-colors flex items-start gap-2.5"
+                >
+                  <div className="w-7 h-7 rounded-full bg-indigo-500/15 text-indigo-400 flex items-center justify-center text-[11px] font-semibold shrink-0 mt-0.5">
+                    {initial(m.from_name || m.from_email || '?')}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">{m.subject}</p>
+                    <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5 truncate">
+                      {m.from_name || m.from_email || 'unknown'}
+                      {m.received_at ? ` \u00B7 ${new Date(m.received_at).toLocaleDateString()}` : ''}
+                    </p>
+                    {m.snippet && (
+                      <p className="text-[11px] text-[var(--text-secondary)] mt-1 truncate">{m.snippet}</p>
+                    )}
+                  </div>
+                  <Send size={13} className="text-[var(--text-tertiary)] shrink-0 mt-1" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </Dialog>
+  )
+}
+
+function TemplatePicker({
+  value,
+  onChange,
+  followUpOnly,
+}: {
+  value: TaskTemplate | null
+  onChange: (t: TaskTemplate | null) => void
+  followUpOnly: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const templates = followUpOnly ? getTemplatesByCategory('FOLLOW_UP') : TASK_TEMPLATES
+
+  return (
+    <div className="relative">
+      <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+        Template
+      </label>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between gap-2 bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] outline-none hover:border-[var(--accent)] transition-colors"
+      >
+        <span className={value ? 'text-[var(--text-primary)]' : 'text-[var(--text-tertiary)]'}>
+          {value?.label || 'No template'}
+        </span>
+        <ChevronDown size={14} className={`text-[var(--text-tertiary)] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 right-0 mt-1 z-20 rounded-lg border border-[var(--border-default)] bg-[var(--bg-elevated)] shadow-lg py-1 max-h-[200px] overflow-y-auto">
+            <button
+              onClick={() => { onChange(null); setOpen(false) }}
+              className={`w-full text-left px-3 py-2 text-[13px] hover:bg-[var(--bg-hover)] transition-colors ${!value ? 'text-[var(--accent)] font-medium' : 'text-[var(--text-secondary)]'}`}
+            >
+              No template
+            </button>
+            {templates.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => { onChange(t); setOpen(false) }}
+                className={`w-full text-left px-3 py-2 text-[13px] hover:bg-[var(--bg-hover)] transition-colors ${value?.id === t.id ? 'text-[var(--accent)] font-medium' : 'text-[var(--text-primary)]'}`}
+              >
+                <span>{t.label}</span>
+                {t.description && (
+                  <span className="block text-[11px] text-[var(--text-tertiary)] mt-0.5">{t.description}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function TaskFormModal({
   open,
   onClose,
@@ -109,6 +292,9 @@ function TaskFormModal({
   mode = 'create',
   taskId,
   defaultKind = 'TASK',
+  pendingEmail,
+  onTaskCreated,
+  followUpOnly = false,
 }: {
   open: boolean
   onClose: () => void
@@ -118,12 +304,16 @@ function TaskFormModal({
   mode?: 'create' | 'edit'
   taskId?: string
   defaultKind?: TaskKind
+  pendingEmail?: PendingEmail | null
+  onTaskCreated?: (taskId: string) => void
+  followUpOnly?: boolean
 }) {
   const [form, setForm] = useState<TaskFormData>({ ...EMPTY_FORM, kind: defaultKind, ...initialData })
   const [tagInput, setTagInput] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [showAttachments, setShowAttachments] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState<TaskTemplate | null>(null)
 
   const { data: members = [] } = useMembers()
   const { data: projectsData } = useSimpleProjectList()
@@ -136,13 +326,33 @@ function TaskFormModal({
     if (open) {
       const hasFollowUpTag = initialData?.tags?.includes('follow-up')
       const kind = initialData?.kind || (hasFollowUpTag ? 'FOLLOW_UP' : defaultKind)
-      setForm({ ...EMPTY_FORM, kind, ...initialData })
+      const emailInitial = pendingEmail
+        ? { title: pendingEmail.subject, description: pendingEmail.snippet }
+        : {}
+      setForm({ ...EMPTY_FORM, kind, ...initialData, ...emailInitial })
       setTagInput('')
       setError('')
       setSubmitting(false)
       setShowAttachments(false)
+      setSelectedTemplate(null)
     }
-  }, [open, initialData, defaultKind])
+  }, [open, initialData, defaultKind, pendingEmail])
+
+  const handleTemplateChange = (template: TaskTemplate | null) => {
+    setSelectedTemplate(template)
+    if (template) {
+      const applied = applyTemplate(template, {
+        title: pendingEmail?.subject ?? form.title,
+        description: pendingEmail?.snippet ?? form.description,
+      })
+      setForm((prev) => ({
+        ...prev,
+        priority: applied.priority || prev.priority,
+        tags: applied.tags || prev.tags,
+        kind: template.category === 'FOLLOW_UP' ? 'FOLLOW_UP' : prev.kind,
+      }))
+    }
+  }
 
   const handleKindChange = (newKind: TaskKind) => {
     setForm((prev) => {
@@ -197,11 +407,15 @@ function TaskFormModal({
 
       if (mode === 'edit' && taskId) {
         await updateTask.mutateAsync({ id: taskId, ...payload })
+        onClose()
       } else {
-        await createTask.mutateAsync(payload)
+        const created = await createTask.mutateAsync(payload)
+        if (pendingEmail && onTaskCreated && created?.id) {
+          onTaskCreated(created.id)
+        } else {
+          onClose()
+        }
       }
-
-      onClose()
     } catch (err: any) {
       const msg = err?.response?.data?.error
       if (typeof msg === 'string') {
@@ -218,20 +432,55 @@ function TaskFormModal({
 
   const memberList = Array.isArray(members) ? members : []
 
+  const modalTitle = mode === 'edit'
+    ? (form.kind === 'FOLLOW_UP' ? 'Edit Follow-up' : 'Edit Task')
+    : pendingEmail
+      ? 'Create Task from Email'
+      : (form.kind === 'FOLLOW_UP' ? 'New Follow-up' : 'New Task')
+  const modalSubtitle = mode === 'edit'
+    ? 'Update details'
+    : pendingEmail
+      ? `From: ${pendingEmail.subject}`
+      : 'Create a new task or follow-up'
+
   if (!open) return null
 
   return (
     <Dialog
       open={open}
       onClose={onClose}
-      title={mode === 'edit' ? (form.kind === 'FOLLOW_UP' ? 'Edit Follow-up' : 'Edit Task') : (form.kind === 'FOLLOW_UP' ? 'New Follow-up' : 'New Task')}
-      subtitle={mode === 'edit' ? 'Update details' : 'Create a new task or follow-up'}
+      title={modalTitle}
+      subtitle={modalSubtitle}
     >
       <div className="space-y-4">
         {error && (
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[var(--danger-light)] text-[var(--danger)] text-[13px]">
             <AlertTriangle size={14} /> {error}
           </div>
+        )}
+
+        {/* Pending Email Display */}
+        {pendingEmail && (
+          <div className="p-3 rounded-lg border border-indigo-500/30 bg-indigo-500/10">
+            <div className="flex items-start gap-2">
+              <Mail size={14} className="text-indigo-400 mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">{pendingEmail.subject}</p>
+                {pendingEmail.snippet && (
+                  <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5 line-clamp-2">{pendingEmail.snippet}</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Template Picker (create mode only) */}
+        {mode === 'create' && (
+          <TemplatePicker
+            value={selectedTemplate}
+            onChange={handleTemplateChange}
+            followUpOnly={followUpOnly}
+          />
         )}
 
         {/* Type Selector */}
@@ -621,6 +870,7 @@ export function DepartmentTasksFollowUpTab({
   departmentId,
   departmentName,
 }: DepartmentTasksFollowUpTabProps) {
+  const queryClient = useQueryClient()
   const [view, setView] = useState<ViewMode>('list')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [followUpOnly, setFollowUpOnly] = useState(false)
@@ -630,6 +880,9 @@ export function DepartmentTasksFollowUpTab({
   const [editingTask, setEditingTask] = useState<any>(null)
   const [assigningTask, setAssigningTask] = useState<any>(null)
   const [deletingTask, setDeletingTask] = useState<{ id: string; name: string } | null>(null)
+  const [showEmailPicker, setShowEmailPicker] = useState(false)
+  const [pendingEmail, setPendingEmail] = useState<PendingEmail | null>(null)
+  const [attachBanner, setAttachBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   const { data, isLoading, refetch } = useTasks({ dept: departmentId || '' })
   const updateTask = useUpdateTask()
@@ -675,6 +928,38 @@ export function DepartmentTasksFollowUpTab({
 
   const handleQuickStatusChange = async (taskId: string, newStatus: string) => {
     await updateTask.mutateAsync({ id: taskId, status: newStatus })
+    refetch()
+  }
+
+  const handleEmailSelect = (email: PendingEmail) => {
+    setPendingEmail(email)
+    setShowEmailPicker(false)
+    setShowCreateModal(true)
+  }
+
+  const handleTaskCreated = async (taskId: string) => {
+    if (!pendingEmail) {
+      setShowCreateModal(false)
+      refetch()
+      return
+    }
+    try {
+      await api.post(`/projects/tasks/${taskId}/emails`, { messageId: pendingEmail.messageId })
+      setAttachBanner({ type: 'success', message: 'Task created and email attached successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    } catch (err: any) {
+      setAttachBanner({ type: 'error', message: 'Task created but email attachment failed. You can attach it manually later.' })
+    } finally {
+      setPendingEmail(null)
+      setShowCreateModal(false)
+      refetch()
+      setTimeout(() => setAttachBanner(null), 5000)
+    }
+  }
+
+  const handleCloseCreateModal = () => {
+    setPendingEmail(null)
+    setShowCreateModal(false)
     refetch()
   }
 
@@ -754,6 +1039,13 @@ export function DepartmentTasksFollowUpTab({
           </button>
 
           <button
+            onClick={() => setShowEmailPicker(true)}
+            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            <Mail size={15} /> Create from Email
+          </button>
+
+          <button
             onClick={() => setShowCreateModal(true)}
             className="btn-primary flex items-center gap-2 px-4 py-2 text-sm rounded-lg"
           >
@@ -761,6 +1053,26 @@ export function DepartmentTasksFollowUpTab({
           </button>
         </div>
       </div>
+
+      {/* Attach Banner */}
+      {attachBanner && (
+        <div
+          className={`flex items-center gap-2 px-4 py-3 rounded-lg text-[13px] ${
+            attachBanner.type === 'success'
+              ? 'bg-[var(--success-light)] text-[var(--success)]'
+              : 'bg-[var(--danger-light)] text-[var(--danger)]'
+          }`}
+        >
+          {attachBanner.type === 'success' ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+          {attachBanner.message}
+          <button
+            onClick={() => setAttachBanner(null)}
+            className="ml-auto p-1 rounded hover:bg-black/10"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       {/* Content */}
       {isLoading ? (
@@ -997,17 +1309,24 @@ export function DepartmentTasksFollowUpTab({
         </div>
       )}
 
+      {/* Email Picker Modal */}
+      <EmailPickerModal
+        open={showEmailPicker}
+        onClose={() => setShowEmailPicker(false)}
+        onSelect={handleEmailSelect}
+      />
+
       {/* Create Task Modal */}
       <TaskFormModal
         open={showCreateModal}
-        onClose={() => {
-          setShowCreateModal(false)
-          refetch()
-        }}
+        onClose={handleCloseCreateModal}
         departmentId={departmentId}
         departmentName={departmentName}
         mode="create"
         defaultKind="TASK"
+        pendingEmail={pendingEmail}
+        onTaskCreated={handleTaskCreated}
+        followUpOnly={followUpOnly}
       />
 
       {/* Create Follow-up Modal */}
@@ -1021,6 +1340,7 @@ export function DepartmentTasksFollowUpTab({
         departmentName={departmentName}
         mode="create"
         defaultKind="FOLLOW_UP"
+        followUpOnly={true}
       />
 
       {/* Edit Modal */}
