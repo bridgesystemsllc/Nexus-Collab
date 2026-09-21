@@ -1273,3 +1273,209 @@ export function useUploadGeodisInventory() {
     },
   })
 }
+
+// ─── At-Risk Products ──────────────────────────────────────
+export interface AtRiskProductInventory {
+  sku: string
+  name: string
+  brand: string | null
+  status: string
+  available: number
+  coverageMonths: number | null
+}
+
+export interface AtRiskProductLink {
+  id: string
+  linkType: string
+  linkId: string
+  linkLabel: string | null
+  linkContext: string | null
+  createdAt: string
+  createdById: string | null
+}
+
+export interface AtRiskProductIssue {
+  id: string
+  issueType: string
+  title: string
+  description: string | null
+  severity: string
+  dueDate: string | null
+  etaDate: string | null
+  etaConfidence: string | null
+  ownerId: string | null
+  status: string
+  resolvedAt: string | null
+  resolvedById: string | null
+  resolutionNote: string | null
+  createdAt: string
+  createdById: string | null
+}
+
+export interface AtRiskProduct {
+  id: string
+  orgId: string
+  departmentId: string | null
+  inventoryItemId: string
+  addedById: string | null
+  addedReason: string | null
+  riskCategory: string | null
+  priority: string
+  status: string
+  resolvedAt: string | null
+  resolvedById: string | null
+  resolutionNote: string | null
+  createdAt: string
+  updatedAt: string
+  links: AtRiskProductLink[]
+  issues: AtRiskProductIssue[]
+  openIssueCount: number
+  linkCount: number
+  inventory: AtRiskProductInventory | null
+}
+
+export function useAtRiskProducts(filters?: { departmentId?: string; status?: string; priority?: string }) {
+  const params = new URLSearchParams()
+  if (filters?.departmentId) params.set('departmentId', filters.departmentId)
+  if (filters?.status) params.set('status', filters.status)
+  if (filters?.priority) params.set('priority', filters.priority)
+  const searchParams = params.toString()
+
+  return useQuery<{ items: AtRiskProduct[]; total: number }>({
+    queryKey: ['at-risk-products', filters],
+    queryFn: () => api.get(`/at-risk-products${searchParams ? `?${searchParams}` : ''}`).then(r => r.data),
+  })
+}
+
+export function useCreateAtRiskProduct() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: {
+      inventoryItemId: string
+      departmentId?: string
+      riskCategory?: string
+      priority?: string
+      addedReason?: string
+    }) => api.post('/at-risk-products', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['at-risk-products'] }),
+  })
+}
+
+export function useResolveAtRiskProduct() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, resolutionNote }: { id: string; resolutionNote?: string }) =>
+      api.patch(`/at-risk-products/${id}/resolve`, { resolutionNote }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['at-risk-products'] }),
+  })
+}
+
+export function useAddAtRiskProductLink() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productId, ...data }: {
+      productId: string
+      linkType: string
+      linkId: string
+      linkLabel?: string
+      linkContext?: string
+    }) => api.post(`/at-risk-products/${productId}/links`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['at-risk-products'] }),
+  })
+}
+
+export function useDeleteAtRiskProductLink() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productId, linkId }: { productId: string; linkId: string }) =>
+      api.delete(`/at-risk-products/${productId}/links/${linkId}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['at-risk-products'] }),
+  })
+}
+
+export function useAtRiskProductIssues(productId: string) {
+  return useQuery<{ items: AtRiskProductIssue[] }>({
+    queryKey: ['at-risk-product-issues', productId],
+    queryFn: () => api.get(`/at-risk-products/${productId}/issues`).then(r => r.data),
+    enabled: !!productId,
+  })
+}
+
+export function useCreateAtRiskProductIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productId, ...data }: {
+      productId: string
+      issueType: string
+      title: string
+      description?: string
+      severity?: string
+      dueDate?: string
+      ownerId?: string
+    }) => api.post(`/at-risk-products/${productId}/issues`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['at-risk-products'] })
+      qc.invalidateQueries({ queryKey: ['at-risk-product-issues'] })
+    },
+  })
+}
+
+export function useUpdateAtRiskProductIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productId, issueId, ...data }: {
+      productId: string
+      issueId: string
+      title?: string
+      description?: string
+      severity?: string
+      dueDate?: string | null
+      etaDate?: string | null
+      etaConfidence?: string | null
+      ownerId?: string | null
+      status?: string
+    }) => api.patch(`/at-risk-products/${productId}/issues/${issueId}`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['at-risk-products'] })
+      qc.invalidateQueries({ queryKey: ['at-risk-product-issues'] })
+    },
+  })
+}
+
+export function useResolveAtRiskProductIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productId, issueId, resolutionNote }: {
+      productId: string
+      issueId: string
+      resolutionNote?: string
+    }) => api.patch(`/at-risk-products/${productId}/issues/${issueId}/resolve`, { resolutionNote }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['at-risk-products'] })
+      qc.invalidateQueries({ queryKey: ['at-risk-product-issues'] })
+    },
+  })
+}
+
+// ─── At-Risk Issue Attachments (Activity) ──────────────────
+export function useAtRiskIssueAttachments(issueId: string) {
+  return useQuery({
+    queryKey: ['at-risk-issue-attachments', issueId],
+    queryFn: () => api.get(`/tasks/${issueId}/attachments?attachableType=at_risk_issue`).then(r => r.data),
+    enabled: !!issueId,
+  })
+}
+
+export function useCreateAtRiskIssueComment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { issueId: string; body_plain: string; body_html?: string; createdBy?: string }) => {
+      const { issueId, ...body } = data
+      return api.post(`/tasks/${issueId}/attachments/comment`, {
+        ...body,
+        attachableType: 'at_risk_issue',
+      }).then(r => r.data)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['at-risk-issue-attachments'] }),
+  })
+}
