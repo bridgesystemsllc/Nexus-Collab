@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   Loader2,
   Package,
+  Palette,
   Plus,
   Repeat2,
   Rocket,
@@ -50,14 +51,16 @@ import { StatusBadge, ActionsMenu, DeleteConfirmDialog } from '@/components/shar
 import { CMTab } from '@/components/cm/CMTab'
 import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
 import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
+import { DepartmentArtworkTab } from '@/components/departments/DepartmentArtworkTab'
 
 // ─── Types ─────────────────────────────────────────────────
-type RDTab = 'overview' | 'tasks-followup' | 'projects' | 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd'
+type RDTab = 'overview' | 'tasks-followup' | 'projects' | 'artwork' | 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd'
 
 const TABS: { key: RDTab; label: string; icon: React.ElementType }[] = [
   { key: 'overview', label: 'Overview', icon: LayoutDashboard },
   { key: 'tasks-followup', label: 'Tasks & Follow-up', icon: ClipboardList },
   { key: 'projects', label: 'Projects', icon: FolderKanban },
+  { key: 'artwork', label: 'Artwork', icon: Palette },
   { key: 'briefs', label: 'Active Briefs', icon: FileText },
   { key: 'cm', label: 'CM Productivity', icon: Users },
   { key: 'transfers', label: 'Tech Transfers', icon: Repeat2 },
@@ -1366,6 +1369,7 @@ export function RDPage() {
     'tasks-followup': [],
     // Projects fetches its own data rather than reading a department module.
     projects: [],
+    artwork: [],
     briefs: moduleData.briefs,
     cm: moduleData.cm,
     transfers: moduleData.transfers,
@@ -1432,6 +1436,8 @@ export function RDPage() {
               departmentName="R&D"
               departmentCode="R_AND_D"
             />
+          ) : activeTab === 'artwork' ? (
+            <DepartmentArtworkTab />
           ) : isLoading ? (
             activeTab === 'cm' ? <CardsSkeleton /> : <TableSkeleton />
           ) : activeTab === 'briefs' ? (

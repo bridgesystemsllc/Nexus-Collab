@@ -50,7 +50,12 @@ export function MarketingArtworkTab({ departmentId, departmentName }: MarketingA
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
 
-  const { data: deptDetail, isLoading: deptLoading } = useDepartment(departmentId)
+  const {
+    data: deptDetail,
+    isLoading: deptLoading,
+    isError: deptError,
+    refetch: refetchDepartment,
+  } = useDepartment(departmentId)
 
   const artworkModule = useMemo(() => {
     const modules = (deptDetail?.modules as any[]) ?? []
@@ -63,7 +68,7 @@ export function MarketingArtworkTab({ departmentId, departmentName }: MarketingA
     data: items,
     isLoading: itemsLoading,
     error: itemsError,
-    refetch,
+    refetch: refetchItems,
   } = useModuleItems(departmentId, moduleId)
 
   const createItem = useCreateModuleItem()
@@ -79,14 +84,33 @@ export function MarketingArtworkTab({ departmentId, departmentName }: MarketingA
     return artworkItems.find((i) => i.id === selectedItemId) ?? null
   }, [artworkItems, selectedItemId])
 
-  const isLoading = deptLoading || (moduleId && itemsLoading)
-  const hasError = !!itemsError
+  const isLoading = deptLoading || (!!moduleId && itemsLoading)
+  const hasError = deptError || !!itemsError
 
   if (isLoading) {
     return (
       <div className="p-6 flex items-center gap-2 text-sm text-[var(--text-tertiary)]">
         <Loader2 size={15} className="animate-spin" />
         Loading artwork…
+      </div>
+    )
+  }
+
+  if (hasError) {
+    return (
+      <div className="rounded-xl border border-dashed border-[var(--danger)]/30 bg-[var(--danger-light)] py-12 text-center">
+        <AlertCircle size={24} className="mx-auto text-[var(--danger)] mb-2" />
+        <p className="text-sm font-medium text-[var(--text-primary)]">Could not load artwork. Try again.</p>
+        <button
+          onClick={() => {
+            if (deptError) void refetchDepartment()
+            if (itemsError) void refetchItems()
+          }}
+          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-[var(--accent)] hover:bg-[var(--accent-subtle)] transition-colors"
+        >
+          <RefreshCw size={14} />
+          Retry
+        </button>
       </div>
     )
   }
@@ -101,22 +125,6 @@ export function MarketingArtworkTab({ departmentId, departmentName }: MarketingA
         <p className="text-xs text-[var(--text-tertiary)] mt-1">
           Contact an administrator to set up the Artwork module.
         </p>
-      </div>
-    )
-  }
-
-  if (hasError) {
-    return (
-      <div className="rounded-xl border border-dashed border-[var(--danger)]/30 bg-[var(--danger-light)] py-12 text-center">
-        <AlertCircle size={24} className="mx-auto text-[var(--danger)] mb-2" />
-        <p className="text-sm font-medium text-[var(--text-primary)]">Could not load artwork. Try again.</p>
-        <button
-          onClick={() => refetch()}
-          className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-[var(--accent)] hover:bg-[var(--accent-subtle)] transition-colors"
-        >
-          <RefreshCw size={14} />
-          Retry
-        </button>
       </div>
     )
   }
