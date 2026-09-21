@@ -6,7 +6,7 @@ import { fmtCurrency } from '@/components/finance/financeFormat'
 import { Loader2, Plus, Trash2, ArrowUp, ArrowDown, FileSpreadsheet, Printer, AlertTriangle } from 'lucide-react'
 import { FullPageForm } from '@/components/shared/FullPageForm'
 import { useAppStore, type ActiveForm } from '@/stores/appStore'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { emptyBom, emptyLine, bomFromItem, type Bom, type BomLine, type PartType } from './bomTypes'
 import { ComponentPicker, type ComponentPickerValue } from './ComponentPicker'
 import { SKUPicker, type SKUPickerValue } from './SKUPicker'
@@ -177,8 +177,8 @@ export function BOMFormPage({ form: activeForm }: { form: ActiveForm }) {
         await qc.invalidateQueries({ queryKey: ['department', ctx.departmentId] })
       }
       closeForm()
-    } catch (err: any) {
-      setSaveError(err?.response?.data?.error || err?.message || 'Failed to save BOM')
+    } catch (err: unknown) {
+      setSaveError(getApiErrorMessage(err, 'Failed to save BOM'))
     } finally {
       setSubmitting(false)
     }

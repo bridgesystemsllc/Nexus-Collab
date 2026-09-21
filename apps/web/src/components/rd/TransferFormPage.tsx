@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Save, Loader2 } from 'lucide-react'
 import { FullPageForm } from '@/components/shared/FullPageForm'
 import { useAppStore, type ActiveForm } from '@/stores/appStore'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import {
   Step1,
   Step2,
@@ -122,8 +122,8 @@ export function TransferFormPage({ form: activeForm }: { form: ActiveForm }) {
         await qc.invalidateQueries({ queryKey: ['department', ctx.departmentId] })
       }
       closeForm()
-    } catch (err: any) {
-      setSaveError(err?.response?.data?.error || err?.message || 'Failed to save transfer')
+    } catch (err: unknown) {
+      setSaveError(getApiErrorMessage(err, 'Failed to save transfer'))
     } finally {
       setSubmitting(false)
     }

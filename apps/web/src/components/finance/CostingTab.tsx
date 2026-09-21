@@ -10,7 +10,7 @@ import {
   TrendingDown,
   X,
 } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { useFinanceSummary, useProductCosts } from '@/hooks/useData'
 import { fmtCurrency, fmtInt, fmtPct, toNum } from './financeFormat'
 import { PushToErpButton } from '@/components/shared/PushToErpButton'
@@ -124,8 +124,8 @@ function CostDrawer({
       }
       onSaved()
       onClose()
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Failed to save costs')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to save costs'))
     } finally {
       setSaving(false)
     }

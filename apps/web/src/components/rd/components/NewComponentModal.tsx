@@ -8,7 +8,7 @@ import {
   ImagePlus,
   Loader2,
 } from 'lucide-react'
-import { api } from '../../../lib/api'
+import { api, getApiErrorMessage } from '../../../lib/api'
 import {
   COMPONENT_TYPES,
   SUB_TYPES,
@@ -434,9 +434,9 @@ function ImageUpload({
         objectPath: data.objectPath,
       })
       onChange(finalized.url)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to upload component image:', err)
-      setUploadError(err?.response?.data?.error || 'Failed to upload image. Please try again.')
+      setUploadError(getApiErrorMessage(err, 'Failed to upload image. Please try again.'))
     } finally {
       setUploading(false)
       if (inputRef.current) inputRef.current.value = ''

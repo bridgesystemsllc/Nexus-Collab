@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Upload, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { getApiErrorMessage } from '@/lib/api'
 import { usePushToErp } from '@/hooks/useData'
 import { useUserStore } from '@/stores/userStore'
 
@@ -35,11 +36,11 @@ export function PushToErpButton({ feedKey, label }: { feedKey: string; label: st
       } else {
         setMsg({ type: 'success', text: `Pushed ${r.count} to ERP` })
       }
-    } catch (err: any) {
-      const status = err?.response?.status
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status
       setMsg({
         type: 'error',
-        text: status === 403 ? 'Admin access required' : err?.response?.data?.error || 'Push failed',
+        text: status === 403 ? 'Admin access required' : getApiErrorMessage(err, 'Push failed'),
       })
     }
   }

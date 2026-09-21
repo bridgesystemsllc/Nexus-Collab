@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Search, ChevronDown, X, Plus, Loader2, Package } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { PART_TYPES, type PartType } from './bomTypes'
 
 export interface ComponentPickerValue {
@@ -175,8 +175,8 @@ export function ComponentPicker({
       setCreating(false)
       setOpen(false)
       setSearch('')
-    } catch (err: any) {
-      setSaveError(err?.response?.data?.error || err?.message || 'Failed to create part')
+    } catch (err: unknown) {
+      setSaveError(getApiErrorMessage(err, 'Failed to create part'))
     } finally {
       setSaving(false)
     }

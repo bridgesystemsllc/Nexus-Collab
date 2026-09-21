@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { FileSpreadsheet, Loader2, X, CheckCircle2, AlertTriangle } from 'lucide-react'
 import * as XLSX from 'xlsx'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { Dialog } from '@/components/Dialog'
 
 interface OpenOrderImportProps {
@@ -75,8 +75,8 @@ export function OpenOrderImport({ items, moduleId, departmentId }: OpenOrderImpo
       if (proposed.length === 0) {
         setError('No matching purchase orders were found in this report.')
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || 'Failed to parse the report.')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to parse the report.'))
     } finally {
       setParsing(false)
     }
@@ -111,8 +111,8 @@ export function OpenOrderImport({ items, moduleId, departmentId }: OpenOrderImpo
       }
       setOpen(false)
       reset()
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || 'Failed to apply updates.')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to apply updates.'))
     } finally {
       setApplying(false)
     }

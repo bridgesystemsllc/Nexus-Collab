@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react'
 import { Upload, FileText, Download, Clock, AlertCircle, Loader2, CheckCircle } from 'lucide-react'
+import { getApiErrorMessage } from '@/lib/api'
 import {
   useComponentAttachments,
   useCreateComponentAttachment,
@@ -80,13 +81,9 @@ export function ComponentAttachmentsPanel({ componentId, kind, label }: Props) {
         setUploadSuccess(true)
         setTimeout(() => setUploadSuccess(false), 3000)
         refetch()
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[ComponentAttachmentsPanel] Upload error:', err)
-        const message =
-          err?.response?.data?.error ||
-          err?.message ||
-          'Failed to upload file. Please try again.'
-        setUploadError(message)
+        setUploadError(getApiErrorMessage(err, 'Failed to upload file. Please try again.'))
       } finally {
         setUploading(false)
       }
@@ -118,10 +115,9 @@ export function ComponentAttachmentsPanel({ componentId, kind, label }: Props) {
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('[ComponentAttachmentsPanel] Download error:', err)
-        const message = err?.response?.data?.error || 'Failed to download file.'
-        setUploadError(message)
+        setUploadError(getApiErrorMessage(err, 'Failed to download file.'))
       } finally {
         setDownloadingId(null)
       }
