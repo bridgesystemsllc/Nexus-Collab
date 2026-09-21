@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ClipboardList, Plus, MoreHorizontal, Pencil, Copy, FileSpreadsheet, Printer, Archive,
-  Download, Upload, AlertTriangle, CheckCircle2, Loader2, X,
+  Download, Upload, AlertTriangle, CheckCircle2, Loader2,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { useAppStore } from '@/stores/appStore'
