@@ -12,9 +12,23 @@ import {
   Shield,
   Users,
   Beaker,
+  Loader2,
 } from 'lucide-react'
 
 // ─── Types ─────────────────────────────────────────────────
+
+export interface StatusFormData {
+  lastUpdated: string | null
+  needsRevisions: boolean
+  needsRevisionsNotes: string
+  revisionsAssignees: { userId: string; userName: string }[]
+  approvalsAssignees: { userId: string; userName: string }[]
+  updatesAssignees: { userId: string; userName: string }[]
+  nextAction: string
+  finalApprovalVersion: string
+  submissionNotes?: string
+  submitted?: boolean
+}
 
 export interface FormulationFormData {
   product: string
@@ -59,6 +73,7 @@ export interface FormulationFormData {
   createdBy: string
   createdAt: string
   updatedAt: string
+  statusFormData?: StatusFormData
 }
 
 export const EMPTY_FORM: FormulationFormData = {
@@ -108,7 +123,17 @@ export const EMPTY_FORM: FormulationFormData = {
 
 const BRANDS = ["Carol's Daughter", 'Dermablend', 'Baxter of California', 'Ambi', 'AcneFree']
 const CATEGORIES = ['Skincare', 'Haircare', 'Bodycare', 'OTC', 'Color Cosmetics']
-const STATUSES = ['Draft', 'In Review', 'Approved', 'Rejected', 'Archived']
+const STATUSES = [
+  'Draft',
+  'In Review',
+  'Approved',
+  'Rejected',
+  'Archived',
+  'Formula submitted',
+  'Formula waiting for R&D approval',
+  'R&D revisions submitted',
+  'Testing',
+] as const
 const REGULATORY_CATEGORIES = ['Cosmetic 21 CFR 700s', 'OTC Drug 21 CFR 300s', 'Cosmeceutical', 'N/A']
 const COUNTRY_OPTIONS = ['USA', 'Canada', 'EU', 'UK', 'Asia', 'Other']
 
@@ -425,7 +450,7 @@ export function Step1({ form, setForm, errors, briefItems }: StepProps) {
           <Select
             value={form.status}
             onChange={(v) => setForm({ ...form, status: v })}
-            options={STATUSES}
+            options={[...STATUSES]}
           />
         </FormField>
       </div>
@@ -648,20 +673,56 @@ export function Step3({ form, setForm }: StepProps) {
 // ─── Step 4: Documents ────────────────────────────────────
 
 export function Step4({ form, setForm }: StepProps) {
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files) return
-    const newFiles = Array.from(files).map((f) => ({
-      name: f.name,
-      url: URL.createObjectURL(f),
-      source: 'local',
-      uploadedBy: 'Current User',
-      uploadedAt: new Date().toISOString().slice(0, 10),
-      size: f.size,
-      type: f.type,
-    }))
-    setForm({ ...form, files: [...form.files, ...newFiles] })
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [linkError, setLinkError] = useState<string | null>(null)
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files
+    if (!selectedFiles || selectedFiles.length === 0) return
     e.target.value = ''
+
+    setUploading(true)
+    setUploadError(null)
+
+    const uploadedFiles: typeof form.files = []
+
+    for (const file of Array.from(selectedFiles)) {
+      try {
+        const { api } = await import('@/lib/api')
+        const { data } = await api.post('/uploads/request-url', {
+          name: file.name,
+          size: file.size,
+          contentType: file.type || 'application/octet-stream',
+        })
+
+        const putRes = await fetch(data.uploadURL, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        })
+
+        if (!putRes.ok) throw new Error('Storage upload failed')
+
+        uploadedFiles.push({
+          name: file.name,
+          url: `/api/v1/uploads${data.objectPath}`,
+          source: 'upload',
+          uploadedBy: 'Current User',
+          uploadedAt: new Date().toISOString().slice(0, 10),
+          size: file.size,
+          type: file.type,
+        })
+      } catch (err: any) {
+        console.error('File upload failed:', err)
+        setUploadError(err?.response?.data?.error || err?.message || 'Upload failed')
+      }
+    }
+
+    if (uploadedFiles.length > 0) {
+      setForm({ ...form, files: [...form.files, ...uploadedFiles] })
+    }
+    setUploading(false)
   }
 
   const removeFile = (i: number) => {
@@ -674,6 +735,11 @@ export function Step4({ form, setForm }: StepProps) {
 
   const addLink = () => {
     if (!linkName.trim() || !linkUrl.trim()) return
+    if (!linkUrl.includes('sharepoint.com')) {
+      setLinkError('URL must contain sharepoint.com')
+      return
+    }
+    setLinkError(null)
     setForm({
       ...form,
       sharepointLinks: [
@@ -743,20 +809,33 @@ export function Step4({ form, setForm }: StepProps) {
             ))}
           </div>
         )}
-        <label className="flex flex-col items-center gap-2 p-6 rounded-xl border-2 border-dashed border-[var(--border-default)] bg-[var(--bg-surface)] cursor-pointer hover:border-[var(--accent)] transition-colors">
-          <Upload size={24} className="text-[var(--text-tertiary)]" />
-          <span className="text-[13px] text-[var(--text-secondary)]">
-            Drop files here or <span className="text-[var(--accent)] font-medium">browse</span>
-          </span>
-          <span className="text-[11px] text-[var(--text-tertiary)]">PDF, DOCX, XLSX, PNG, JPG</span>
+        <label className={`flex flex-col items-center gap-2 p-6 rounded-xl border-2 border-dashed bg-[var(--bg-surface)] cursor-pointer transition-colors ${uploading ? 'border-[var(--accent)] opacity-60 pointer-events-none' : 'border-[var(--border-default)] hover:border-[var(--accent)]'}`}>
+          {uploading ? (
+            <>
+              <Loader2 size={24} className="text-[var(--accent)] animate-spin" />
+              <span className="text-[13px] text-[var(--text-secondary)]">Uploading...</span>
+            </>
+          ) : (
+            <>
+              <Upload size={24} className="text-[var(--text-tertiary)]" />
+              <span className="text-[13px] text-[var(--text-secondary)]">
+                Drop files here or <span className="text-[var(--accent)] font-medium">browse</span>
+              </span>
+              <span className="text-[11px] text-[var(--text-tertiary)]">PDF, DOCX, XLSX, PNG, JPG</span>
+            </>
+          )}
           <input
             type="file"
             multiple
             accept=".pdf,.docx,.xlsx,.png,.jpg,.jpeg"
             className="hidden"
             onChange={handleFileUpload}
+            disabled={uploading}
           />
         </label>
+        {uploadError && (
+          <p className="text-[12px] text-[var(--danger)] mt-2">{uploadError}</p>
+        )}
       </div>
 
       {/* SharePoint Links */}
@@ -789,9 +868,12 @@ export function Step4({ form, setForm }: StepProps) {
           <input
             type="text"
             value={linkUrl}
-            onChange={(e) => setLinkUrl(e.target.value)}
-            placeholder="SharePoint URL"
-            className="flex-1 bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)]"
+            onChange={(e) => {
+              setLinkUrl(e.target.value)
+              if (linkError) setLinkError(null)
+            }}
+            placeholder="https://...sharepoint.com/..."
+            className={`flex-1 bg-[var(--bg-input)] border rounded-lg px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)] ${linkError ? 'border-[var(--danger)]' : 'border-[var(--border-default)]'}`}
           />
           <button
             onClick={addLink}
@@ -801,6 +883,9 @@ export function Step4({ form, setForm }: StepProps) {
             <Plus size={14} /> Add Link
           </button>
         </div>
+        {linkError && (
+          <p className="text-[12px] text-[var(--danger)] mt-1">{linkError}</p>
+        )}
       </div>
 
       {/* SDS Sheet Uploads */}
