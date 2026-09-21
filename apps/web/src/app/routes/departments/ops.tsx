@@ -32,6 +32,8 @@ import { useDepartments, useDepartment } from '@/hooks/useData'
 import { api } from '@/lib/api'
 import { ItemDetailDialog } from '@/components/ItemDetailDialog'
 import { GeodisFeedHeader } from '@/components/ops/inventory/GeodisFeedHeader'
+import { AtRiskProductsTab } from '@/components/ops/inventory/AtRiskProductsTab'
+import { useAtRiskProducts } from '@/hooks/useData'
 import { DepartmentProjectsTab } from '@/modules/projects/ProjectsModule'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { AddToCowork, type AddToCoworkItem } from '@/components/shared/AddToCowork'
@@ -301,6 +303,8 @@ function WarehouseTag({ warehouse, missingSince }: { warehouse?: string; missing
 // __moduleId — the row still needs to know where it came from to be edited.
 type WarehouseFilter = 'All' | 'KAREVE' | 'GEODIS'
 
+type InventoryViewMode = 'records' | 'at-risk'
+
 function InventoryHealthTab({
   items,
   geodisItems = [],
@@ -310,12 +314,16 @@ function InventoryHealthTab({
   onSelect,
 }: TabProps & { geodisItems?: any[]; geodisModuleId?: string | null }) {
   const openForm = useAppStore((s) => s.openForm)
+  const [inventoryView, setInventoryView] = useState<InventoryViewMode>('records')
   const [view, setView] = useState<ViewMode>('table')
   const [brandFilter, setBrandFilter] = useState('All')
   const [statusFilter, setStatusFilter] = useState('All')
   const [warehouseFilter, setWarehouseFilter] = useState<WarehouseFilter>('All')
   const [pageSize, setPageSize] = useState(50)
   const [page, setPage] = useState(1)
+
+  const { data: atRiskData } = useAtRiskProducts({ departmentId: departmentId || undefined })
+  const atRiskCount = atRiskData?.total || 0
 
   const hasGeodis = geodisItems.length > 0 || !!geodisModuleId
 
@@ -418,35 +426,88 @@ function InventoryHealthTab({
         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
     }`
 
+  const viewToggleSegment = (active: boolean) =>
+    `relative px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 ${
+      active
+        ? 'bg-[var(--accent)] text-white shadow-sm'
+        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+    }`
+
+  if (inventoryView === 'at-risk') {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-[var(--bg-overlay)] border border-[var(--border-subtle)]">
+            <button
+              onClick={() => setInventoryView('records')}
+              className={viewToggleSegment(false)}
+            >
+              Inventory records
+              <span className="ml-1.5 tabular-nums text-[var(--text-tertiary)]">{allItems.length}</span>
+            </button>
+            <button
+              onClick={() => setInventoryView('at-risk')}
+              className={viewToggleSegment(true)}
+            >
+              At-Risk Products
+              <span className="ml-1.5 tabular-nums text-inherit opacity-80">{atRiskCount}</span>
+            </button>
+          </div>
+        </div>
+        <AtRiskProductsTab inventoryItems={allItems} departmentId={departmentId} />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
-      <TabHeader
-        title="Inventory records"
-        count={filtered.length}
-        view={view}
-        onView={setView}
-        onNew={warehouseFilter === 'GEODIS' ? undefined : openCreate}
-        newLabel="New Record"
-      >
-        {hasGeodis && (
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4">
           <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-[var(--bg-overlay)] border border-[var(--border-subtle)]">
-            {([
-              ['All', 'All', allItems.length],
-              ['KAREVE', 'KarEve', items.length],
-              ['GEODIS', 'Geodis', geodisCount],
-            ] as [WarehouseFilter, string, number][]).map(([key, label, count]) => (
-              <button
-                key={key}
-                onClick={() => setWarehouseFilter(key)}
-                className={segment(warehouseFilter === key)}
-              >
-                {label}
-                <span className="ml-1.5 tabular-nums text-[var(--text-tertiary)]">{count}</span>
-              </button>
-            ))}
+            <button
+              onClick={() => setInventoryView('records')}
+              className={viewToggleSegment(true)}
+            >
+              Inventory records
+              <span className="ml-1.5 tabular-nums text-inherit opacity-80">{allItems.length}</span>
+            </button>
+            <button
+              onClick={() => setInventoryView('at-risk')}
+              className={viewToggleSegment(false)}
+            >
+              At-Risk Products
+              <span className="ml-1.5 tabular-nums text-[var(--text-tertiary)]">{atRiskCount}</span>
+            </button>
           </div>
-        )}
-      </TabHeader>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {hasGeodis && (
+            <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-[var(--bg-overlay)] border border-[var(--border-subtle)]">
+              {([
+                ['All', 'All', allItems.length],
+                ['KAREVE', 'KarEve', items.length],
+                ['GEODIS', 'Geodis', geodisCount],
+              ] as [WarehouseFilter, string, number][]).map(([key, label, count]) => (
+                <button
+                  key={key}
+                  onClick={() => setWarehouseFilter(key)}
+                  className={segment(warehouseFilter === key)}
+                >
+                  {label}
+                  <span className="ml-1.5 tabular-nums text-[var(--text-tertiary)]">{count}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <ViewToggle value={view} onChange={setView} />
+          {warehouseFilter !== 'GEODIS' && (
+            <button onClick={openCreate} className="btn-primary flex items-center gap-2 px-4 py-2 text-sm rounded-lg w-fit">
+              <Plus size={15} />
+              New Record
+            </button>
+          )}
+        </div>
+      </div>
 
       {hasGeodis && warehouseFilter !== 'KAREVE' && <GeodisFeedHeader itemCount={geodisCount} />}
 
