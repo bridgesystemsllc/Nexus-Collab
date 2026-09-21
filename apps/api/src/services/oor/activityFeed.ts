@@ -51,7 +51,7 @@ export interface FeedParts {
   }[]
 }
 
-const firstLine = (text: string, max = 140): string => {
+export const firstLine = (text: string, max = 140): string => {
   const line = text.split('\n')[0]!.trim()
   return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }

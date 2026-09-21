@@ -9,7 +9,7 @@
 // everything and filters in the browser" would work for exactly one import.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronRight, MessageSquare, FileText, CalendarClock, Mail } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronRight } from 'lucide-react'
 import type { OorColumn } from './oorColumns'
 import type { OorLineRow } from './useOorQueries'
 import { useOorTree } from './useOorQueries'
@@ -129,12 +129,19 @@ function ExpandableRow({
             reason={row.statusOverrideReason}
           />
         </td>
-        <td style={{ padding: rowPad }}>
-          <div className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-            {row._count.comments > 0 ? <span className="inline-flex items-center gap-0.5"><MessageSquare size={11} />{row._count.comments}</span> : null}
-            {row._count.notes > 0 ? <span className="inline-flex items-center gap-0.5"><FileText size={11} />{row._count.notes}</span> : null}
-            {row._count.meetingUpdates > 0 ? <span className="inline-flex items-center gap-0.5"><CalendarClock size={11} />{row._count.meetingUpdates}</span> : null}
-          </div>
+        <td
+          title={row.latestActivity?.text}
+          style={{
+            padding: rowPad,
+            maxWidth: 180,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            fontSize: 12,
+            color: row.latestActivity ? 'var(--text-secondary)' : 'var(--text-tertiary)',
+          }}
+        >
+          {row.latestActivity?.text ?? '—'}
         </td>
         <td style={{ padding: rowPad }}>
           <button
@@ -330,7 +337,7 @@ export function OorGrid({
             <th style={{ padding: '8px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border-strong)', textAlign: 'left', width: 200 }}>
               Status
             </th>
-            <th style={{ padding: '8px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border-strong)', textAlign: 'left', width: 110 }}>
+            <th style={{ padding: '8px 10px', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border-strong)', textAlign: 'left', width: 180 }}>
               Activity
             </th>
             <th style={{ padding: '8px 10px', borderBottom: '1px solid var(--border-strong)', width: 170 }} />
