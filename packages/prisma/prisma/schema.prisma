@@ -601,6 +601,7 @@ model Task {
   dependenciesOut TaskDependency[]    @relation("Predecessor")
   dependenciesIn  TaskDependency[]    @relation("Successor")
   checklist       TaskChecklistItem[]
+  reminders       TaskReminder[]
   projectComments ProjectComment[]
   checkins        ProjectCheckin[]    @relation("CheckinTask")
 
@@ -647,6 +648,34 @@ model TaskChecklistItem {
   sortOrder Int     @default(0)
 
   @@index([taskId])
+}
+
+// ─── Task Reminder ──────────────────────────────────────────
+// A scheduled reminder for a task. The task-reminders job fires a Pulse SIGNAL
+// for each due reminder, then marks it SENT. The three-state enum makes
+// idempotent retries trivial: re-running skips anything already SENT.
+enum TaskReminderStatus {
+  PENDING
+  SENT
+  CANCELLED
+}
+
+model TaskReminder {
+  id          String             @id @default(cuid())
+  taskId      String
+  task        Task               @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  remindAt    DateTime
+  recipientId String
+  message     String?
+  status      TaskReminderStatus @default(PENDING)
+  sentAt      DateTime?
+  createdById String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([taskId])
+  @@index([status, remindAt])
+  @@index([recipientId])
 }
 
 // ─── Activity ───────────────────────────────────────────────

@@ -168,6 +168,22 @@ export function useSendProductionEmail() {
   })
 }
 
+// ─── Projects (simple list for dropdowns) ──────────────────
+export interface SimpleProject {
+  id: string
+  title: string
+  projectNumber: string | null
+  status: string
+}
+
+export function useSimpleProjectList() {
+  return useQuery<{ data: SimpleProject[] }>({
+    queryKey: ['projects', 'simple-list'],
+    queryFn: () => api.get('/projects?limit=100&status=ACTIVE,PROPOSED,APPROVED,DRAFT').then(r => r.data),
+    staleTime: 30_000,
+  })
+}
+
 // ─── Tasks ──────────────────────────────────────────────────
 export function useTasks(filters?: Record<string, string>) {
   const params = new URLSearchParams(filters || {}).toString()
@@ -1020,6 +1036,57 @@ export function useDeleteAttachment() {
   return useMutation({
     mutationFn: (id: string) => api.delete(`/tasks/attachments/${id}`).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['task-attachments'] }),
+  })
+}
+
+// ─── Task Reminders ────────────────────────────────────────
+export interface TaskReminder {
+  id: string
+  taskId: string
+  remindAt: string
+  recipientId: string
+  message: string | null
+  status: 'PENDING' | 'SENT' | 'CANCELLED'
+  sentAt: string | null
+  createdById: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export function useTaskReminders(taskId: string) {
+  return useQuery<TaskReminder[]>({
+    queryKey: ['task-reminders', taskId],
+    queryFn: () => api.get(`/tasks/${taskId}/reminders`).then(r => r.data),
+    enabled: !!taskId,
+  })
+}
+
+export function useCreateTaskReminder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { taskId: string; remindAt: string; recipientId: string; message?: string }) => {
+      const { taskId, ...body } = data
+      return api.post(`/tasks/${taskId}/reminders`, body).then(r => r.data)
+    },
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['task-reminders', vars.taskId] }),
+  })
+}
+
+export function useUpdateTaskReminder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, taskId, ...data }: { id: string; taskId: string; remindAt?: string; recipientId?: string; message?: string; status?: 'PENDING' | 'SENT' | 'CANCELLED' }) =>
+      api.patch(`/tasks/reminders/${id}`, data).then(r => r.data),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['task-reminders', vars.taskId] }),
+  })
+}
+
+export function useDeleteTaskReminder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, taskId }: { id: string; taskId: string }) =>
+      api.delete(`/tasks/reminders/${id}`).then(r => r.data),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['task-reminders', vars.taskId] }),
   })
 }
 

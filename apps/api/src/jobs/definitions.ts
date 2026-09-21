@@ -100,6 +100,53 @@ const erpSync: JobFn = async (prisma) => {
   }
 }
 
+// ─── Task reminders ──────────────────────────────────────────
+// Fire a Pulse SIGNAL for each due reminder, then mark it SENT. Idempotent:
+// re-running skips anything already SENT. Capped at ~50 per run to avoid
+// overwhelming the notification queue when a backlog builds up.
+
+const taskReminders: JobFn = async (prisma) => {
+  const now = new Date()
+  const cap = 50
+
+  const dueReminders = await prisma.taskReminder.findMany({
+    where: {
+      status: 'PENDING',
+      remindAt: { lte: now },
+    },
+    include: {
+      task: { select: { id: true, title: true, dueDate: true, departmentId: true, department: { select: { name: true } } } },
+    },
+    orderBy: { remindAt: 'asc' },
+    take: cap,
+  })
+
+  let sent = 0
+  for (const reminder of dueReminders) {
+    const message = reminder.message
+      || `Reminder: "${reminder.task.title}"${reminder.task.dueDate ? ` — due ${reminder.task.dueDate.toLocaleDateString()}` : ''}`
+
+    await prisma.$transaction([
+      prisma.pulse.create({
+        data: {
+          type: 'SIGNAL',
+          message,
+          deptName: reminder.task.department?.name || undefined,
+          targetId: reminder.recipientId,
+          metadata: { taskId: reminder.task.id, reminderId: reminder.id },
+        },
+      }),
+      prisma.taskReminder.update({
+        where: { id: reminder.id },
+        data: { status: 'SENT', sentAt: now },
+      }),
+    ])
+    sent++
+  }
+
+  return { summary: sent === 0 ? 'no reminders due' : `${sent} reminders sent` }
+}
+
 // ─── Automation runner ───────────────────────────────────────
 // Process due scheduled automations and pending manual triggers.
 
@@ -225,6 +272,12 @@ export const JOBS: JobDefinition[] = [
     group: 'frequent',
     description: 'Pull ERP inventory and order state',
     run: erpSync,
+  },
+  {
+    name: 'task-reminders',
+    group: 'frequent',
+    description: 'Fire Pulse SIGNAL for due task reminders and mark them SENT',
+    run: taskReminders,
   },
   {
     name: 'automation-runner',

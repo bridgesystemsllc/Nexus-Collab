@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
+  Bell,
   Calendar,
   Check,
   CheckSquare,
@@ -13,6 +14,7 @@ import {
   Send,
   Trash2,
   User,
+  X,
 } from 'lucide-react'
 import { FullPageForm } from '@/components/shared/FullPageForm'
 import { AddToCowork } from '@/components/shared/AddToCowork'
@@ -26,6 +28,9 @@ import {
   useAddTaskNote,
   useMembers,
   useDepartments,
+  useTaskReminders,
+  useCreateTaskReminder,
+  useDeleteTaskReminder,
 } from '@/hooks/useData'
 
 const STATUS_OPTIONS = [
@@ -50,6 +55,162 @@ function toDateInput(value?: string | null): string {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return ''
   return d.toISOString().slice(0, 10)
+}
+
+function formatReminderDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  if (Number.isNaN(d.getTime())) return dateStr
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+function TaskRemindersSection({ taskId, members }: { taskId: string; members: any[] }) {
+  const [showForm, setShowForm] = useState(false)
+  const [remindAt, setRemindAt] = useState('')
+  const [recipientId, setRecipientId] = useState('')
+  const [message, setMessage] = useState('')
+
+  const { data: reminders = [], isLoading } = useTaskReminders(taskId)
+  const createReminder = useCreateTaskReminder()
+  const deleteReminder = useDeleteTaskReminder()
+
+  const handleCreate = async () => {
+    if (!remindAt || !recipientId) return
+    await createReminder.mutateAsync({ taskId, remindAt, recipientId, message: message || undefined })
+    setRemindAt('')
+    setRecipientId('')
+    setMessage('')
+    setShowForm(false)
+  }
+
+  const pendingReminders = reminders.filter((r) => r.status === 'PENDING')
+  const sentReminders = reminders.filter((r) => r.status === 'SENT')
+
+  return (
+    <div className="pt-1 border-t border-[var(--border-subtle)]">
+      <div className="flex items-center justify-between mb-2 mt-3">
+        <div className="flex items-center gap-2">
+          <Bell size={15} className="text-[var(--accent)]" />
+          <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
+            Reminders{pendingReminders.length > 0 ? ` (${pendingReminders.length})` : ''}
+          </h3>
+        </div>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="flex items-center gap-1 text-[12px] text-[var(--accent)] hover:underline"
+        >
+          <Plus size={12} /> Add reminder
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="mb-3 p-3 rounded-lg bg-[var(--bg-base)] border border-[var(--border-subtle)]">
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label className="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">
+                Remind at *
+              </label>
+              <input
+                type="datetime-local"
+                value={remindAt}
+                onChange={(e) => setRemindAt(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-lg text-[13px] text-[var(--text-primary)] bg-[var(--bg-input)] border border-[var(--border-subtle)] outline-none focus:border-[var(--accent)]"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">
+                Notify *
+              </label>
+              <select
+                value={recipientId}
+                onChange={(e) => setRecipientId(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-lg text-[13px] text-[var(--text-primary)] bg-[var(--bg-input)] border border-[var(--border-subtle)] outline-none focus:border-[var(--accent)]"
+              >
+                <option value="">Select member...</option>
+                {members.map((m: any) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="mb-3">
+            <label className="block text-[11px] font-medium text-[var(--text-secondary)] mb-1">
+              Message (optional)
+            </label>
+            <input
+              type="text"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Custom reminder message..."
+              className="w-full px-2.5 py-1.5 rounded-lg text-[13px] text-[var(--text-primary)] bg-[var(--bg-input)] border border-[var(--border-subtle)] outline-none focus:border-[var(--accent)]"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setShowForm(false)}
+              className="px-3 py-1.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={!remindAt || !recipientId || createReminder.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white bg-[var(--accent)] hover:opacity-90 disabled:opacity-40"
+            >
+              {createReminder.isPending && <Loader2 size={11} className="animate-spin" />}
+              Add Reminder
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <p className="text-[12px] text-[var(--text-tertiary)] py-2">Loading...</p>
+      ) : pendingReminders.length === 0 && sentReminders.length === 0 ? (
+        <p className="text-[12px] text-[var(--text-tertiary)] py-2">No reminders set</p>
+      ) : (
+        <div className="space-y-1.5">
+          {pendingReminders.map((r) => {
+            const recipient = members.find((m: any) => m.id === r.recipientId)
+            return (
+              <div key={r.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-[var(--bg-base)] border border-[var(--border-subtle)]">
+                <Bell size={13} className="text-[var(--warning)] shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] text-[var(--text-primary)] truncate">
+                    {r.message || 'Reminder'}
+                  </p>
+                  <p className="text-[11px] text-[var(--text-tertiary)]">
+                    {formatReminderDate(r.remindAt)} · {recipient?.name || 'Unknown'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => deleteReminder.mutate({ id: r.id, taskId })}
+                  disabled={deleteReminder.isPending}
+                  className="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--danger)] hover:bg-[var(--bg-hover)]"
+                  title="Delete reminder"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            )
+          })}
+          {sentReminders.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-[var(--border-subtle)]">
+              <p className="text-[11px] text-[var(--text-tertiary)] mb-1">Sent</p>
+              {sentReminders.slice(0, 3).map((r) => {
+                const recipient = members.find((m: any) => m.id === r.recipientId)
+                return (
+                  <div key={r.id} className="flex items-center gap-2 py-1.5 text-[12px] text-[var(--text-tertiary)]">
+                    <Check size={11} className="text-[var(--success)]" />
+                    <span>{r.message || 'Reminder'} · {recipient?.name || 'Unknown'}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -479,6 +640,9 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
               <p className="text-sm text-[var(--text-tertiary)] py-1">No notes yet</p>
             )}
           </div>
+
+          {/* ─── Reminders ──────────────────────────────────────── */}
+          <TaskRemindersSection taskId={task.id} members={memberList} />
 
           {/* ─── Attachments (files / emails / comments) ───────── */}
           <div className="pt-1 border-t border-[var(--border-subtle)]">

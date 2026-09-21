@@ -30,6 +30,7 @@ import { productRoutes } from './routes/products'
 import { componentRoutes } from './routes/components'
 import { brandTransitionRoutes } from './routes/brandTransition'
 import { taskAttachmentRoutes } from './routes/taskAttachments'
+import { taskReminderRoutes } from './routes/taskReminders'
 import { techTransferStageRoutes } from './routes/techTransferStages'
 import { formulationDetailRoutes } from './routes/formulationDetail'
 import { formulationsGateRoutes, requireFormulationsUnlock } from './routes/formulationsGate'
@@ -204,6 +205,7 @@ api.use('/products', productRoutes)
 api.use('/components', componentRoutes)
 api.use('/brand-transition', brandTransitionRoutes)
 api.use('/tasks', taskAttachmentRoutes)
+api.use('/tasks', taskReminderRoutes)
 api.use('/tech-transfer-stages', techTransferStageRoutes)
 // The gate-unlock routes themselves live in the public allowlist above; a
 // session is required to even reach the unlock check for these two.
