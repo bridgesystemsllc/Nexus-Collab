@@ -282,10 +282,21 @@ export function DepartmentOverviewTab({
 }: DepartmentOverviewTabProps) {
   const { data, isLoading, isError } = useDepartmentOverview(departmentId || '')
 
+  // Sort by dueDate first (nulls last), then by priority for actor's items
+  const sortByDueDate = (a: any, b: any) => {
+    const aDate = a.dueDate ? new Date(a.dueDate).getTime() : Infinity
+    const bDate = b.dueDate ? new Date(b.dueDate).getTime() : Infinity
+    if (aDate !== bDate) return aDate - bDate
+    const aPri = PRIORITY_ORDER[a.priority] ?? 99
+    const bPri = PRIORITY_ORDER[b.priority] ?? 99
+    return aPri - bPri
+  }
+
   const urgentTasks = useMemo(() => {
     if (!data?.pendingTasks) return []
-    return data.pendingTasks
+    return [...data.pendingTasks]
       .filter((t: any) => t.priority === 'CRITICAL' || t.priority === 'HIGH')
+      .sort(sortByDueDate)
       .slice(0, 5)
   }, [data])
 
@@ -387,7 +398,7 @@ export function DepartmentOverviewTab({
         </div>
       )}
 
-      {/* Open Projects */}
+      {/* Open Projects - sorted by targetEndDate (due-date first) */}
       {data.openProjects && data.openProjects.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -405,9 +416,16 @@ export function DepartmentOverviewTab({
             )}
           </div>
           <div className="space-y-2">
-            {data.openProjects.slice(0, 5).map((project: any) => (
-              <ProjectRow key={project.id} project={project} />
-            ))}
+            {[...data.openProjects]
+              .sort((a: any, b: any) => {
+                const aDate = a.targetEndDate ? new Date(a.targetEndDate).getTime() : Infinity
+                const bDate = b.targetEndDate ? new Date(b.targetEndDate).getTime() : Infinity
+                return aDate - bDate
+              })
+              .slice(0, 5)
+              .map((project: any) => (
+                <ProjectRow key={project.id} project={project} />
+              ))}
           </div>
         </div>
       )}
