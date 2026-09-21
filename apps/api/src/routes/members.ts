@@ -206,34 +206,64 @@ memberRoutes.post('/invite', requirePermission('users:create'), async (req: Requ
     const inviter = (req as any).member
     if (!inviter) return res.status(401).json({ error: 'Unauthorized' })
 
+    // Check seat availability before creating invite
+    const [subscription, currentSeatCount] = await Promise.all([
+      prisma.billingSubscription.findUnique({ where: { orgId }, select: { seatsPurchased: true } }),
+      prisma.seatAssignment.count({ where: { orgId, releasedAt: null } }),
+    ])
+
+    const seatsPurchased = subscription?.seatsPurchased ?? 0
+    if (seatsPurchased > 0 && currentSeatCount >= seatsPurchased) {
+      return res.status(409).json({
+        error: 'No seats available',
+        message: `All ${seatsPurchased} seats are assigned. Add more seats in Billing settings to invite more members.`,
+      })
+    }
+
     const token = crypto.randomUUID()
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
 
-    const invite = await prisma.organizationInvite.create({
-      data: {
-        orgId,
-        invitedEmail: normaliseEmail(data.email),
-        role: data.role || 'member',
-        token,
-        status: 'pending',
-        expiresAt,
-        invitedBy: inviter.id,
-      },
+    // Use transaction to ensure invite + member + seat assignment are atomic
+    const result = await prisma.$transaction(async (tx) => {
+      const invite = await tx.organizationInvite.create({
+        data: {
+          orgId,
+          invitedEmail: normaliseEmail(data.email),
+          role: data.role || 'member',
+          token,
+          status: 'pending',
+          expiresAt,
+          invitedBy: inviter.id,
+        },
+      })
+
+      const member = await tx.member.create({
+        data: {
+          clerkUserId: `user_${crypto.randomUUID().slice(0, 8)}`,
+          orgId,
+          name: data.email.split('@')[0],
+          email: normaliseEmail(data.email),
+          role: data.role || 'member',
+          status: 'AVAILABLE',
+          departmentId: data.departmentId,
+        },
+      })
+
+      // Assign a seat to the new member if there's a subscription
+      if (subscription) {
+        await tx.seatAssignment.create({
+          data: {
+            orgId,
+            memberId: member.id,
+            assignedByMemberId: inviter.id,
+          },
+        })
+      }
+
+      return { invite, member }
     })
 
-    const member = await prisma.member.create({
-      data: {
-        clerkUserId: `user_${crypto.randomUUID().slice(0, 8)}`,
-        orgId,
-        name: data.email.split('@')[0],
-        email: normaliseEmail(data.email),
-        role: data.role || 'member',
-        status: 'AVAILABLE',
-        departmentId: data.departmentId,
-      },
-    })
-
-    res.status(201).json({ invite, member })
+    res.status(201).json(result)
   } catch (error: any) {
     if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors })
     if (error?.code === 'P2002') return res.status(409).json({ error: 'Email already in use' })

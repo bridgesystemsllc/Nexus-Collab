@@ -18,8 +18,11 @@ type Page =
   | 'people'
   | 'billing'
   | 'settings'
+  | 'organization'
   | 'custom-dept'
   | 'projects'
+  | 'tasks'
+  | 'follow-ups'
   | 'agent-settings'
   | 'product-catalog'
 

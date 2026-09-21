@@ -1,23 +1,104 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { prisma, io } from '../index'
+import { userScopedTasksListWhere } from '../lib/departmentVisibility'
+import { resolveActor, UnauthenticatedError } from '../services/projects/context'
+import type { Prisma } from '@prisma/client'
 
 export const taskRoutes: ReturnType<typeof Router> = Router()
+
+// ─── Constants for my-tasks filtering ───────────────────────
+const TASK_CLOSED = ['COMPLETE', 'CANCELLED'] as const
+const FOLLOW_UP_TAG = 'follow-up' as const
+
+function myTasksWhere(
+  actorId: string,
+  opts: { open: boolean; followUp: boolean },
+): Prisma.TaskWhereInput {
+  const where: Prisma.TaskWhereInput = {
+    deletedAt: null,
+    OR: [{ ownerId: actorId }, { createdById: actorId }],
+  }
+  if (opts.open) {
+    where.status = { notIn: [...TASK_CLOSED] }
+  }
+  if (opts.followUp) {
+    where.brandNames = { has: FOLLOW_UP_TAG }
+  } else {
+    where.NOT = { brandNames: { has: FOLLOW_UP_TAG } }
+  }
+  return where
+}
+
+// ─── My tasks (personal queue) ──────────────────────────────
+// GET /tasks/mine?open=true&followUp=false|true
+// Must be registered BEFORE /:id to avoid "mine" being captured as an id
+const myTasksQuerySchema = z.object({
+  open: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  followUp: z.enum(['true', 'false']).default('false').transform((v) => v === 'true'),
+  page: z.string().default('1').transform((v) => Math.max(1, parseInt(v, 10))),
+  limit: z.string().default('50').transform((v) => Math.min(100, Math.max(1, parseInt(v, 10)))),
+})
+
+taskRoutes.get('/mine', async (req: Request, res: Response) => {
+  try {
+    const actor = await resolveActor(prisma, req)
+    const parsed = myTasksQuerySchema.safeParse(req.query)
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors })
+    }
+    const { open, followUp, page, limit } = parsed.data
+    const skip = (page - 1) * limit
+    const where = myTasksWhere(actor.id, { open, followUp })
+
+    const [tasks, total] = await Promise.all([
+      prisma.task.findMany({
+        where,
+        include: {
+          owner: { select: { id: true, name: true, avatar: true } },
+          department: { select: { id: true, name: true, color: true } },
+          project: { select: { id: true, title: true } },
+        },
+        orderBy: [{ dueDate: { sort: 'asc', nulls: 'last' } }, { priority: 'asc' }],
+        skip,
+        take: limit,
+      }),
+      prisma.task.count({ where }),
+    ])
+
+    res.json({ tasks, total, page, limit })
+  } catch (error) {
+    if (error instanceof UnauthenticatedError) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
+    console.error('[tasks] GET /mine error:', error)
+    res.status(500).json({ error: 'Failed to fetch tasks' })
+  }
+})
 
 // ─── List tasks with filters ────────────────────────────────
 taskRoutes.get('/', async (req: Request, res: Response) => {
   try {
     const { status, priority, dept, brand, owner, project, search, page = '1', limit = '50' } = req.query
     const skip = (parseInt(page as string) - 1) * parseInt(limit as string)
+    const actor = (req as any).member as { id: string } | undefined
 
     const where: any = {}
     if (status) where.status = status
     if (priority) where.priority = priority
-    if (dept) where.departmentId = dept
     if (owner) where.ownerId = owner
     if (project) where.projectId = project
     if (brand) where.brandNames = { has: brand as string }
     if (search) where.title = { contains: search as string, mode: 'insensitive' }
+
+    // When dept filter is set and actor is authenticated, apply user-scope
+    // (ownerId=actor OR createdById=actor). This ensures Tasks & Follow-up
+    // dept list shows only the user's own tasks.
+    if (dept && actor) {
+      Object.assign(where, userScopedTasksListWhere(dept as string, actor.id))
+    } else if (dept) {
+      where.departmentId = dept
+    }
 
     const [tasks, total] = await Promise.all([
       prisma.task.findMany({
@@ -72,6 +153,7 @@ const createTaskSchema = z.object({
   status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'IN_REVIEW', 'BLOCKED', 'COMPLETE']).default('NOT_STARTED'),
   priority: z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']).default('MEDIUM'),
   effort: z.enum(['XS', 'S', 'M', 'L', 'XL']).optional(),
+  startDate: z.string().optional(),
   dueDate: z.string().optional(),
   projectId: z.string().optional(),
   departmentId: z.string().optional(),
@@ -83,11 +165,15 @@ const createTaskSchema = z.object({
 taskRoutes.post('/', async (req: Request, res: Response) => {
   try {
     const data = createTaskSchema.parse(req.body)
+    const actor = (req as any).member as { id: string } | undefined
     const task = await prisma.task.create({
       data: {
         ...data,
+        startDate: data.startDate ? new Date(data.startDate) : undefined,
         dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
         brandNames: data.brandNames || [],
+        // Set createdById to actor if missing — required for user-scope filtering
+        createdById: actor?.id ?? null,
       },
       include: { owner: { select: { id: true, name: true, avatar: true } } },
     })
@@ -104,6 +190,7 @@ taskRoutes.post('/', async (req: Request, res: Response) => {
 taskRoutes.patch('/:id', async (req: Request, res: Response) => {
   try {
     const updateData: any = { ...req.body }
+    if (updateData.startDate) updateData.startDate = new Date(updateData.startDate)
     if (updateData.dueDate) updateData.dueDate = new Date(updateData.dueDate)
     if (updateData.status === 'COMPLETE') updateData.completedAt = new Date()
 

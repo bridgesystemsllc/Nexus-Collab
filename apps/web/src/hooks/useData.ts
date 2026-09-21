@@ -11,12 +11,34 @@ export function useDepartment(id: string) {
   return useQuery({ queryKey: ['department', id], queryFn: () => api.get(`/departments/${id}`).then(r => r.data), enabled: !!id })
 }
 
+export interface LowStockSku {
+  id: string
+  sku: string
+  description: string | null
+  qtyOnHand: number
+  reorderPoint: number
+  lastUpdated: string | null
+}
+
+export interface AtRiskOpenOrder {
+  id: string
+  customerPoNumber: string | null
+  itemNumber: string | null
+  description: string | null
+  riskLevel: string
+  requiredDeliveryDate: string | null
+  qtyRemaining: number
+  lineStatus: string
+}
+
 export interface DepartmentOverviewData {
   departmentId: string
   pendingTasks: any[]
   assignedTasks: any[]
   openProjects: any[]
   openModuleItems: Record<string, any[]>
+  lowStockSkus: LowStockSku[]
+  atRiskOpenOrders: AtRiskOpenOrder[]
 }
 
 export function useDepartmentOverview(departmentId: string) {
@@ -32,6 +54,83 @@ export function useCreateDepartment() {
   return useMutation({
     mutationFn: (data: any) => api.post('/departments', data).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['departments'] }),
+  })
+}
+
+// ─── Module Items ────────────────────────────────────────────
+export interface ModuleItem {
+  id: string
+  moduleId: string
+  data: Record<string, unknown>
+  status?: string | null
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export function useModuleItems(departmentId: string, moduleId: string) {
+  return useQuery<ModuleItem[]>({
+    queryKey: ['module-items', departmentId, moduleId],
+    queryFn: () => api.get(`/departments/${departmentId}/modules/${moduleId}/items`).then(r => r.data),
+    enabled: !!departmentId && !!moduleId,
+  })
+}
+
+export function useCreateModuleItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ departmentId, moduleId, data, status, sortOrder }: {
+      departmentId: string
+      moduleId: string
+      data: Record<string, unknown>
+      status?: string
+      sortOrder?: number
+    }) => api.post(`/departments/${departmentId}/modules/${moduleId}/items`, { data, status, sortOrder }).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['module-items', vars.departmentId, vars.moduleId] })
+      qc.invalidateQueries({ queryKey: ['department', vars.departmentId] })
+    },
+  })
+}
+
+export function useUpdateModuleItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ departmentId, moduleId, itemId, data, status, sortOrder }: {
+      departmentId: string
+      moduleId: string
+      itemId: string
+      data?: Record<string, unknown>
+      status?: string
+      sortOrder?: number
+    }) => api.patch(`/departments/${departmentId}/modules/${moduleId}/items/${itemId}`, { data, status, sortOrder }).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['module-items', vars.departmentId, vars.moduleId] })
+      qc.invalidateQueries({ queryKey: ['department', vars.departmentId] })
+    },
+  })
+}
+
+export function useDeleteModuleItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ departmentId, moduleId, itemId }: {
+      departmentId: string
+      moduleId: string
+      itemId: string
+    }) => api.delete(`/departments/${departmentId}/modules/${moduleId}/items/${itemId}`).then(r => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['module-items', vars.departmentId, vars.moduleId] })
+      qc.invalidateQueries({ queryKey: ['department', vars.departmentId] })
+    },
+  })
+}
+
+// ─── Upload URL ──────────────────────────────────────────────
+export function useRequestUploadUrl() {
+  return useMutation({
+    mutationFn: (params: { name: string; size: number; contentType?: string }) =>
+      api.post('/uploads/request-url', params).then(r => r.data),
   })
 }
 
@@ -168,6 +267,22 @@ export function useSendProductionEmail() {
   })
 }
 
+// ─── Projects (simple list for dropdowns) ──────────────────
+export interface SimpleProject {
+  id: string
+  title: string
+  projectNumber: string | null
+  status: string
+}
+
+export function useSimpleProjectList() {
+  return useQuery<{ data: SimpleProject[] }>({
+    queryKey: ['projects', 'simple-list'],
+    queryFn: () => api.get('/projects?limit=100&status=ACTIVE,PROPOSED,APPROVED,DRAFT').then(r => r.data),
+    staleTime: 30_000,
+  })
+}
+
 // ─── Tasks ──────────────────────────────────────────────────
 export function useTasks(filters?: Record<string, string>) {
   const params = new URLSearchParams(filters || {}).toString()
@@ -215,6 +330,51 @@ export function useAddTaskNote() {
       qc.invalidateQueries({ queryKey: ['task', vars.id] })
       qc.invalidateQueries({ queryKey: ['tasks'] })
     },
+  })
+}
+
+// ─── My Tasks (personal queue) ──────────────────────────────
+export interface MyTasksParams {
+  open?: boolean
+  followUp?: boolean
+  page?: number
+  limit?: number
+}
+
+export interface MyTaskDTO {
+  id: string
+  title: string
+  description: string | null
+  status: string
+  priority: string
+  dueDate: string | null
+  brandNames: string[]
+  ownerId: string | null
+  createdById: string | null
+  department: { id: string; name: string; color: string } | null
+  project: { id: string; title: string } | null
+  owner: { id: string; name: string; avatar: string | null } | null
+}
+
+export interface MyTasksResponse {
+  tasks: MyTaskDTO[]
+  total: number
+  page: number
+  limit: number
+}
+
+export function useMyTasks(params: MyTasksParams = {}) {
+  const { open = true, followUp = false, page = 1, limit = 50 } = params
+  const queryParams = new URLSearchParams({
+    open: String(open),
+    followUp: String(followUp),
+    page: String(page),
+    limit: String(limit),
+  }).toString()
+
+  return useQuery<MyTasksResponse>({
+    queryKey: ['my-tasks', { open, followUp, page, limit }],
+    queryFn: () => api.get(`/tasks/mine?${queryParams}`).then((r) => r.data),
   })
 }
 
@@ -1023,6 +1183,57 @@ export function useDeleteAttachment() {
   })
 }
 
+// ─── Task Reminders ────────────────────────────────────────
+export interface TaskReminder {
+  id: string
+  taskId: string
+  remindAt: string
+  recipientId: string
+  message: string | null
+  status: 'PENDING' | 'SENT' | 'CANCELLED'
+  sentAt: string | null
+  createdById: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export function useTaskReminders(taskId: string) {
+  return useQuery<TaskReminder[]>({
+    queryKey: ['task-reminders', taskId],
+    queryFn: () => api.get(`/tasks/${taskId}/reminders`).then(r => r.data),
+    enabled: !!taskId,
+  })
+}
+
+export function useCreateTaskReminder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { taskId: string; remindAt: string; recipientId: string; message?: string }) => {
+      const { taskId, ...body } = data
+      return api.post(`/tasks/${taskId}/reminders`, body).then(r => r.data)
+    },
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['task-reminders', vars.taskId] }),
+  })
+}
+
+export function useUpdateTaskReminder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, taskId, ...data }: { id: string; taskId: string; remindAt?: string; recipientId?: string; message?: string; status?: 'PENDING' | 'SENT' | 'CANCELLED' }) =>
+      api.patch(`/tasks/reminders/${id}`, data).then(r => r.data),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['task-reminders', vars.taskId] }),
+  })
+}
+
+export function useDeleteTaskReminder() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, taskId }: { id: string; taskId: string }) =>
+      api.delete(`/tasks/reminders/${id}`).then(r => r.data),
+    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ['task-reminders', vars.taskId] }),
+  })
+}
+
 // ─── Tech Transfer Stages ──────────────────────────────────
 export function useTechTransferStages(transferId: string) {
   return useQuery({
@@ -1182,5 +1393,211 @@ export function useUploadGeodisInventory() {
       qc.invalidateQueries({ queryKey: ['inventory-import', 'geodis'] })
       qc.invalidateQueries({ queryKey: ['department'] })
     },
+  })
+}
+
+// ─── At-Risk Products ──────────────────────────────────────
+export interface AtRiskProductInventory {
+  sku: string
+  name: string
+  brand: string | null
+  status: string
+  available: number
+  coverageMonths: number | null
+}
+
+export interface AtRiskProductLink {
+  id: string
+  linkType: string
+  linkId: string
+  linkLabel: string | null
+  linkContext: string | null
+  createdAt: string
+  createdById: string | null
+}
+
+export interface AtRiskProductIssue {
+  id: string
+  issueType: string
+  title: string
+  description: string | null
+  severity: string
+  dueDate: string | null
+  etaDate: string | null
+  etaConfidence: string | null
+  ownerId: string | null
+  status: string
+  resolvedAt: string | null
+  resolvedById: string | null
+  resolutionNote: string | null
+  createdAt: string
+  createdById: string | null
+}
+
+export interface AtRiskProduct {
+  id: string
+  orgId: string
+  departmentId: string | null
+  inventoryItemId: string
+  addedById: string | null
+  addedReason: string | null
+  riskCategory: string | null
+  priority: string
+  status: string
+  resolvedAt: string | null
+  resolvedById: string | null
+  resolutionNote: string | null
+  createdAt: string
+  updatedAt: string
+  links: AtRiskProductLink[]
+  issues: AtRiskProductIssue[]
+  openIssueCount: number
+  linkCount: number
+  inventory: AtRiskProductInventory | null
+}
+
+export function useAtRiskProducts(filters?: { departmentId?: string; status?: string; priority?: string }) {
+  const params = new URLSearchParams()
+  if (filters?.departmentId) params.set('departmentId', filters.departmentId)
+  if (filters?.status) params.set('status', filters.status)
+  if (filters?.priority) params.set('priority', filters.priority)
+  const searchParams = params.toString()
+
+  return useQuery<{ items: AtRiskProduct[]; total: number }>({
+    queryKey: ['at-risk-products', filters],
+    queryFn: () => api.get(`/at-risk-products${searchParams ? `?${searchParams}` : ''}`).then(r => r.data),
+  })
+}
+
+export function useCreateAtRiskProduct() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: {
+      inventoryItemId: string
+      departmentId?: string
+      riskCategory?: string
+      priority?: string
+      addedReason?: string
+    }) => api.post('/at-risk-products', data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['at-risk-products'] }),
+  })
+}
+
+export function useResolveAtRiskProduct() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, resolutionNote }: { id: string; resolutionNote?: string }) =>
+      api.patch(`/at-risk-products/${id}/resolve`, { resolutionNote }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['at-risk-products'] }),
+  })
+}
+
+export function useAddAtRiskProductLink() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productId, ...data }: {
+      productId: string
+      linkType: string
+      linkId: string
+      linkLabel?: string
+      linkContext?: string
+    }) => api.post(`/at-risk-products/${productId}/links`, data).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['at-risk-products'] }),
+  })
+}
+
+export function useDeleteAtRiskProductLink() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productId, linkId }: { productId: string; linkId: string }) =>
+      api.delete(`/at-risk-products/${productId}/links/${linkId}`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['at-risk-products'] }),
+  })
+}
+
+export function useAtRiskProductIssues(productId: string) {
+  return useQuery<{ items: AtRiskProductIssue[] }>({
+    queryKey: ['at-risk-product-issues', productId],
+    queryFn: () => api.get(`/at-risk-products/${productId}/issues`).then(r => r.data),
+    enabled: !!productId,
+  })
+}
+
+export function useCreateAtRiskProductIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productId, ...data }: {
+      productId: string
+      issueType: string
+      title: string
+      description?: string
+      severity?: string
+      dueDate?: string
+      ownerId?: string
+    }) => api.post(`/at-risk-products/${productId}/issues`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['at-risk-products'] })
+      qc.invalidateQueries({ queryKey: ['at-risk-product-issues'] })
+    },
+  })
+}
+
+export function useUpdateAtRiskProductIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productId, issueId, ...data }: {
+      productId: string
+      issueId: string
+      title?: string
+      description?: string
+      severity?: string
+      dueDate?: string | null
+      etaDate?: string | null
+      etaConfidence?: string | null
+      ownerId?: string | null
+      status?: string
+    }) => api.patch(`/at-risk-products/${productId}/issues/${issueId}`, data).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['at-risk-products'] })
+      qc.invalidateQueries({ queryKey: ['at-risk-product-issues'] })
+    },
+  })
+}
+
+export function useResolveAtRiskProductIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ productId, issueId, resolutionNote }: {
+      productId: string
+      issueId: string
+      resolutionNote?: string
+    }) => api.patch(`/at-risk-products/${productId}/issues/${issueId}/resolve`, { resolutionNote }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['at-risk-products'] })
+      qc.invalidateQueries({ queryKey: ['at-risk-product-issues'] })
+    },
+  })
+}
+
+// ─── At-Risk Issue Attachments (Activity) ──────────────────
+export function useAtRiskIssueAttachments(issueId: string) {
+  return useQuery({
+    queryKey: ['at-risk-issue-attachments', issueId],
+    queryFn: () => api.get(`/tasks/${issueId}/attachments?attachableType=at_risk_issue`).then(r => r.data),
+    enabled: !!issueId,
+  })
+}
+
+export function useCreateAtRiskIssueComment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { issueId: string; body_plain: string; body_html?: string; createdBy?: string }) => {
+      const { issueId, ...body } = data
+      return api.post(`/tasks/${issueId}/attachments/comment`, {
+        ...body,
+        attachableType: 'at_risk_issue',
+      }).then(r => r.data)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['at-risk-issue-attachments'] }),
   })
 }

@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react'
-import { Boxes, Plus, Trash2, Pencil } from 'lucide-react'
+import { useState, useMemo, useRef } from 'react'
+import { Boxes, Plus, Trash2, Pencil, FileSpreadsheet, Download, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { useAppStore } from '@/stores/appStore'
 import { api } from '@/lib/api'
 import { ComponentDetail } from '@/components/rd/components/ComponentDetail'
@@ -8,6 +9,7 @@ import { AddToCowork } from '@/components/shared/AddToCowork'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
 import { PushToErpButton } from '@/components/shared/PushToErpButton'
 import { OverlayPortal } from '@/components/shared/OverlayPortal'
+import { Dialog } from '@/components/Dialog'
 import { brandLabel } from '@/components/ops/brandLabel'
 
 // Legacy feasibility statuses not present in FEASIBILITY_STATUS_COLORS.
@@ -53,6 +55,209 @@ function DeleteConfirmDialog({
   )
 }
 
+// ─── Import Dialog ────────────────────────────────────────
+function ImportDialog({
+  open,
+  onClose,
+  moduleId,
+  onSuccess,
+}: {
+  open: boolean
+  onClose: () => void
+  moduleId: string | null
+  onSuccess: () => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
+  const [error, setError] = useState('')
+  const [filename, setFilename] = useState('')
+  const [preview, setPreview] = useState<any[]>([])
+  const [results, setResults] = useState<{ created: number; updated: number; errors: string[] } | null>(null)
+  const [parsedRows, setParsedRows] = useState<any[]>([])
+
+  const reset = () => {
+    setPreview([])
+    setError('')
+    setFilename('')
+    setResults(null)
+    setParsedRows([])
+  }
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) e.target.value = ''
+    if (!file) return
+    reset()
+    setFilename(file.name)
+    try {
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(buf, { type: 'array' })
+      const sheet = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as any[]
+      if (rows.length === 0) {
+        setError('No data rows found in the file.')
+        return
+      }
+      setParsedRows(rows)
+      setPreview(rows.slice(0, 5))
+    } catch (err: any) {
+      setError(err?.message || 'Failed to read file')
+    }
+  }
+
+  const handleImport = async () => {
+    if (parsedRows.length === 0 || !moduleId) return
+    setImporting(true)
+    setError('')
+    try {
+      const { data } = await api.post('/ops/components/import', { moduleId, rows: parsedRows })
+      setResults(data)
+      onSuccess()
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Import failed')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const handleClose = () => {
+    reset()
+    onClose()
+  }
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await api.get('/ops/components/import-template', { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', 'Components_Import_Template.xlsx')
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err: any) {
+      setError(err?.message || 'Failed to download template')
+    }
+  }
+
+  return (
+    <Dialog open={open} onClose={handleClose} title="Import Components" subtitle={filename || 'CSV or Excel'} wide>
+      <div className="space-y-4">
+        {error && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-[var(--danger-light)] border border-[var(--danger)]">
+            <AlertTriangle size={15} className="text-[var(--danger)] mt-0.5 flex-shrink-0" />
+            <span className="text-sm text-[var(--danger)]">{error}</span>
+          </div>
+        )}
+
+        {results ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 size={20} className="text-[var(--success)]" />
+              <span className="text-sm font-medium text-[var(--text-primary)]">Import Complete</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-[var(--bg-surface)] rounded-lg p-3 text-center">
+                <p className="text-2xl font-semibold text-[var(--success)]">{results.created}</p>
+                <p className="text-xs text-[var(--text-tertiary)]">Created</p>
+              </div>
+              <div className="bg-[var(--bg-surface)] rounded-lg p-3 text-center">
+                <p className="text-2xl font-semibold text-[var(--info)]">{results.updated}</p>
+                <p className="text-xs text-[var(--text-tertiary)]">Updated</p>
+              </div>
+            </div>
+            {results.errors.length > 0 && (
+              <div className="text-xs text-[var(--danger)]">
+                <p className="font-medium mb-1">Errors ({results.errors.length}):</p>
+                {results.errors.slice(0, 5).map((e, i) => (
+                  <p key={i}>{e}</p>
+                ))}
+                {results.errors.length > 5 && <p>...and {results.errors.length - 5} more</p>}
+              </div>
+            )}
+          </div>
+        ) : preview.length > 0 ? (
+          <div className="space-y-3">
+            <p className="text-sm text-[var(--text-secondary)]">
+              Preview of first {preview.length} rows.
+            </p>
+            <div className="overflow-x-auto rounded-lg border border-[var(--border-subtle)]">
+              <table className="nexus-table text-xs">
+                <thead>
+                  <tr>
+                    {Object.keys(preview[0]).map((k) => (
+                      <th key={k}>{k}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.map((row, i) => (
+                    <tr key={i}>
+                      {Object.values(row).map((v, j) => (
+                        <td key={j}>{String(v)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <p className="text-sm text-[var(--text-secondary)] mb-4">
+              Upload a CSV or Excel file with your component data, or download the template to get started.
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <button
+                onClick={handleDownloadTemplate}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+              >
+                <Download size={15} />
+                Download Template
+              </button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,.xlsx,.xls"
+                className="hidden"
+                onChange={handleFile}
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+              >
+                <FileSpreadsheet size={15} />
+                Choose File
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border-subtle)]">
+          <button
+            onClick={handleClose}
+            disabled={importing}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border border-[var(--border-default)] transition-all disabled:opacity-50"
+          >
+            {results ? 'Done' : 'Cancel'}
+          </button>
+          {preview.length > 0 && !results && (
+            <button
+              onClick={handleImport}
+              disabled={importing || !moduleId}
+              className="flex items-center gap-1.5 btn-primary px-5 py-2 rounded-lg text-sm disabled:opacity-50"
+            >
+              {importing ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={15} />}
+              {importing ? 'Importing…' : 'Import All Rows'}
+            </button>
+          )}
+        </div>
+      </div>
+    </Dialog>
+  )
+}
+
 // ─── Components Tab ───────────────────────────────────────
 export function ComponentsTab({
   items,
@@ -70,6 +275,7 @@ export function ComponentsTab({
   const [view, setView] = useState<ViewMode>('table')
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; moduleId: string; name: string } | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [showImport, setShowImport] = useState(false)
 
   const components = useMemo(() => {
     return items.map((item: any) => {
@@ -169,6 +375,34 @@ export function ComponentsTab({
         <ViewToggle value={view} onChange={setView} />
         <div className="flex items-center gap-2">
           <PushToErpButton feedKey="components" label="Components" />
+          <button
+            onClick={async () => {
+              try {
+                const response = await api.get('/ops/components/import-template', { responseType: 'blob' })
+                const url = window.URL.createObjectURL(new Blob([response.data]))
+                const link = document.createElement('a')
+                link.href = url
+                link.setAttribute('download', 'Components_Import_Template.xlsx')
+                document.body.appendChild(link)
+                link.click()
+                link.remove()
+                window.URL.revokeObjectURL(url)
+              } catch (err) {
+                console.error('Failed to download template:', err)
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 text-[13px] rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            <Download size={14} />
+            Template
+          </button>
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-[13px] rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            <FileSpreadsheet size={14} />
+            Import
+          </button>
           <button onClick={() => openComponentForm('create')} className="flex items-center gap-1.5 btn-primary px-4 py-2.5 rounded-full text-[13px]">
             <Plus size={15} /> New Component
           </button>
@@ -179,6 +413,36 @@ export function ComponentsTab({
         <div className="text-center py-12">
           <Boxes size={40} className="mx-auto text-[var(--text-tertiary)] mb-3 opacity-50" />
           <p className="text-[14px] text-[var(--text-tertiary)] mb-4">No components yet</p>
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <button
+              onClick={async () => {
+                try {
+                  const response = await api.get('/ops/components/import-template', { responseType: 'blob' })
+                  const url = window.URL.createObjectURL(new Blob([response.data]))
+                  const link = document.createElement('a')
+                  link.href = url
+                  link.setAttribute('download', 'Components_Import_Template.xlsx')
+                  document.body.appendChild(link)
+                  link.click()
+                  link.remove()
+                  window.URL.revokeObjectURL(url)
+                } catch (err) {
+                  console.error('Failed to download template:', err)
+                }
+              }}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[14px] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+            >
+              <Download size={15} />
+              Download Template
+            </button>
+            <button
+              onClick={() => setShowImport(true)}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[14px] border border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+            >
+              <FileSpreadsheet size={15} />
+              Import
+            </button>
+          </div>
           <button onClick={() => openComponentForm('create')} className="btn-primary px-5 py-2.5 rounded-lg text-[14px]">Add Your First Component</button>
         </div>
       ) : view === 'table' ? (
@@ -340,6 +604,13 @@ export function ComponentsTab({
           onConfirm={handleDelete}
         />
       )}
+
+      <ImportDialog
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        moduleId={moduleId}
+        onSuccess={onRefresh}
+      />
     </div>
   )
 }

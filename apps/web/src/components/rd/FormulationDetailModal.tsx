@@ -1,5 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
+import { StatusFormCard, type StatusFormCardProps } from '@/components/shared/StatusFormCard'
+import { SendEmailButton } from '@/components/shared/SendEmailButton'
 import {
   X,
   Edit3,
@@ -34,6 +36,7 @@ interface FormulationDetailModalProps {
   onClose: () => void
   onEdit: () => void
   onDelete: () => void
+  onUpdate?: (updates: any) => Promise<void> | void
   briefItems?: any[]
 }
 
@@ -85,6 +88,10 @@ const FORMULATION_STATUS_COLORS: Record<string, { bg: string; text: string }> = 
   Approved: { bg: 'var(--success-light)', text: '#10B981' },
   Rejected: { bg: 'var(--danger-light)', text: '#EF4444' },
   Archived: { bg: 'var(--bg-hover)', text: '#6B7280' },
+  'Formula submitted': { bg: 'var(--info-light)', text: '#3B82F6' },
+  'Formula waiting for R&D approval': { bg: 'var(--warning-light)', text: '#D97706' },
+  'R&D revisions submitted': { bg: 'var(--accent-light)', text: 'var(--accent)' },
+  'Testing': { bg: 'var(--success-light)', text: '#10B981' },
 }
 
 const STABILITY_COLORS: Record<string, { bg: string; text: string }> = {
@@ -146,6 +153,7 @@ export function FormulationDetailModal({
   onClose,
   onEdit,
   onDelete,
+  onUpdate,
   briefItems,
 }: FormulationDetailModalProps) {
   const [expandedChange, setExpandedChange] = useState<number | null>(null)
@@ -159,15 +167,76 @@ export function FormulationDetailModal({
   const [changeRationale, setChangeRationale] = useState('')
   const [versionBump, setVersionBump] = useState<'patch' | 'minor'>('patch')
 
+  // Status form state
+  const [statusFormSaving, setStatusFormSaving] = useState(false)
+  const [statusFormError, setStatusFormError] = useState<string | null>(null)
+  const [statusFormDraft, setStatusFormDraft] = useState<{
+    lastUpdated: string | null
+    needsRevisions: boolean
+    needsRevisionsNotes: string
+    revisionsAssignees: { userId: string; userName: string }[]
+    approvalsAssignees: { userId: string; userName: string }[]
+    updatesAssignees: { userId: string; userName: string }[]
+    nextAction: string
+    finalApprovalVersion: string
+  } | null>(null)
+
   // SDS form state
   const [sdsIngredient, setSdsIngredient] = useState('')
   const [sdsSupplier, setSdsSupplier] = useState('')
   const [sdsVersion, setSdsVersion] = useState('')
   const [sdsExpiry, setSdsExpiry] = useState('')
 
-  if (!open || !formulation) return null
+  // Derive formulation data (f) before hooks that depend on it
+  const f = (formulation ?? {}) as FormulationFormData & { id?: string }
 
-  const f = formulation as FormulationFormData & { id?: string }
+  // Status form data from formulation (must be before render guard)
+  const currentStatusForm = useMemo(() => {
+    const sfd = f.statusFormData
+    return {
+      lastUpdated: sfd?.lastUpdated ?? null,
+      needsRevisions: sfd?.needsRevisions ?? false,
+      needsRevisionsNotes: sfd?.needsRevisionsNotes ?? '',
+      revisionsAssignees: sfd?.revisionsAssignees ?? [],
+      approvalsAssignees: sfd?.approvalsAssignees ?? [],
+      updatesAssignees: sfd?.updatesAssignees ?? [],
+      nextAction: sfd?.nextAction ?? '',
+      finalApprovalVersion: sfd?.finalApprovalVersion ?? '',
+    }
+  }, [f.statusFormData])
+
+  const effectiveStatusForm = statusFormDraft ?? currentStatusForm
+
+  const handleStatusFormChange = useCallback((patch: Partial<typeof currentStatusForm>) => {
+    setStatusFormDraft((prev) => ({
+      ...(prev ?? currentStatusForm),
+      ...patch,
+    }))
+    setStatusFormError(null)
+  }, [currentStatusForm])
+
+  const handleStatusFormSave = useCallback(async () => {
+    if (!onUpdate || !statusFormDraft) return
+    setStatusFormSaving(true)
+    setStatusFormError(null)
+    try {
+      await onUpdate({
+        statusFormData: {
+          ...statusFormDraft,
+          lastUpdated: new Date().toISOString(),
+        },
+      })
+      setStatusFormDraft(null)
+    } catch (err: any) {
+      setStatusFormError(err?.message || 'Failed to save status form')
+    } finally {
+      setStatusFormSaving(false)
+    }
+  }, [onUpdate, statusFormDraft])
+
+  // ── Render guard ───────────────────────────────────────
+
+  if (!open || !formulation) return null
 
   // Find critical issues
   const criticalIssue = f.issues?.find(
@@ -328,6 +397,36 @@ export function FormulationDetailModal({
               <p className="text-[11px] text-[var(--text-tertiary)] uppercase tracking-wider mb-1">Formula Code</p>
               <p className="text-[14px] text-[var(--text-primary)] font-medium">{f.formulaCode || '—'}</p>
             </div>
+          </div>
+
+          {/* ── Status Form Card ────────────────────────────── */}
+          <StatusFormCard
+            lastUpdated={effectiveStatusForm.lastUpdated}
+            needsRevisions={effectiveStatusForm.needsRevisions}
+            needsRevisionsNotes={effectiveStatusForm.needsRevisionsNotes}
+            revisionsAssignees={effectiveStatusForm.revisionsAssignees}
+            approvalsAssignees={effectiveStatusForm.approvalsAssignees}
+            updatesAssignees={effectiveStatusForm.updatesAssignees}
+            nextAction={effectiveStatusForm.nextAction}
+            finalApprovalVersion={effectiveStatusForm.finalApprovalVersion}
+            onChange={handleStatusFormChange}
+            onSave={handleStatusFormSave}
+            saving={statusFormSaving}
+            error={statusFormError}
+            labels={{
+              needsRevisions: 'Needs R&D revisions?',
+              revisions: 'Revisions assigned to',
+              approvals: 'Approvals assigned to',
+              updates: 'Updates assigned to',
+            }}
+          />
+
+          {/* ── Email Actions ───────────────────────────────── */}
+          <div className="flex items-center gap-3">
+            <SendEmailButton
+              itemId={f.id}
+              defaultSubject={`Formulation Update: ${f.product || 'Untitled'}`}
+            />
           </div>
 
           {/* ── Formula Details ────────────────────────────── */}

@@ -16,6 +16,9 @@ import {
   type OorLineStatus,
   type OorMaterialClass,
   type OorRiskLevel,
+  computeRiskScore,
+  toOorRiskLevel,
+  type RiskNodeInput,
 } from '@nexus/shared'
 
 export interface DeriveNode {
@@ -91,27 +94,31 @@ export function deriveLineStatus(input: DeriveInput): OorLineStatus {
  * Risk answers "will this land on time", which is a different question from
  * "what is blocking it". It drives the row accent only — it never filters
  * anything out of view.
+ *
+ * Delegates to the shared computeRiskScore for the actual logic, then maps
+ * the result to the OorRiskLevel enum for persistence.
  */
 export function deriveRiskLevel(input: DeriveInput, today: Date): OorRiskLevel {
-  if (input.manualStatus && OOR_CLOSED_STATUSES.includes(input.manualStatus)) return 'on_track'
+  const riskNodes: RiskNodeInput[] = input.nodes.map((n) => ({
+    level: n.level,
+    materialClass: n.materialClass,
+    componentType: n.componentType,
+    qtyNeeded: n.qtyNeeded,
+    qtyOnHand: n.qtyOnHand,
+    customerProvided: n.customerProvided,
+    nodeStatus: n.nodeStatus,
+    etaDate: n.etaDate,
+  }))
 
-  const blockers = input.nodes.filter(isShort)
+  const result = computeRiskScore({
+    qtyRemaining: input.qtyRemaining,
+    manualStatus: input.manualStatus,
+    requiredDeliveryDate: input.requiredDeliveryDate,
+    nodes: riskNodes,
+    today,
+  })
 
-  // An unknown ETA is worse than a late one: a late date can be planned around,
-  // an absent one cannot.
-  if (blockers.some((b) => b.etaDate === null)) return 'critical'
-
-  const required = input.requiredDeliveryDate
-  if (!required) return blockers.length > 0 ? 'at_risk' : 'on_track'
-
-  if (blockers.some((b) => b.etaDate !== null && b.etaDate.getTime() > required.getTime())) {
-    return 'critical'
-  }
-
-  const daysRemaining = Math.floor((required.getTime() - today.getTime()) / MS_PER_DAY)
-  if (daysRemaining < 0) return 'critical'
-  if (daysRemaining <= AT_RISK_WINDOW_DAYS) return 'at_risk'
-  return 'on_track'
+  return toOorRiskLevel(result.level)
 }
 
 /** A line stays in the open worklist while it has quantity left and no closing status. */

@@ -41,6 +41,7 @@ export interface OorLineRow {
   isOpen: boolean
   rawRow: Record<string, unknown>
   _count: { nodes: number; comments: number; notes: number; meetingUpdates: number }
+  latestActivity: { text: string; at: string; source: 'comment' | 'note' | 'meeting' } | null
 }
 
 export interface OorSummary {

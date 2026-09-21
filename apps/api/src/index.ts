@@ -30,6 +30,7 @@ import { productRoutes } from './routes/products'
 import { componentRoutes } from './routes/components'
 import { brandTransitionRoutes } from './routes/brandTransition'
 import { taskAttachmentRoutes } from './routes/taskAttachments'
+import { taskReminderRoutes } from './routes/taskReminders'
 import { techTransferStageRoutes } from './routes/techTransferStages'
 import { formulationDetailRoutes } from './routes/formulationDetail'
 import { formulationsGateRoutes, requireFormulationsUnlock } from './routes/formulationsGate'
@@ -38,6 +39,9 @@ import { uploadRoutes } from './routes/uploads'
 import { inventoryImportRoutes } from './routes/inventoryImport'
 import { oorRoutes } from './routes/oor'
 import { partNumberRoutes } from './routes/partNumbers'
+import { atRiskProductRoutes } from './routes/atRiskProducts'
+import { bomImportRoutes } from './routes/bomImport'
+import { componentsImportRoutes } from './routes/componentsImport'
 import { projectRoutes } from './routes/projects'
 import { projectTaskRoutes } from './routes/projectTasks'
 import { projectTimelineRoutes } from './routes/projectTimeline'
@@ -51,6 +55,7 @@ import { userRoutes } from './routes/users'
 import { auditRoutes } from './routes/audit'
 import { systemRoutes } from './routes/system'
 import { billingRoutes } from './routes/billing'
+import { organizationRoutes } from './routes/organization'
 import { meRoutes } from './routes/me'
 import { jobRoutes } from './routes/jobs'
 import { emailRoutes } from './routes/emails'
@@ -203,6 +208,7 @@ api.use('/products', productRoutes)
 api.use('/components', componentRoutes)
 api.use('/brand-transition', brandTransitionRoutes)
 api.use('/tasks', taskAttachmentRoutes)
+api.use('/tasks', taskReminderRoutes)
 api.use('/tech-transfer-stages', techTransferStageRoutes)
 // The gate-unlock routes themselves live in the public allowlist above; a
 // session is required to even reach the unlock check for these two.
@@ -213,6 +219,9 @@ api.use('/uploads', uploadRoutes)
 api.use('/inventory-import', inventoryImportRoutes)
 api.use('/operations/oor', oorRoutes)
 api.use('/ops/part-numbers', partNumberRoutes)
+api.use('/ops/components', componentsImportRoutes)
+api.use('/at-risk-products', atRiskProductRoutes)
+api.use('/bom/import', bomImportRoutes)
 // Projects & Initiatives. The task router mounts on the same base so its
 // /tasks/* paths sit alongside /projects/:id/*; it is registered first because
 // its specific paths (/tasks/my, /tasks/bulk) must win over /:id.
@@ -229,6 +238,7 @@ api.use('/users', userRoutes)
 api.use('/me', meRoutes)
 api.use('/audit', auditRoutes)
 api.use('/billing', billingRoutes)
+api.use('/organization', organizationRoutes)
 api.use('/system', systemRoutes)
 // Turns a getActingOrgId() throw (no session-derived org) into the module's
 // 401 envelope instead of Express's default 500. Must be mounted immediately

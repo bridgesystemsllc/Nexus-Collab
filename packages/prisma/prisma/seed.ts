@@ -27,9 +27,10 @@ async function main() {
   // Vendor Mgmt is archived — its responsibilities now live under CM Productivity (R&D + Finance). Data preserved.
   const vm = await prisma.department.create({ data: { name: 'Vendor Mgmt', description: 'Vendor relationships, MOQ, PO management', icon: '🤝', color: '#E8948A', type: 'CUSTOM', archived: true, orgId: org.id } })
   const fin = await prisma.department.create({ data: { name: 'Finance', description: 'COGS, cost analysis, component & MOQ costing', icon: '📊', color: '#00C7FF', type: 'BUILTIN_FINANCE', orgId: org.id } })
-  // Sales + Marketing are archived stubs (no modules surfaced) — kept for data/members but hidden from nav.
+  // Sales is archived stub — kept for data/members but hidden from nav.
   const sales = await prisma.department.create({ data: { name: 'Sales', description: 'Customer demand, account signals, revenue follow-up', icon: '📈', color: '#32D74B', type: 'CUSTOM', archived: true, orgId: org.id } })
-  const marketing = await prisma.department.create({ data: { name: 'Marketing', description: 'Launch assets, retail stories, campaign readiness', icon: '📣', color: '#BF5AF2', type: 'CUSTOM', archived: true, orgId: org.id } })
+  // Marketing is active with Artwork module for artwork tracking.
+  const marketing = await prisma.department.create({ data: { name: 'Marketing', description: 'Launch assets, retail stories, campaign readiness', icon: '📣', color: '#BF5AF2', type: 'CUSTOM', archived: false, orgId: org.id } })
   console.log('✅ Departments: 7')
 
   // ─── Modules
@@ -39,6 +40,8 @@ async function main() {
   const frmMod = await prisma.departmentModule.create({ data: { name: 'Formulations', type: 'FORMULATIONS', departmentId: rd.id, sortOrder: 3 } })
   const npdMod = await prisma.departmentModule.create({ data: { name: 'NPD Pipeline', type: 'NPD_PIPELINE', departmentId: rd.id, sortOrder: 4 } })
   const artworkMod = await prisma.departmentModule.create({ data: { name: 'Artwork', type: 'ARTWORK', departmentId: rd.id, sortOrder: 5 } })
+  // Marketing Artwork module for artwork tracking
+  const mktArtworkMod = await prisma.departmentModule.create({ data: { name: 'Artwork', type: 'ARTWORK', departmentId: marketing.id, sortOrder: 0 } })
   const skuMod = await prisma.departmentModule.create({ data: { name: 'SKU Pipeline', type: 'SKU_PIPELINE', departmentId: ops.id, sortOrder: 0 } })
   const invMod = await prisma.departmentModule.create({ data: { name: 'Inventory Health', type: 'INVENTORY_HEALTH', departmentId: ops.id, sortOrder: 1 } })
   const prodMod = await prisma.departmentModule.create({ data: { name: 'Production Tracking', type: 'PRODUCTION_TRACKING', departmentId: ops.id, sortOrder: 2 } })
@@ -46,7 +49,7 @@ async function main() {
   const componentsMod = await prisma.departmentModule.create({ data: { name: 'Components', type: 'COMPONENTS', departmentId: ops.id, sortOrder: 4 } })
   const bomMod = await prisma.departmentModule.create({ data: { name: 'Bill of Materials', type: 'BILL_OF_MATERIALS', departmentId: ops.id, sortOrder: 5 } })
   const openOrdersMod = await prisma.departmentModule.create({ data: { name: 'Open Orders', type: 'OPEN_ORDERS', departmentId: ops.id, sortOrder: 6 } })
-  console.log('✅ Modules: 13')
+  console.log('✅ Modules: 14')
 
   // ─── Members
   const m = await Promise.all([

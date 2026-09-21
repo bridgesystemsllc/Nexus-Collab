@@ -270,6 +270,48 @@ formulationDetailRoutes.post('/:formulationId/attachments/file', async (req: Req
   }
 })
 
+// ─── Create email attachment ───────────────────────────────
+const emailPayloadSchema = z.object({
+  thread_id: z.string().optional(),
+  external_id: z.string().optional(),
+  subject: z.string().min(1),
+  sender_name: z.string().optional(),
+  sender_email: z.string().optional(),
+  received_at: z.string().optional(),
+  snippet: z.string().optional(),
+  message_count: z.number().optional().default(1),
+  source: z.string().optional().default('forward'),
+  forward_content: z.string().optional(),
+  web_link: z
+    .string()
+    .refine((u) => /^https?:\/\//i.test(u), 'web_link must be an http(s) URL')
+    .optional(),
+})
+
+formulationDetailRoutes.post('/:formulationId/attachments/email', async (req: Request, res: Response) => {
+  try {
+    const { formulationId } = req.params
+    const { module, createdBy, ...payloadData } = req.body
+    const payload = emailPayloadSchema.parse(payloadData)
+
+    const attachment = await prisma.attachment.create({
+      data: {
+        attachableType: 'formulation',
+        attachableId: formulationId,
+        module: module || 'formulation',
+        type: 'email',
+        payload: payload as any,
+        createdBy,
+      },
+    })
+    res.status(201).json(attachment)
+  } catch (error: any) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors })
+    console.error('[formulation-detail] POST email attachment error:', error)
+    res.status(500).json({ error: 'Failed to create email attachment' })
+  }
+})
+
 // ─── Create comment attachment ─────────────────────────────
 const commentPayloadSchema = z.object({
   body_html: z.string().optional(),

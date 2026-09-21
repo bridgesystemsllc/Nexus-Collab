@@ -9,6 +9,7 @@ import type { OorLineStatus } from '@nexus/shared'
 import type { ListLinesQuery } from '../../routes/oor.schema'
 import { buildLineWhere, buildLineOrderBy } from '../../routes/oor.schema'
 import { deriveLineStatus, deriveRiskLevel, isLineOpen, type DeriveNode } from './deriveStatus'
+import { firstLine } from './activityFeed'
 
 export interface LineSummary {
   openLines: number
@@ -16,6 +17,12 @@ export interface LineSummary {
   linesShort: number
   critical: number
   awaitingCustomerApproval: number
+}
+
+export interface LatestActivity {
+  text: string
+  at: string
+  source: 'comment' | 'note' | 'meeting'
 }
 
 export interface ListLinesResult {
@@ -51,6 +58,87 @@ async function summarise(
   }
 }
 
+async function resolveLatestActivity(
+  prisma: PrismaClient,
+  lineIds: string[],
+): Promise<Map<string, LatestActivity>> {
+  const [comments, notes, meetings] = await Promise.all([
+    prisma.oorComment.findMany({
+      where: { oorLineId: { in: lineIds }, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: { oorLineId: true, body: true, createdAt: true },
+    }),
+    prisma.oorNote.findMany({
+      where: { oorLineId: { in: lineIds }, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: { oorLineId: true, title: true, body: true, createdAt: true },
+    }),
+    prisma.oorMeetingUpdate.findMany({
+      where: { oorLineId: { in: lineIds }, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      select: { oorLineId: true, decision: true, nextAction: true, meetingTitle: true, createdAt: true },
+    }),
+  ])
+
+  type Candidate = { lineId: string; createdAt: Date; text: string; source: 'comment' | 'note' | 'meeting'; id: string }
+  const candidates: Candidate[] = []
+
+  for (const c of comments) {
+    candidates.push({
+      lineId: c.oorLineId,
+      createdAt: c.createdAt,
+      text: firstLine(c.body),
+      source: 'comment',
+      id: `comment-${c.createdAt.getTime()}`,
+    })
+  }
+
+  for (const n of notes) {
+    const title = n.title.trim()
+    const text = title || firstLine(n.body)
+    candidates.push({
+      lineId: n.oorLineId,
+      createdAt: n.createdAt,
+      text,
+      source: 'note',
+      id: `note-${n.createdAt.getTime()}`,
+    })
+  }
+
+  for (const m of meetings) {
+    const text = firstLine(m.decision ?? m.nextAction ?? m.meetingTitle ?? 'Meeting update')
+    candidates.push({
+      lineId: m.oorLineId,
+      createdAt: m.createdAt,
+      text,
+      source: 'meeting',
+      id: `meeting-${m.createdAt.getTime()}`,
+    })
+  }
+
+  const result = new Map<string, LatestActivity>()
+  for (const lineId of lineIds) {
+    const forLine = candidates.filter((c) => c.lineId === lineId)
+    if (forLine.length === 0) continue
+
+    forLine.sort((a, b) => {
+      const delta = b.createdAt.getTime() - a.createdAt.getTime()
+      if (delta !== 0) return delta
+      if (a.source !== b.source) return a.source.localeCompare(b.source)
+      return a.id.localeCompare(b.id)
+    })
+
+    const winner = forLine[0]!
+    result.set(lineId, {
+      text: winner.text,
+      at: winner.createdAt.toISOString(),
+      source: winner.source,
+    })
+  }
+
+  return result
+}
+
 export async function listLines(
   prisma: PrismaClient,
   orgId: string,
@@ -73,7 +161,17 @@ export async function listLines(
     summarise(prisma, where),
   ])
 
-  return { rows, total, page: query.page, pageSize: query.pageSize, summary }
+  const lineIds = rows.map((r) => r.id)
+  const latestActivityMap = lineIds.length > 0
+    ? await resolveLatestActivity(prisma, lineIds)
+    : new Map<string, LatestActivity>()
+
+  const rowsWithActivity = rows.map((r) => ({
+    ...r,
+    latestActivity: latestActivityMap.get(r.id) ?? null,
+  }))
+
+  return { rows: rowsWithActivity, total, page: query.page, pageSize: query.pageSize, summary }
 }
 
 export async function getLine(prisma: PrismaClient, orgId: string, id: string) {

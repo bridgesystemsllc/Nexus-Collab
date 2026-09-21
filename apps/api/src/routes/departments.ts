@@ -10,6 +10,10 @@ import {
 import { requirePermission, sendError, type RbacRequest } from '../middleware/requirePermission'
 import { can } from '../services/rbac/resolve'
 import { getActingOrgId } from '../middleware/billingContext'
+import {
+  userScopedTasksWhere,
+  userScopedProjectsWhere,
+} from '../lib/departmentVisibility'
 
 export const departmentRoutes: ReturnType<typeof Router> = Router()
 
@@ -175,6 +179,13 @@ const PROJECT_CLOSED_STATUSES = ['COMPLETED', 'CANCELLED', 'ARCHIVED'] as const
 departmentRoutes.get('/:departmentId/overview', async (req: Request, res: Response) => {
   try {
     const { departmentId } = req.params
+    const actor = (req as any).member as
+      | { id: string; orgId: string }
+      | undefined
+
+    if (!actor) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
 
     const dept = await prisma.department.findUnique({
       where: { id: departmentId },
@@ -187,42 +198,42 @@ departmentRoutes.get('/:departmentId/overview', async (req: Request, res: Respon
       return res.status(404).json({ error: 'Department not found' })
     }
 
-    // pendingTasks: dept tasks not COMPLETE/CANCELLED (cap 100)
+    // pendingTasks: user-scoped (ownerId=actor OR createdById=actor), not closed
+    // Sorted by dueDate first, then priority
     const pendingTasks = await prisma.task.findMany({
       where: {
-        departmentId,
+        ...userScopedTasksWhere(departmentId, actor.id),
         status: { notIn: [...TASK_CLOSED_STATUSES] },
       },
       include: {
         owner: { select: { id: true, name: true, avatar: true } },
         project: { select: { id: true, title: true } },
       },
-      orderBy: [{ priority: 'asc' }, { dueDate: 'asc' }],
+      orderBy: [{ dueDate: 'asc' }, { priority: 'asc' }],
       take: 100,
     })
 
-    // assignedTasks: same filter + has an ownerId
+    // assignedTasks: user-scoped tasks where actor IS the owner
+    // Sorted by dueDate first
     const assignedTasks = await prisma.task.findMany({
       where: {
-        departmentId,
+        ...userScopedTasksWhere(departmentId, actor.id),
         status: { notIn: [...TASK_CLOSED_STATUSES] },
-        ownerId: { not: null },
+        ownerId: actor.id,
       },
       include: {
         owner: { select: { id: true, name: true, avatar: true } },
         project: { select: { id: true, title: true } },
       },
-      orderBy: [{ priority: 'asc' }, { dueDate: 'asc' }],
+      orderBy: [{ dueDate: 'asc' }, { priority: 'asc' }],
       take: 100,
     })
 
-    // openProjects: owned by or laned to this department, not closed
+    // openProjects: user-scoped (PM OR sponsor OR createdBy OR ProjectMember)
+    // Sorted by targetEndDate (due-date first)
     const openProjects = await prisma.project.findMany({
       where: {
-        OR: [
-          { ownerDepartmentId: departmentId },
-          { departments: { some: { departmentId } } },
-        ],
+        ...userScopedProjectsWhere(departmentId, actor.id, actor.orgId),
         status: { notIn: [...PROJECT_CLOSED_STATUSES] },
       },
       include: {
@@ -234,7 +245,8 @@ departmentRoutes.get('/:departmentId/overview', async (req: Request, res: Respon
       take: 50,
     })
 
-    // openModuleItems: collect from modules by type
+    // openModuleItems: org-wide (NO creator filter — ModuleItem has no createdById)
+    // Active Briefs, CM, Tech Transfers, Formulations, NPD stay unchanged
     const openModuleItems: Record<string, any[]> = {}
 
     for (const mod of dept.modules || []) {
@@ -279,12 +291,106 @@ departmentRoutes.get('/:departmentId/overview', async (req: Request, res: Respon
       openModuleItems.modules = openModuleItems.modules.slice(0, 100)
     }
 
+    // ─── Operations Radar (BUILTIN_OPS only) ────────────────────
+    // Top 10 low-stock SKUs + Top 5 at-risk open orders
+    // NOT user-scoped — visible to everyone viewing the Ops overview
+    let lowStockSkus: Array<{
+      id: string
+      sku: string
+      description: string | null
+      qtyOnHand: number
+      reorderPoint: number
+      lastUpdated: string | null
+    }> = []
+
+    let atRiskOpenOrders: Array<{
+      id: string
+      customerPoNumber: string | null
+      itemNumber: string | null
+      description: string | null
+      riskLevel: string
+      requiredDeliveryDate: string | null
+      qtyRemaining: number
+      lineStatus: string
+    }> = []
+
+    if (dept.type === 'BUILTIN_OPS') {
+      // Low-stock SKUs from INVENTORY_HEALTH module
+      const inventoryModule = dept.modules.find((m) => m.type === 'INVENTORY_HEALTH')
+      if (inventoryModule) {
+        const inventoryItems = ((inventoryModule.items as any[]) || [])
+          .filter((item: any) => {
+            const data = item.data || {}
+            const qtyOnHand = Number(data.qtyOnHand ?? data.quantity ?? 0)
+            const reorderPoint = Number(data.reorderPoint ?? data.minStock ?? 0)
+            return qtyOnHand < reorderPoint && qtyOnHand >= 0
+          })
+          .sort((a: any, b: any) => {
+            const aData = a.data || {}
+            const bData = b.data || {}
+            const aRatio = Number(aData.qtyOnHand ?? 0) / Math.max(Number(aData.reorderPoint ?? 1), 1)
+            const bRatio = Number(bData.qtyOnHand ?? 0) / Math.max(Number(bData.reorderPoint ?? 1), 1)
+            return aRatio - bRatio
+          })
+          .slice(0, 10)
+
+        lowStockSkus = inventoryItems.map((item: any) => {
+          const data = item.data || {}
+          return {
+            id: item.id,
+            sku: String(data.sku || data.itemNumber || data.partNumber || ''),
+            description: data.description || data.name || null,
+            qtyOnHand: Number(data.qtyOnHand ?? data.quantity ?? 0),
+            reorderPoint: Number(data.reorderPoint ?? data.minStock ?? 0),
+            lastUpdated: item.updatedAt?.toISOString() || null,
+          }
+        })
+      }
+
+      // At-risk open orders from OorLine
+      const riskOrders = await prisma.oorLine.findMany({
+        where: {
+          orgId: dept.orgId,
+          isOpen: true,
+          riskLevel: { in: ['critical', 'at_risk'] },
+        },
+        orderBy: [
+          { riskLevel: 'asc' },
+          { requiredDeliveryDate: 'asc' },
+        ],
+        take: 5,
+        select: {
+          id: true,
+          customerPoNumber: true,
+          itemNumber: true,
+          description: true,
+          riskLevel: true,
+          requiredDeliveryDate: true,
+          qtyRemaining: true,
+          lineStatus: true,
+        },
+      })
+
+      atRiskOpenOrders = riskOrders.map((line) => ({
+        id: line.id,
+        customerPoNumber: line.customerPoNumber,
+        itemNumber: line.itemNumber,
+        description: line.description,
+        riskLevel: line.riskLevel,
+        requiredDeliveryDate: line.requiredDeliveryDate?.toISOString() || null,
+        qtyRemaining: Number(line.qtyRemaining ?? 0),
+        lineStatus: line.lineStatus,
+      }))
+    }
+
     res.json({
       departmentId,
       pendingTasks,
       assignedTasks,
       openProjects,
       openModuleItems,
+      lowStockSkus,
+      atRiskOpenOrders,
     })
   } catch (error) {
     console.error('[departments] GET /:departmentId/overview error:', error)

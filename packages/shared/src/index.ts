@@ -12,10 +12,22 @@ export * from './rbac/catalogue'
 export * from './billing'
 
 export * from './oor/status'
+export * from './oor/riskScore'
 
 // ─── Shared Types for NEXUS ─────────────────────────────────
 
 export type Role = 'ADMIN' | 'OPS_MANAGER' | 'DEPT_LEAD' | 'PROJECT_LEAD' | 'MEMBER'
+
+// Industry keys for onboarding — map Ahmad labels to API keys
+export type IndustryKey = 'cosmetics' | 'cpg' | 'raw_material' | 'contract_manufacturer' | 'ecommerce'
+
+export const INDUSTRY_OPTIONS: { key: IndustryKey; label: string }[] = [
+  { key: 'cosmetics', label: 'Cosmetic industries' },
+  { key: 'cpg', label: 'Consumer goods industries' },
+  { key: 'raw_material', label: 'Raw material industries' },
+  { key: 'contract_manufacturer', label: 'Contract manufacturer industries' },
+  { key: 'ecommerce', label: 'E-commerce store industries' },
+]
 export type MemberStatus = 'AVAILABLE' | 'FOCUSED' | 'IN_MEETING' | 'OOO'
 export type DeptType = 'BUILTIN_RD' | 'BUILTIN_OPS' | 'CUSTOM'
 

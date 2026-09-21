@@ -531,12 +531,14 @@ oorRoutes.post(
 
       let parsed: ReturnType<typeof parsePastedEmail> & { attachmentCount?: number }
       let source: string
+      let webLink: string | null = null
 
       if (req.file) {
         parsed = parseEmlBuffer(req.file.buffer)
         source = 'eml_upload'
       } else {
         const data = createEmailSchema.parse(req.body)
+        webLink = data.webLink ?? null
         if (data.raw) {
           parsed = parsePastedEmail(data.raw)
           // Explicit fields from a mailbox connector beat anything scraped out
@@ -585,6 +587,7 @@ oorRoutes.post(
             attachmentCount: parsed.attachmentCount ?? 0,
             source,
             filename: req.file?.originalname ?? null,
+            webLink,
           } as unknown as Prisma.InputJsonValue,
         },
       })
