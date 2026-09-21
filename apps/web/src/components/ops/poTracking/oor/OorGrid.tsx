@@ -14,7 +14,7 @@ import type { OorColumn } from './oorColumns'
 import type { OorLineRow } from './useOorQueries'
 import { useOorTree } from './useOorQueries'
 import { ShortageTree, ExpandAffordance } from './ShortageTree'
-import { StatusPill, RiskPill } from './OorPills'
+import { StatusPill, RiskPill, Pill } from './OorPills'
 import { toTsv } from './oorFormat'
 
 const LAYOUT_KEY = 'oor.grid.layout.v1'
@@ -86,10 +86,11 @@ function ExpandableRow({
         {columns.map((col) => {
           if (layout.hidden.includes(col.key)) return null
           const text = col.value(row)
+          const tooltip = col.title?.(row)
           return (
             <td
               key={col.key}
-              title={col.title?.(row) ?? (text.length > 28 ? text : undefined)}
+              title={col.key === 'riskLevel' ? undefined : (tooltip ?? (text.length > 28 ? text : undefined))}
               style={{
                 padding: rowPad,
                 width: layout.widths[col.key] ?? col.width,
@@ -103,7 +104,9 @@ function ExpandableRow({
                 textOverflow: 'ellipsis',
               }}
             >
-              {col.key === 'valueComputed' && row.valueMismatch ? (
+              {col.key === 'riskLevel' ? (
+                <RiskPill risk={row.riskLevel} title={tooltip} />
+              ) : col.key === 'valueComputed' && row.valueMismatch ? (
                 <span className="inline-flex items-center gap-1">
                   {text}
                   <span
@@ -120,14 +123,11 @@ function ExpandableRow({
           )
         })}
         <td style={{ padding: rowPad }}>
-          <div className="flex items-center gap-1">
-            <StatusPill
-              status={row.lineStatus}
-              overridden={row.statusSource === 'manual'}
-              reason={row.statusOverrideReason}
-            />
-            <RiskPill risk={row.riskLevel} />
-          </div>
+          <StatusPill
+            status={row.lineStatus}
+            overridden={row.statusSource === 'manual'}
+            reason={row.statusOverrideReason}
+          />
         </td>
         <td style={{ padding: rowPad }}>
           <div className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>

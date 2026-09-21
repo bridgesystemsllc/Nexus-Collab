@@ -29,9 +29,12 @@ import {
   openOrderKpis,
   PO_STATUSES,
   toProductionShape,
+  derivePORisk,
   type OpenOrder,
   type OpenOrderLine,
+  type PORiskLevel,
 } from './openOrderData'
+import { OOR_RISK_META, type OorRiskLevel } from '@nexus/shared'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { ProductionEmailModal } from './ProductionEmailModal'
 import { OverlayPortal } from '@/components/shared/OverlayPortal'
@@ -267,6 +270,7 @@ export function OpenOrdersView({ items, moduleId, onRefresh, onOpenTracking }: O
                           <th>PO Number</th>
                           <th>Status</th>
                           <th>Urgency</th>
+                          <th>Risk</th>
                           <th>Order Date</th>
                           <th>Delivery Due</th>
                           <th className="text-right">Lines</th>
@@ -316,6 +320,22 @@ export function OpenOrdersView({ items, moduleId, onRefresh, onOpenTracking }: O
                                     </span>
                                   )}
                                 </td>
+                                <td>
+                                  {(() => {
+                                    const risk = derivePORisk(o)
+                                    if (risk.level === 'on_track') return null
+                                    const meta = OOR_RISK_META[risk.level as OorRiskLevel]
+                                    return (
+                                      <span
+                                        className="badge"
+                                        style={{ background: `var(--${meta.tone === 'danger' ? 'danger' : 'warning'})20`, color: `var(--${meta.tone === 'danger' ? 'danger' : 'warning'})` }}
+                                        title={risk.drivers.join(' • ')}
+                                      >
+                                        {meta.label}
+                                      </span>
+                                    )
+                                  })()}
+                                </td>
                                 <td className="text-[var(--text-secondary)] text-xs">{o.orderDate || '—'}</td>
                                 <td className="text-[var(--text-secondary)] text-xs">{o.deliveryDue || '—'}</td>
                                 <td className="text-right tabular-nums text-[var(--accent)]">{o.lines.length}</td>
@@ -354,7 +374,7 @@ export function OpenOrdersView({ items, moduleId, onRefresh, onOpenTracking }: O
                                       <span className="font-mono text-[var(--text-tertiary)]">{l.sku}</span>{' '}
                                       {l.description}
                                     </td>
-                                    <td colSpan={4}></td>
+                                    <td colSpan={5}></td>
                                     <td className="text-right tabular-nums text-xs text-[var(--text-secondary)]">{fmt(l.qtyOrdered)}</td>
                                     <td className="text-right tabular-nums text-xs text-[var(--success)]">{fmt(l.qtyReceived)}</td>
                                     <td colSpan={2} className="text-right tabular-nums text-xs text-[var(--text-tertiary)]">

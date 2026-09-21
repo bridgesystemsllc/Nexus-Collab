@@ -279,12 +279,106 @@ departmentRoutes.get('/:departmentId/overview', async (req: Request, res: Respon
       openModuleItems.modules = openModuleItems.modules.slice(0, 100)
     }
 
+    // ─── Operations Radar (BUILTIN_OPS only) ────────────────────
+    // Top 10 low-stock SKUs + Top 5 at-risk open orders
+    // NOT user-scoped — visible to everyone viewing the Ops overview
+    let lowStockSkus: Array<{
+      id: string
+      sku: string
+      description: string | null
+      qtyOnHand: number
+      reorderPoint: number
+      lastUpdated: string | null
+    }> = []
+
+    let atRiskOpenOrders: Array<{
+      id: string
+      customerPoNumber: string | null
+      itemNumber: string | null
+      description: string | null
+      riskLevel: string
+      requiredDeliveryDate: string | null
+      qtyRemaining: number
+      lineStatus: string
+    }> = []
+
+    if (dept.type === 'BUILTIN_OPS') {
+      // Low-stock SKUs from INVENTORY_HEALTH module
+      const inventoryModule = dept.modules.find((m) => m.type === 'INVENTORY_HEALTH')
+      if (inventoryModule) {
+        const inventoryItems = ((inventoryModule.items as any[]) || [])
+          .filter((item: any) => {
+            const data = item.data || {}
+            const qtyOnHand = Number(data.qtyOnHand ?? data.quantity ?? 0)
+            const reorderPoint = Number(data.reorderPoint ?? data.minStock ?? 0)
+            return qtyOnHand < reorderPoint && qtyOnHand >= 0
+          })
+          .sort((a: any, b: any) => {
+            const aData = a.data || {}
+            const bData = b.data || {}
+            const aRatio = Number(aData.qtyOnHand ?? 0) / Math.max(Number(aData.reorderPoint ?? 1), 1)
+            const bRatio = Number(bData.qtyOnHand ?? 0) / Math.max(Number(bData.reorderPoint ?? 1), 1)
+            return aRatio - bRatio
+          })
+          .slice(0, 10)
+
+        lowStockSkus = inventoryItems.map((item: any) => {
+          const data = item.data || {}
+          return {
+            id: item.id,
+            sku: String(data.sku || data.itemNumber || data.partNumber || ''),
+            description: data.description || data.name || null,
+            qtyOnHand: Number(data.qtyOnHand ?? data.quantity ?? 0),
+            reorderPoint: Number(data.reorderPoint ?? data.minStock ?? 0),
+            lastUpdated: item.updatedAt?.toISOString() || null,
+          }
+        })
+      }
+
+      // At-risk open orders from OorLine
+      const riskOrders = await prisma.oorLine.findMany({
+        where: {
+          orgId: dept.orgId,
+          isOpen: true,
+          riskLevel: { in: ['critical', 'at_risk'] },
+        },
+        orderBy: [
+          { riskLevel: 'asc' },
+          { requiredDeliveryDate: 'asc' },
+        ],
+        take: 5,
+        select: {
+          id: true,
+          customerPoNumber: true,
+          itemNumber: true,
+          description: true,
+          riskLevel: true,
+          requiredDeliveryDate: true,
+          qtyRemaining: true,
+          lineStatus: true,
+        },
+      })
+
+      atRiskOpenOrders = riskOrders.map((line) => ({
+        id: line.id,
+        customerPoNumber: line.customerPoNumber,
+        itemNumber: line.itemNumber,
+        description: line.description,
+        riskLevel: line.riskLevel,
+        requiredDeliveryDate: line.requiredDeliveryDate?.toISOString() || null,
+        qtyRemaining: Number(line.qtyRemaining ?? 0),
+        lineStatus: line.lineStatus,
+      }))
+    }
+
     res.json({
       departmentId,
       pendingTasks,
       assignedTasks,
       openProjects,
       openModuleItems,
+      lowStockSkus,
+      atRiskOpenOrders,
     })
   } catch (error) {
     console.error('[departments] GET /:departmentId/overview error:', error)

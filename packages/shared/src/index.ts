@@ -12,6 +12,7 @@ export * from './rbac/catalogue'
 export * from './billing'
 
 export * from './oor/status'
+export * from './oor/riskScore'
 
 // ─── Shared Types for NEXUS ─────────────────────────────────
 

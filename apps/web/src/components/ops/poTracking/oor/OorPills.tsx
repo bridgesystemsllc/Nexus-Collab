@@ -62,11 +62,11 @@ export function StatusPill({
   )
 }
 
-export function RiskPill({ risk }: { risk: string }) {
+export function RiskPill({ risk, title }: { risk: string; title?: string }) {
   const meta = OOR_RISK_META[risk as OorRiskLevel]
   if (!meta || risk === 'on_track') return null
   return (
-    <Pill tone={meta.tone} icon={risk === 'critical' ? AlertTriangle : undefined}>
+    <Pill tone={meta.tone} icon={risk === 'critical' ? AlertTriangle : undefined} title={title}>
       {meta.label}
     </Pill>
   )
