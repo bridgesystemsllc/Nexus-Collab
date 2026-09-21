@@ -8,15 +8,18 @@ import {
   Eye,
   Filter,
   Loader2,
+  Mail,
   Plus,
   Search,
   Tag,
   Trash2,
   User,
+  UserPlus,
   Users,
   X,
 } from 'lucide-react'
-import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useMembers } from '@/hooks/useData'
+import { useTasks, useCreateTask, useUpdateTask, useDeleteTask, useMembers, useSimpleProjectList } from '@/hooks/useData'
+import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { StatusBadge, ActionsMenu, DeleteConfirmDialog } from '@/components/shared/TablePrimitives'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 import { ViewToggle, type ViewMode } from '@/components/shared/ViewToggle'
@@ -69,22 +72,30 @@ function isOverdue(dateStr: string): boolean {
   }
 }
 
+type TaskKind = 'TASK' | 'FOLLOW_UP'
+
 interface TaskFormData {
+  kind: TaskKind
   title: string
   description: string
   status: string
   priority: string
+  startDate: string
   dueDate: string
+  projectId: string
   ownerId: string
   tags: string[]
 }
 
 const EMPTY_FORM: TaskFormData = {
+  kind: 'TASK',
   title: '',
   description: '',
   status: 'NOT_STARTED',
   priority: 'MEDIUM',
+  startDate: '',
   dueDate: '',
+  projectId: '',
   ownerId: '',
   tags: [],
 }
@@ -93,34 +104,54 @@ function TaskFormModal({
   open,
   onClose,
   departmentId,
+  departmentName,
   initialData,
   mode = 'create',
   taskId,
+  defaultKind = 'TASK',
 }: {
   open: boolean
   onClose: () => void
   departmentId: string
+  departmentName?: string
   initialData?: Partial<TaskFormData>
   mode?: 'create' | 'edit'
   taskId?: string
+  defaultKind?: TaskKind
 }) {
-  const [form, setForm] = useState<TaskFormData>({ ...EMPTY_FORM, ...initialData })
+  const [form, setForm] = useState<TaskFormData>({ ...EMPTY_FORM, kind: defaultKind, ...initialData })
   const [tagInput, setTagInput] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [showAttachments, setShowAttachments] = useState(false)
 
   const { data: members = [] } = useMembers()
+  const { data: projectsData } = useSimpleProjectList()
   const createTask = useCreateTask()
   const updateTask = useUpdateTask()
 
+  const projects = projectsData?.data ?? []
+
   useEffect(() => {
     if (open) {
-      setForm({ ...EMPTY_FORM, ...initialData })
+      const hasFollowUpTag = initialData?.tags?.includes('follow-up')
+      const kind = initialData?.kind || (hasFollowUpTag ? 'FOLLOW_UP' : defaultKind)
+      setForm({ ...EMPTY_FORM, kind, ...initialData })
       setTagInput('')
       setError('')
       setSubmitting(false)
+      setShowAttachments(false)
     }
-  }, [open, initialData])
+  }, [open, initialData, defaultKind])
+
+  const handleKindChange = (newKind: TaskKind) => {
+    setForm((prev) => {
+      const tags = newKind === 'FOLLOW_UP'
+        ? prev.tags.includes('follow-up') ? prev.tags : [...prev.tags, 'follow-up']
+        : prev.tags.filter((t) => t !== 'follow-up')
+      return { ...prev, kind: newKind, tags }
+    })
+  }
 
   const handleAddTag = () => {
     const tag = tagInput.trim()
@@ -144,7 +175,11 @@ function TaskFormModal({
     setError('')
 
     try {
-      const payload = {
+      const brandNames = form.kind === 'FOLLOW_UP' && !form.tags.includes('follow-up')
+        ? [...form.tags, 'follow-up']
+        : form.tags
+
+      const payload: Record<string, any> = {
         title: form.title.trim(),
         description: form.description.trim() || undefined,
         status: form.status,
@@ -152,6 +187,12 @@ function TaskFormModal({
         dueDate: form.dueDate || undefined,
         departmentId,
         ownerId: form.ownerId || undefined,
+        brandNames,
+        projectId: form.projectId || undefined,
+      }
+
+      if (form.kind === 'FOLLOW_UP' && form.startDate) {
+        payload.startDate = form.startDate
       }
 
       if (mode === 'edit' && taskId) {
@@ -183,8 +224,8 @@ function TaskFormModal({
     <Dialog
       open={open}
       onClose={onClose}
-      title={mode === 'edit' ? 'Edit Task' : 'New Task'}
-      subtitle={mode === 'edit' ? 'Update task details' : 'Create a new task or follow-up'}
+      title={mode === 'edit' ? (form.kind === 'FOLLOW_UP' ? 'Edit Follow-up' : 'Edit Task') : (form.kind === 'FOLLOW_UP' ? 'New Follow-up' : 'New Task')}
+      subtitle={mode === 'edit' ? 'Update details' : 'Create a new task or follow-up'}
     >
       <div className="space-y-4">
         {error && (
@@ -193,6 +234,37 @@ function TaskFormModal({
           </div>
         )}
 
+        {/* Type Selector */}
+        <div>
+          <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+            Type
+          </label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleKindChange('TASK')}
+              className={`flex-1 py-2 px-3 rounded-lg text-[13px] font-medium border transition-all ${
+                form.kind === 'TASK'
+                  ? 'bg-[var(--accent)] text-white border-transparent'
+                  : 'border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)]'
+              }`}
+            >
+              Task
+            </button>
+            <button
+              type="button"
+              onClick={() => handleKindChange('FOLLOW_UP')}
+              className={`flex-1 py-2 px-3 rounded-lg text-[13px] font-medium border transition-all ${
+                form.kind === 'FOLLOW_UP'
+                  ? 'bg-[#8B5CF6] text-white border-transparent'
+                  : 'border-[var(--border-default)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[#8B5CF6]'
+              }`}
+            >
+              Follow-up
+            </button>
+          </div>
+        </div>
+
         <div>
           <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
             Title *
@@ -200,7 +272,7 @@ function TaskFormModal({
           <input
             value={form.title}
             onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-            placeholder="Task title..."
+            placeholder={form.kind === 'FOLLOW_UP' ? 'Follow-up title...' : 'Task title...'}
             className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)]"
           />
         </div>
@@ -213,9 +285,41 @@ function TaskFormModal({
             value={form.description}
             onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
             rows={3}
-            placeholder="Task description..."
+            placeholder="Description..."
             className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none resize-y focus:border-[var(--accent)]"
           />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+              Project
+            </label>
+            <select
+              value={form.projectId}
+              onChange={(e) => setForm((prev) => ({ ...prev, projectId: e.target.value }))}
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+            >
+              <option value="">No project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.projectNumber ? `${p.projectNumber} — ` : ''}{p.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+              Department
+            </label>
+            <input
+              type="text"
+              value={departmentName || 'Current Department'}
+              readOnly
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3.5 py-2.5 text-[14px] text-[var(--text-tertiary)] outline-none cursor-not-allowed opacity-70"
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -255,7 +359,21 @@ function TaskFormModal({
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div>
+          {form.kind === 'FOLLOW_UP' && (
+            <div>
+              <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+                Next action
+              </label>
+              <input
+                type="date"
+                value={form.startDate}
+                onChange={(e) => setForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              />
+            </div>
+          )}
+
+          <div className={form.kind === 'FOLLOW_UP' ? '' : 'col-span-1'}>
             <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
               Due Date
             </label>
@@ -267,6 +385,28 @@ function TaskFormModal({
             />
           </div>
 
+          {form.kind !== 'FOLLOW_UP' && (
+            <div>
+              <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+                Assign To
+              </label>
+              <select
+                value={form.ownerId}
+                onChange={(e) => setForm((prev) => ({ ...prev, ownerId: e.target.value }))}
+                className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3.5 py-2.5 text-[14px] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+              >
+                <option value="">Unassigned</option>
+                {memberList.map((m: any) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {form.kind === 'FOLLOW_UP' && (
           <div>
             <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
               Assign To
@@ -284,7 +424,7 @@ function TaskFormModal({
               ))}
             </select>
           </div>
-        </div>
+        )}
 
         <div>
           <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
@@ -294,27 +434,24 @@ function TaskFormModal({
             {form.tags.map((tag) => (
               <span
                 key={tag}
-                className="inline-flex items-center gap-1 pl-2 pr-1 py-1 rounded-full bg-[var(--accent-subtle)] text-[var(--accent)] text-[12px] font-medium"
+                className={`inline-flex items-center gap-1 pl-2 pr-1 py-1 rounded-full text-[12px] font-medium ${
+                  tag === 'follow-up'
+                    ? 'bg-[rgba(139,92,246,0.15)] text-[#8B5CF6]'
+                    : 'bg-[var(--accent-subtle)] text-[var(--accent)]'
+                }`}
               >
                 {tag}
-                <button
-                  type="button"
-                  onClick={() => handleRemoveTag(tag)}
-                  className="p-0.5 rounded-full hover:bg-[var(--accent)]/20"
-                >
-                  <X size={11} />
-                </button>
+                {tag !== 'follow-up' && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveTag(tag)}
+                    className="p-0.5 rounded-full hover:bg-[var(--accent)]/20"
+                  >
+                    <X size={11} />
+                  </button>
+                )}
               </span>
             ))}
-            {form.tags.length === 0 && !form.tags.includes('follow-up') && (
-              <button
-                type="button"
-                onClick={() => setForm((prev) => ({ ...prev, tags: [...prev.tags, 'follow-up'] }))}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-dashed border-[var(--border-default)] text-[12px] text-[var(--text-tertiary)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
-              >
-                <Tag size={10} /> Add follow-up tag
-              </button>
-            )}
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -334,6 +471,23 @@ function TaskFormModal({
           </div>
         </div>
 
+        {/* Attachments for edit mode */}
+        {mode === 'edit' && taskId && (
+          <div className="pt-2 border-t border-[var(--border-subtle)]">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[13px] font-medium text-[var(--text-secondary)]">Attachments</span>
+              <button
+                type="button"
+                onClick={() => setShowAttachments(!showAttachments)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+              >
+                <Mail size={13} /> Open Email
+              </button>
+            </div>
+            {showAttachments && <TaskAttachments taskId={taskId} module="task" />}
+          </div>
+        )}
+
         <div className="flex justify-end gap-3 pt-2">
           <button onClick={onClose} disabled={submitting} className="btn-ghost px-4 py-2 text-[14px]">
             Cancel
@@ -351,7 +505,7 @@ function TaskFormModal({
               'Save Changes'
             ) : (
               <>
-                <Plus size={14} /> Create Task
+                <Plus size={14} /> {form.kind === 'FOLLOW_UP' ? 'Create Follow-up' : 'Create Task'}
               </>
             )}
           </button>
@@ -472,6 +626,7 @@ export function DepartmentTasksFollowUpTab({
   const [followUpOnly, setFollowUpOnly] = useState(false)
   const [search, setSearch] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showCreateFollowUpModal, setShowCreateFollowUpModal] = useState(false)
   const [editingTask, setEditingTask] = useState<any>(null)
   const [assigningTask, setAssigningTask] = useState<any>(null)
   const [deletingTask, setDeletingTask] = useState<{ id: string; name: string } | null>(null)
@@ -590,6 +745,13 @@ export function DepartmentTasksFollowUpTab({
               className="w-full pl-8 pr-3 py-2 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)]"
             />
           </div>
+
+          <button
+            onClick={() => setShowCreateFollowUpModal(true)}
+            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-[#8B5CF6] text-[#8B5CF6] hover:bg-[rgba(139,92,246,0.1)] transition-colors"
+          >
+            <UserPlus size={15} /> New Follow-up
+          </button>
 
           <button
             onClick={() => setShowCreateModal(true)}
@@ -835,31 +997,58 @@ export function DepartmentTasksFollowUpTab({
         </div>
       )}
 
-      {/* Create/Edit Modal */}
+      {/* Create Task Modal */}
       <TaskFormModal
-        open={showCreateModal || !!editingTask}
+        open={showCreateModal}
         onClose={() => {
           setShowCreateModal(false)
-          setEditingTask(null)
           refetch()
         }}
         departmentId={departmentId}
-        mode={editingTask ? 'edit' : 'create'}
-        taskId={editingTask?.id}
-        initialData={
-          editingTask
-            ? {
-                title: editingTask.title,
-                description: editingTask.description || '',
-                status: editingTask.status,
-                priority: editingTask.priority,
-                dueDate: editingTask.dueDate?.split('T')[0] || '',
-                ownerId: editingTask.ownerId || '',
-                tags: editingTask.brandNames || [],
-              }
-            : undefined
-        }
+        departmentName={departmentName}
+        mode="create"
+        defaultKind="TASK"
       />
+
+      {/* Create Follow-up Modal */}
+      <TaskFormModal
+        open={showCreateFollowUpModal}
+        onClose={() => {
+          setShowCreateFollowUpModal(false)
+          refetch()
+        }}
+        departmentId={departmentId}
+        departmentName={departmentName}
+        mode="create"
+        defaultKind="FOLLOW_UP"
+      />
+
+      {/* Edit Modal */}
+      {editingTask && (
+        <TaskFormModal
+          open={!!editingTask}
+          onClose={() => {
+            setEditingTask(null)
+            refetch()
+          }}
+          departmentId={departmentId}
+          departmentName={departmentName}
+          mode="edit"
+          taskId={editingTask.id}
+          initialData={{
+            kind: editingTask.brandNames?.includes('follow-up') ? 'FOLLOW_UP' : 'TASK',
+            title: editingTask.title,
+            description: editingTask.description || '',
+            status: editingTask.status,
+            priority: editingTask.priority,
+            startDate: editingTask.startDate?.split('T')[0] || '',
+            dueDate: editingTask.dueDate?.split('T')[0] || '',
+            projectId: editingTask.projectId || '',
+            ownerId: editingTask.ownerId || '',
+            tags: editingTask.brandNames || [],
+          }}
+        />
+      )}
 
       {/* Assign Modal */}
       <AssignModal

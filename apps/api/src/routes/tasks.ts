@@ -72,6 +72,7 @@ const createTaskSchema = z.object({
   status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'IN_REVIEW', 'BLOCKED', 'COMPLETE']).default('NOT_STARTED'),
   priority: z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']).default('MEDIUM'),
   effort: z.enum(['XS', 'S', 'M', 'L', 'XL']).optional(),
+  startDate: z.string().optional(),
   dueDate: z.string().optional(),
   projectId: z.string().optional(),
   departmentId: z.string().optional(),
@@ -86,6 +87,7 @@ taskRoutes.post('/', async (req: Request, res: Response) => {
     const task = await prisma.task.create({
       data: {
         ...data,
+        startDate: data.startDate ? new Date(data.startDate) : undefined,
         dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
         brandNames: data.brandNames || [],
       },
@@ -104,6 +106,7 @@ taskRoutes.post('/', async (req: Request, res: Response) => {
 taskRoutes.patch('/:id', async (req: Request, res: Response) => {
   try {
     const updateData: any = { ...req.body }
+    if (updateData.startDate) updateData.startDate = new Date(updateData.startDate)
     if (updateData.dueDate) updateData.dueDate = new Date(updateData.dueDate)
     if (updateData.status === 'COMPLETE') updateData.completedAt = new Date()
 
