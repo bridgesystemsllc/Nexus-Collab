@@ -6,12 +6,17 @@ import {
   Trash2,
   Loader2,
   AlertCircle,
+  Calendar,
+  Package,
+  Save,
 } from 'lucide-react'
 import { StatusFormCard } from '@/components/shared/StatusFormCard'
 import { DocumentPanel } from '@/components/shared/DocumentPanel'
 import { SendEmailButton } from '@/components/shared/SendEmailButton'
 import { useUserStore } from '@/stores/userStore'
-import type { ArtworkModuleItem, ArtworkTrackerData, DocFile, SharePointLink } from './types'
+import type { ArtworkModuleItem, ArtworkTrackerData, DocFile, SharePointLink, ArtworkProduct } from './types'
+import { ErpSyncedProductPicker, type SelectedProduct } from '@/components/shared/ErpSyncedProductPicker'
+import { COUNTRY_OPTIONS } from '@/lib/countryOptions'
 
 interface ArtworkDetailProps {
   item: ArtworkModuleItem
@@ -42,6 +47,23 @@ export function ArtworkDetail({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
+  const initialProduct: SelectedProduct | null = data.product
+    ? {
+        productId: data.product.productId,
+        sku: data.product.sku,
+        name: data.product.name,
+        brand: data.product.brand,
+        kareveId: data.product.kareveId,
+      }
+    : null
+  const [localProduct, setLocalProduct] = useState<SelectedProduct | null>(initialProduct)
+  const [localVersion, setLocalVersion] = useState(data.version ?? '')
+  const [localArtworkDate, setLocalArtworkDate] = useState(data.artworkDate ?? '')
+  const [localBiLingual, setLocalBiLingual] = useState(data.biLingual ?? false)
+  const [localCountries, setLocalCountries] = useState<string[]>(data.countries ?? [])
+  const [productFieldsError, setProductFieldsError] = useState<string | null>(null)
+  const [savingProductFields, setSavingProductFields] = useState(false)
+
   const files = useMemo(() => data.files ?? [], [data.files])
   const sharePointLinks = useMemo(() => data.sharePointLinks ?? [], [data.sharePointLinks])
 
@@ -66,6 +88,56 @@ export function ArtworkDetail({
       setStatusError(err?.message || 'Failed to save status')
     }
   }, [localStatusForm, onUpdate])
+
+  const handleBiLingualChange = useCallback((checked: boolean) => {
+    setLocalBiLingual(checked)
+    if (!checked) {
+      setLocalCountries([])
+    }
+  }, [])
+
+  const toggleCountry = useCallback((country: string) => {
+    setLocalCountries((prev) =>
+      prev.includes(country)
+        ? prev.filter((c) => c !== country)
+        : [...prev, country]
+    )
+  }, [])
+
+  const handleProductFieldsSave = useCallback(async () => {
+    setProductFieldsError(null)
+
+    if (localBiLingual && localCountries.length === 0) {
+      setProductFieldsError('Select at least one country when Bi-Lingual is checked')
+      return
+    }
+
+    const productData: ArtworkProduct | null = localProduct
+      ? {
+          productId: localProduct.productId,
+          sku: localProduct.sku,
+          name: localProduct.name,
+          brand: localProduct.brand,
+          kareveId: localProduct.kareveId,
+        }
+      : null
+
+    try {
+      setSavingProductFields(true)
+      await onUpdate({
+        product: productData,
+        version: localVersion.trim().slice(0, 64),
+        artworkDate: localArtworkDate || null,
+        biLingual: localBiLingual,
+        countries: localBiLingual ? localCountries : [],
+      })
+      setProductFieldsError(null)
+    } catch (err: any) {
+      setProductFieldsError(err?.message || 'Failed to save')
+    } finally {
+      setSavingProductFields(false)
+    }
+  }, [localProduct, localVersion, localArtworkDate, localBiLingual, localCountries, onUpdate])
 
   const handleUploadFiles = useCallback(
     async (uploadedFiles: File[]) => {
@@ -183,6 +255,130 @@ export function ArtworkDetail({
           <span className="text-[12px] text-[var(--danger)]">{deleteError}</span>
         </div>
       )}
+
+      {/* Product & Metadata Fields */}
+      <div className="data-cell space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">
+            Product & Details
+          </h3>
+          <button
+            onClick={handleProductFieldsSave}
+            disabled={savingProductFields || saving}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium text-white bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 transition-all"
+          >
+            {savingProductFields ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Save size={14} />
+            )}
+            Save
+          </button>
+        </div>
+
+        {productFieldsError && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--danger-light)] border border-[var(--danger)]">
+            <AlertCircle size={14} className="text-[var(--danger)]" />
+            <span className="text-[12px] text-[var(--danger)]">{productFieldsError}</span>
+          </div>
+        )}
+
+        {/* Product */}
+        <div>
+          <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+            Product
+          </label>
+          <ErpSyncedProductPicker
+            value={localProduct}
+            onChange={setLocalProduct}
+            disabled={savingProductFields || saving}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          {/* Version */}
+          <div>
+            <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+              Version
+            </label>
+            <input
+              type="text"
+              value={localVersion}
+              onChange={(e) => setLocalVersion(e.target.value)}
+              placeholder="e.g., v1.0"
+              maxLength={64}
+              disabled={savingProductFields || saving}
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none transition-all focus:border-[var(--accent)] disabled:opacity-50"
+            />
+          </div>
+
+          {/* Date */}
+          <div>
+            <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+              Date
+            </label>
+            <div className="relative">
+              <input
+                type="date"
+                value={localArtworkDate}
+                onChange={(e) => setLocalArtworkDate(e.target.value)}
+                disabled={savingProductFields || saving}
+                className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[14px] text-[var(--text-primary)] outline-none transition-all focus:border-[var(--accent)] disabled:opacity-50"
+              />
+              <Calendar
+                size={14}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Bi-Lingual */}
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="edit-biLingual"
+            checked={localBiLingual}
+            onChange={(e) => handleBiLingualChange(e.target.checked)}
+            disabled={savingProductFields || saving}
+            className="w-4 h-4 accent-[var(--accent)]"
+          />
+          <label htmlFor="edit-biLingual" className="text-[14px] text-[var(--text-primary)] cursor-pointer">
+            Bi-Lingual
+          </label>
+        </div>
+
+        {/* Countries */}
+        {localBiLingual && (
+          <div>
+            <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+              Countries <span className="text-[var(--danger)]">*</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {COUNTRY_OPTIONS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => toggleCountry(c)}
+                  disabled={savingProductFields || saving}
+                  className={`px-3.5 py-1.5 rounded-full text-[13px] font-medium border transition-all ${
+                    localCountries.includes(c)
+                      ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                      : 'bg-transparent text-[var(--text-secondary)] border-[var(--border-default)] hover:border-[var(--accent)]'
+                  } disabled:opacity-50`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+            {localBiLingual && localCountries.length === 0 && (
+              <p className="text-[12px] text-[var(--text-tertiary)] mt-1.5">
+                Select at least one country
+              </p>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Intake Link */}
       <div className="data-cell">

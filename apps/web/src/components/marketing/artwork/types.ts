@@ -48,8 +48,21 @@ export interface DocFile {
   source: 'local' | 'onedrive'
 }
 
+export interface ArtworkProduct {
+  productId: string
+  sku: string | null
+  name: string
+  brand: string
+  kareveId: string
+}
+
 export interface ArtworkTrackerData {
   title: string
+  product: ArtworkProduct | null
+  version: string
+  artworkDate: string | null
+  biLingual: boolean
+  countries: string[]
   intake: ArtworkIntake
   statusForm: ArtworkStatusForm
   sharePointLinks?: SharePointLink[]

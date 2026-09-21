@@ -14,6 +14,7 @@ import {
   Beaker,
   Loader2,
 } from 'lucide-react'
+import { COUNTRY_OPTIONS } from '@/lib/countryOptions'
 
 // ─── Types ─────────────────────────────────────────────────
 
@@ -135,7 +136,6 @@ const STATUSES = [
   'Testing',
 ] as const
 const REGULATORY_CATEGORIES = ['Cosmetic 21 CFR 700s', 'OTC Drug 21 CFR 300s', 'Cosmeceutical', 'N/A']
-const COUNTRY_OPTIONS = ['USA', 'Canada', 'EU', 'UK', 'Asia', 'Other']
 
 const RESTRICTED_OPTIONS = [
   'No Parabens',

@@ -1,10 +1,12 @@
 import { useState, useRef } from 'react'
-import { X, Upload, ExternalLink, Loader2, AlertCircle, FileText } from 'lucide-react'
+import { X, Upload, ExternalLink, Loader2, AlertCircle, FileText, Calendar } from 'lucide-react'
 import { OverlayPortal } from '@/components/shared/OverlayPortal'
 import { useRequestUploadUrl } from '@/hooks/useData'
 import { api } from '@/lib/api'
-import type { ArtworkTrackerData, ArtworkIntake } from './types'
+import type { ArtworkTrackerData, ArtworkIntake, ArtworkProduct } from './types'
 import { getDefaultStatusForm } from './types'
+import { ErpSyncedProductPicker, type SelectedProduct } from '@/components/shared/ErpSyncedProductPicker'
+import { COUNTRY_OPTIONS } from '@/lib/countryOptions'
 
 interface NewArtworkModalProps {
   open: boolean
@@ -37,6 +39,12 @@ export function NewArtworkModal({
   const [error, setError] = useState<string | null>(null)
   const [urlError, setUrlError] = useState<string | null>(null)
 
+  const [selectedProduct, setSelectedProduct] = useState<SelectedProduct | null>(null)
+  const [version, setVersion] = useState('')
+  const [artworkDate, setArtworkDate] = useState('')
+  const [biLingual, setBiLingual] = useState(false)
+  const [countries, setCountries] = useState<string[]>([])
+
   const inputRef = useRef<HTMLInputElement>(null)
   const requestUploadUrl = useRequestUploadUrl()
 
@@ -49,6 +57,11 @@ export function NewArtworkModal({
     setUploading(false)
     setError(null)
     setUrlError(null)
+    setSelectedProduct(null)
+    setVersion('')
+    setArtworkDate('')
+    setBiLingual(false)
+    setCountries([])
   }
 
   const handleClose = () => {
@@ -78,11 +91,31 @@ export function NewArtworkModal({
     return true
   }
 
+  const handleBiLingualChange = (checked: boolean) => {
+    setBiLingual(checked)
+    if (!checked) {
+      setCountries([])
+    }
+  }
+
+  const toggleCountry = (country: string) => {
+    setCountries((prev) =>
+      prev.includes(country)
+        ? prev.filter((c) => c !== country)
+        : [...prev, country]
+    )
+  }
+
   const handleCreate = async () => {
     setError(null)
 
     if (!title.trim()) {
       setError('Title is required')
+      return
+    }
+
+    if (biLingual && countries.length === 0) {
+      setError('Select at least one country when Bi-Lingual is checked')
       return
     }
 
@@ -144,8 +177,23 @@ export function NewArtworkModal({
       }
     }
 
+    const productData: ArtworkProduct | null = selectedProduct
+      ? {
+          productId: selectedProduct.productId,
+          sku: selectedProduct.sku,
+          name: selectedProduct.name,
+          brand: selectedProduct.brand,
+          kareveId: selectedProduct.kareveId,
+        }
+      : null
+
     const data: ArtworkTrackerData = {
       title: title.trim(),
+      product: productData,
+      version: version.trim().slice(0, 64),
+      artworkDate: artworkDate || null,
+      biLingual,
+      countries: biLingual ? countries : [],
       intake,
       statusForm: getDefaultStatusForm(),
       sharePointLinks: [],
@@ -165,7 +213,8 @@ export function NewArtworkModal({
 
   const canCreate =
     title.trim() &&
-    (mode === 'upload' ? selectedFile !== null : (sharepointUrl.trim() && sharepointDisplayName.trim() && !urlError))
+    (mode === 'upload' ? selectedFile !== null : (sharepointUrl.trim() && sharepointDisplayName.trim() && !urlError)) &&
+    (!biLingual || countries.length > 0)
 
   const isSubmitting = creating || uploading
 
@@ -299,10 +348,22 @@ export function NewArtworkModal({
               </div>
             )}
 
+            {/* Product Picker */}
+            <div>
+              <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+                Product
+              </label>
+              <ErpSyncedProductPicker
+                value={selectedProduct}
+                onChange={setSelectedProduct}
+                disabled={isSubmitting}
+              />
+            </div>
+
             {/* Title */}
             <div>
               <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
-                Title
+                Title <span className="text-[var(--danger)]">*</span>
               </label>
               <input
                 type="text"
@@ -313,6 +374,88 @@ export function NewArtworkModal({
                 disabled={isSubmitting}
               />
             </div>
+
+            {/* Version */}
+            <div>
+              <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+                Version
+              </label>
+              <input
+                type="text"
+                value={version}
+                onChange={(e) => setVersion(e.target.value)}
+                placeholder="e.g., v1.0"
+                maxLength={64}
+                className={inputClass}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            {/* Date */}
+            <div>
+              <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+                Date
+              </label>
+              <div className="relative">
+                <input
+                  type="date"
+                  value={artworkDate}
+                  onChange={(e) => setArtworkDate(e.target.value)}
+                  className={inputClass}
+                  disabled={isSubmitting}
+                />
+                <Calendar
+                  size={14}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none"
+                />
+              </div>
+            </div>
+
+            {/* Bi-Lingual Checkbox */}
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="biLingual"
+                checked={biLingual}
+                onChange={(e) => handleBiLingualChange(e.target.checked)}
+                className="w-4 h-4 accent-[var(--accent)]"
+                disabled={isSubmitting}
+              />
+              <label htmlFor="biLingual" className="text-[14px] text-[var(--text-primary)] cursor-pointer">
+                Bi-Lingual
+              </label>
+            </div>
+
+            {/* Countries (conditional on Bi-Lingual) */}
+            {biLingual && (
+              <div>
+                <label className="block text-[13px] font-medium text-[var(--text-secondary)] mb-1.5">
+                  Countries <span className="text-[var(--danger)]">*</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {COUNTRY_OPTIONS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => toggleCountry(c)}
+                      disabled={isSubmitting}
+                      className={`px-3.5 py-1.5 rounded-full text-[13px] font-medium border transition-all ${
+                        countries.includes(c)
+                          ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                          : 'bg-transparent text-[var(--text-secondary)] border-[var(--border-default)] hover:border-[var(--accent)]'
+                      } disabled:opacity-50`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+                {biLingual && countries.length === 0 && (
+                  <p className="text-[12px] text-[var(--text-tertiary)] mt-1.5">
+                    Select at least one country
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Error */}
             {error && (
