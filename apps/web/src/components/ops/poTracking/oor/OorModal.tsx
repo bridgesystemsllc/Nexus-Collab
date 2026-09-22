@@ -317,7 +317,7 @@ export function OorModal({ lineId, onClose }: { lineId: string; onClose: () => v
           ) : tab === 'notes' ? (
             <NotesTab lineId={lineId} />
           ) : tab === 'meetings' ? (
-            <MeetingUpdatesTab lineId={lineId} />
+            <MeetingUpdatesTab lineId={lineId} riskLevel={row?.riskLevel} />
           ) : tab === 'emails' ? (
             <EmailsTab lineId={lineId} />
           ) : (

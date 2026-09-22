@@ -459,7 +459,7 @@ export async function updateNode(
 ) {
   const before = await prisma.oorShortageNode.findFirst({
     where: { id: nodeId, oorLine: { orgId } },
-    include: { oorLine: { select: { id: true, qtyRemaining: true, requiredDeliveryDate: true, statusSource: true, lineStatus: true } } },
+    include: { oorLine: { select: { id: true, qtyRemaining: true, requiredDeliveryDate: true, shipDate: true, statusSource: true, lineStatus: true } } },
   })
   if (!before) return null
 
@@ -501,6 +501,7 @@ export async function updateNode(
     manualStatus: line.statusSource === 'manual' ? (line.lineStatus as OorLineStatus) : null,
     nodes: deriveNodes,
     requiredDeliveryDate: line.requiredDeliveryDate,
+    shipDate: line.shipDate,
   }
   const lineStatus = deriveLineStatus(deriveInput)
   const riskLevel = deriveRiskLevel(deriveInput, now)

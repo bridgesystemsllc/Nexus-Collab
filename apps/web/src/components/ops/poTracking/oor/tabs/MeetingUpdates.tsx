@@ -4,7 +4,9 @@
 // is a record type rather than another comment — a decision nobody carried out
 // should surface itself without anyone remembering to look.
 
-import { AlertTriangle, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { AlertTriangle, Clock, Loader2 } from 'lucide-react'
+import { isTouchBaseDue, TOUCH_BASE_CADENCE, type OorRiskLevel } from '@nexus/shared'
 import { useOorCollection, useOorMutations } from '../useOorQueries'
 import { ThreadComposer } from '../ThreadComposer'
 import { Pill } from '../OorPills'
@@ -23,12 +25,78 @@ interface MeetingUpdate {
   body: string | null
 }
 
-export function MeetingUpdatesTab({ lineId }: { lineId: string }) {
+interface MeetingUpdatesTabProps {
+  lineId: string
+  riskLevel?: OorRiskLevel | string
+}
+
+export function MeetingUpdatesTab({ lineId, riskLevel }: MeetingUpdatesTabProps) {
   const updates = useOorCollection<MeetingUpdate>(lineId, 'meeting-updates')
   const { addRecord } = useOorMutations(lineId)
+  const [loggingTouchBase, setLoggingTouchBase] = useState(false)
+
+  // Determine last meeting date for touch-base calculation
+  const lastMeetingAt = updates.data?.rows?.[0]?.meetingDate ?? null
+  const touchBaseDue = riskLevel ? isTouchBaseDue({
+    riskLevel: riskLevel as OorRiskLevel,
+    lastMeetingAt,
+  }) : false
+  const cadenceDays = TOUCH_BASE_CADENCE[(riskLevel as OorRiskLevel) ?? 'on_track'] ?? 7
+
+  // Log a touch-base meeting update with pre-filled defaults
+  const logTouchBase = async () => {
+    setLoggingTouchBase(true)
+    try {
+      const today = new Date()
+      const dueDate = new Date(today.getTime() + cadenceDays * 24 * 60 * 60 * 1000)
+      await addRecord.mutateAsync({
+        path: 'meeting-updates',
+        body: {
+          meetingDate: today.toISOString().slice(0, 10),
+          meetingTitle: 'Touch-base check-in',
+          attendees: [],
+          nextAction: 'Follow up on status',
+          dueDate: dueDate.toISOString().slice(0, 10),
+        },
+      })
+    } finally {
+      setLoggingTouchBase(false)
+    }
+  }
 
   return (
     <div className="space-y-3">
+      {/* Touch-base due alert with quick-log CTA */}
+      {touchBaseDue && (
+        <div
+          className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5"
+          style={{ background: 'var(--warning-light)', border: '1px solid var(--warning)' }}
+        >
+          <div className="flex items-center gap-2">
+            <Clock size={14} style={{ color: 'var(--warning)' }} />
+            <span className="text-[13px] font-medium" style={{ color: 'var(--warning)' }}>
+              Touch base due
+            </span>
+            <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+              — {riskLevel === 'critical' ? 'weekly' : 'biweekly'} check-in required
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={logTouchBase}
+            disabled={loggingTouchBase}
+            className="rounded-lg px-3 py-1.5 text-[12px] font-medium"
+            style={{
+              background: 'var(--warning)',
+              color: '#fff',
+              opacity: loggingTouchBase ? 0.6 : 1,
+            }}
+          >
+            {loggingTouchBase ? 'Logging…' : 'Log touch-base'}
+          </button>
+        </div>
+      )}
+
       <ThreadComposer
         fields={[
           { name: 'meetingDate', label: 'Meeting date', type: 'date', required: true },

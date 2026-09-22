@@ -270,6 +270,7 @@ async function writeLine(
     manualStatus,
     nodes: toDeriveNodes(line.nodes, onHandByKey),
     requiredDeliveryDate: line.requiredDeliveryDate,
+    shipDate: line.shipDate,
   }
   const lineStatus = deriveLineStatus(deriveInput)
   const riskLevel = deriveRiskLevel(deriveInput, now)

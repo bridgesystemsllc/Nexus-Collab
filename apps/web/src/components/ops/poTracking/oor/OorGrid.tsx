@@ -9,7 +9,8 @@
 // everything and filters in the browser" would work for exactly one import.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronRight } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronRight, Clock } from 'lucide-react'
+import { isTouchBaseDue, type OorRiskLevel } from '@nexus/shared'
 import type { OorColumn } from './oorColumns'
 import type { OorLineRow } from './useOorQueries'
 import { useOorTree } from './useOorQueries'
@@ -105,7 +106,23 @@ function ExpandableRow({
               }}
             >
               {col.key === 'riskLevel' ? (
-                <RiskPill risk={row.riskLevel} title={tooltip} />
+                (() => {
+                  const lastMeetingAt = row.latestActivity?.source === 'meeting' ? row.latestActivity.at : null
+                  const touchBaseDue = isTouchBaseDue({
+                    riskLevel: row.riskLevel as OorRiskLevel,
+                    lastMeetingAt,
+                  })
+                  return (
+                    <span className="inline-flex items-center gap-1">
+                      <RiskPill risk={row.riskLevel} title={tooltip} />
+                      {touchBaseDue && (
+                        <Pill tone="warning" icon={Clock} title="Touch base due — log a meeting update">
+                          Touch base due
+                        </Pill>
+                      )}
+                    </span>
+                  )
+                })()
               ) : col.key === 'valueComputed' && row.valueMismatch ? (
                 <span className="inline-flex items-center gap-1">
                   {text}

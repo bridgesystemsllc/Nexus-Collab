@@ -85,6 +85,46 @@ export const OOR_RISK_META: Record<OorRiskLevel, { label: string; tone: OorStatu
   critical: { label: 'Critical', tone: 'danger' },
 }
 
+/**
+ * Display labels for ship status: maps the persisted OorRiskLevel to the
+ * user-facing Green/Risk/Critical vocabulary.
+ */
+export const SHIP_STATUS_LABEL: Record<OorRiskLevel, string> = {
+  on_track: 'Green',
+  at_risk: 'Risk',
+  critical: 'Critical',
+}
+
+/**
+ * Touch-base cadence thresholds in days: Critical requires weekly follow-up,
+ * Risk requires biweekly, Green has no cadence.
+ */
+export const TOUCH_BASE_CADENCE: Record<OorRiskLevel, number | null> = {
+  critical: 7,
+  at_risk: 14,
+  on_track: null,
+}
+
+/**
+ * Determines whether a touch-base is due for a line based on its risk level
+ * and the date of the last meeting update.
+ */
+export function isTouchBaseDue(input: {
+  riskLevel: OorRiskLevel | string
+  lastMeetingAt: Date | string | null
+  now?: Date
+}): boolean {
+  const now = input.now ?? new Date()
+  const riskLevel = input.riskLevel as OorRiskLevel
+  const days = TOUCH_BASE_CADENCE[riskLevel]
+  if (days == null) return false
+  if (!input.lastMeetingAt) return true
+  const lastMeeting =
+    typeof input.lastMeetingAt === 'string' ? new Date(input.lastMeetingAt) : input.lastMeetingAt
+  if (isNaN(lastMeeting.getTime())) return true
+  return now.getTime() - lastMeeting.getTime() >= days * 24 * 60 * 60 * 1000
+}
+
 /** Component types whose shortage is an artwork problem, not a supply problem. */
 export const OOR_ARTWORK_COMPONENT_TYPES = [
   'FRONT LABEL',

@@ -3,7 +3,7 @@
 // the same thing in the grid, the tree and the modal header.
 
 import { AlertTriangle, Lock, PenLine } from 'lucide-react'
-import { OOR_STATUS_META, OOR_RISK_META, type OorLineStatus, type OorRiskLevel } from '@nexus/shared'
+import { OOR_STATUS_META, OOR_RISK_META, SHIP_STATUS_LABEL, type OorLineStatus, type OorRiskLevel } from '@nexus/shared'
 
 type Tone = 'neutral' | 'accent' | 'success' | 'warning' | 'danger'
 
@@ -65,9 +65,10 @@ export function StatusPill({
 export function RiskPill({ risk, title }: { risk: string; title?: string }) {
   const meta = OOR_RISK_META[risk as OorRiskLevel]
   if (!meta || risk === 'on_track') return null
+  const label = SHIP_STATUS_LABEL[risk as OorRiskLevel] ?? meta.label
   return (
     <Pill tone={meta.tone} icon={risk === 'critical' ? AlertTriangle : undefined} title={title}>
-      {meta.label}
+      {label}
     </Pill>
   )
 }

@@ -5,7 +5,7 @@
 // years. Renaming them to something tidier would make the screen harder to use,
 // not easier.
 
-import { OOR_RISK_META, inferRiskDriversFromLine, type OorRiskLevel } from '@nexus/shared'
+import { OOR_RISK_META, SHIP_STATUS_LABEL, inferRiskDriversFromLine, type OorRiskLevel } from '@nexus/shared'
 import type { OorLineRow } from './useOorQueries'
 import { formatCurrency, formatQty, formatShortDate } from './oorFormat'
 
@@ -51,14 +51,16 @@ export const CUSTOMER_OPEN_ORDER_COLUMNS: OorColumn[] = [
   { key: 'origRequiredDate', header: 'Orig Date', width: 88, mono: true, sortKey: 'origRequiredDate', value: (r) => formatShortDate(r.origRequiredDate) },
   { key: 'requiredDeliveryDate', header: 'Req.Del', width: 88, mono: true, sortKey: 'requiredDeliveryDate', value: (r) => formatShortDate(r.requiredDeliveryDate) },
   { key: 'riskLevel', header: 'Risk', width: 90, sortKey: 'riskLevel',
-    value: (r) => OOR_RISK_META[r.riskLevel as OorRiskLevel]?.label ?? r.riskLevel,
+    value: (r) => SHIP_STATUS_LABEL[r.riskLevel as OorRiskLevel] ?? r.riskLevel,
     title: (r) => {
       const drivers = inferRiskDriversFromLine({
         lineStatus: r.lineStatus,
         riskLevel: r.riskLevel as OorRiskLevel,
         requiredDeliveryDate: r.requiredDeliveryDate,
       })
-      return drivers.length > 0 ? drivers.join(' • ') : undefined
+      const meta = OOR_RISK_META[r.riskLevel as OorRiskLevel]
+      const label = meta?.label ?? r.riskLevel
+      return drivers.length > 0 ? `${label}: ${drivers.join(' • ')}` : label
     } },
   { key: 'workOrderNumber', header: 'WO', width: 120, mono: true, value: (r) => r.workOrderNumber ?? '' },
 ]
@@ -73,14 +75,16 @@ export const SHORTAGE_COLUMNS: OorColumn[] = [
   { key: 'description', header: 'Description', width: 260, value: (r) => r.description ?? '' },
   { key: 'requiredDeliveryDate', header: "Req'd Date", width: 100, mono: true, sortKey: 'requiredDeliveryDate', value: (r) => formatShortDate(r.requiredDeliveryDate) },
   { key: 'riskLevel', header: 'Risk', width: 90, sortKey: 'riskLevel',
-    value: (r) => OOR_RISK_META[r.riskLevel as OorRiskLevel]?.label ?? r.riskLevel,
+    value: (r) => SHIP_STATUS_LABEL[r.riskLevel as OorRiskLevel] ?? r.riskLevel,
     title: (r) => {
       const drivers = inferRiskDriversFromLine({
         lineStatus: r.lineStatus,
         riskLevel: r.riskLevel as OorRiskLevel,
         requiredDeliveryDate: r.requiredDeliveryDate,
       })
-      return drivers.length > 0 ? drivers.join(' • ') : undefined
+      const meta = OOR_RISK_META[r.riskLevel as OorRiskLevel]
+      const label = meta?.label ?? r.riskLevel
+      return drivers.length > 0 ? `${label}: ${drivers.join(' • ')}` : label
     } },
   { key: 'qtyRemaining', header: 'Qty Due', width: 90, align: 'right', mono: true, sortKey: 'qtyRemaining', value: (r) => formatQty(r.qtyRemaining) },
   { key: 'unitPrice', header: 'Unit Price', width: 100, align: 'right', mono: true, sortKey: 'unitPrice', value: (r) => formatCurrency(r.unitPrice) },
