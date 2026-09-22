@@ -776,6 +776,7 @@ function NotesDrawer({
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             <button
+              type="button"
               onClick={() => item && onEmail(item)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium text-white transition-all hover:opacity-90"
               style={{ background: 'var(--accent)' }}
@@ -785,6 +786,7 @@ function NotesDrawer({
               Update Email
             </button>
             <button
+              type="button"
               onClick={onClose}
               className="p-2 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
             >
@@ -821,6 +823,7 @@ function NotesDrawer({
             className={`${inputClass} resize-y`}
           />
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={!newNote.trim() || saving}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-[14px] font-medium text-white transition-all disabled:opacity-40"
@@ -941,6 +944,7 @@ function CoworkModal({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-2 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
           >
@@ -1028,6 +1032,7 @@ function CoworkModal({
                 <div className="flex items-center gap-2">
                   {(['Normal', 'Urgent'] as const).map((p) => (
                     <button
+                      type="button"
                       key={p}
                       onClick={() => setPriority(p)}
                       className="px-4 py-2 rounded-lg text-[13px] font-medium transition-all"
@@ -1059,12 +1064,14 @@ function CoworkModal({
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--border-subtle)]">
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2.5 rounded-lg text-[14px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={isResolving ? handleResolve : handleSubmit}
             disabled={saving}
             className="px-5 py-2.5 rounded-lg text-[14px] font-medium text-white transition-all disabled:opacity-40"
@@ -1168,6 +1175,7 @@ function NewOrderModal({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-2 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
           >
@@ -1408,12 +1416,14 @@ function NewOrderModal({
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--border-subtle)]">
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2.5 rounded-lg text-[14px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] transition-colors"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={saving || !form.salesOrder.trim() || !form.itemNumber.trim() || !form.description.trim()}
             className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-[14px] font-medium text-white transition-all disabled:opacity-40"

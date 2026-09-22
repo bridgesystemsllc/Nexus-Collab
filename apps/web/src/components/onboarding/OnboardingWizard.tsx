@@ -414,6 +414,7 @@ export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
             >
               <div className="flex items-center gap-3">
                 <button
+                  type="button"
                   onClick={() => setStep('org')}
                   className="p-2 rounded-lg hover:bg-[var(--bg-hover)]"
                   style={{ color: 'var(--text-tertiary)' }}
@@ -434,6 +435,7 @@ export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
               <div className="flex justify-center">
                 <div className="inline-flex rounded-lg p-1" style={{ background: 'var(--bg-base)' }}>
                   <button
+                    type="button"
                     onClick={() => update('interval', 'monthly')}
                     className="px-4 py-2 rounded-md text-sm font-medium"
                     style={{
@@ -444,6 +446,7 @@ export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
                     Monthly
                   </button>
                   <button
+                    type="button"
                     onClick={() => update('interval', 'annual')}
                     className="px-4 py-2 rounded-md text-sm font-medium"
                     style={{
@@ -463,6 +466,7 @@ export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
                   const isSelected = data.tierKey === tier.key
                   return (
                     <button
+                      type="button"
                       key={tier.key}
                       onClick={() => handleSelectTier(tier.key)}
                       className="w-full text-left rounded-xl p-4 transition-all"
@@ -511,6 +515,7 @@ export function OnboardingWizard({ pendingUser, onSuccess }: Props) {
                         </div>
                       </div>
                       <button
+                        type="button"
                         onClick={() => window.open('mailto:sales@nexus.app?subject=Enterprise%20inquiry', '_blank')}
                         className="px-3 py-1.5 rounded-lg text-xs font-medium"
                         style={{ background: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
