@@ -28,6 +28,8 @@ export interface RiskScoreInput {
   notesText?: string
   /** Reference date for "days remaining" calculations. */
   today?: Date
+  /** Estimated ship date for the line. Past ship date with qty remaining → Critical. */
+  shipDate?: Date | string | null
 }
 
 export interface RiskNodeInput {
@@ -122,6 +124,21 @@ export function computeRiskScore(input: RiskScoreInput): RiskScoreResult {
   // Fulfilled lines are low risk
   if (input.qtyRemaining !== null && input.qtyRemaining <= 0) {
     return { level: 'Low', score: 0, drivers: [] }
+  }
+
+  // Past ship date with qty remaining → Critical
+  const shipDate = input.shipDate
+    ? typeof input.shipDate === 'string'
+      ? new Date(input.shipDate)
+      : input.shipDate
+    : null
+  if (shipDate && !isNaN(shipDate.getTime())) {
+    const shipDateStart = new Date(shipDate.getFullYear(), shipDate.getMonth(), shipDate.getDate())
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    if (shipDateStart.getTime() < todayStart.getTime() && (input.qtyRemaining ?? 0) > 0) {
+      score = Math.max(score, 90)
+      drivers.push('Past estimated ship date')
+    }
   }
 
   const blockers = input.nodes.filter(isShort)

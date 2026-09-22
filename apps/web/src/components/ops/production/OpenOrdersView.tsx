@@ -34,7 +34,8 @@ import {
   type OpenOrderLine,
   type PORiskLevel,
 } from './openOrderData'
-import { OOR_RISK_META, type OorRiskLevel } from '@nexus/shared'
+import { OOR_RISK_META, SHIP_STATUS_LABEL, isTouchBaseDue, type OorRiskLevel } from '@nexus/shared'
+import { useReconcileOpenOrders, useOorLines } from '@/components/ops/poTracking/oor/useOorQueries'
 import { TaskAttachments } from '@/components/shared/TaskAttachments'
 import { ProductionEmailModal } from './ProductionEmailModal'
 import { OverlayPortal } from '@/components/shared/OverlayPortal'
@@ -106,6 +107,13 @@ function KpiCell({
   )
 }
 
+/** OorLine data mapped by PO number for Est. Ship and risk display. */
+interface OorLineInfo {
+  shipDate: string | null
+  riskLevel: string
+  lastMeetingAt: string | null
+}
+
 export function OpenOrdersView({ items, moduleId, onRefresh, onOpenTracking }: OpenOrdersViewProps) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
@@ -114,6 +122,44 @@ export function OpenOrdersView({ items, moduleId, onRefresh, onOpenTracking }: O
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({})
   const [detail, setDetail] = useState<OpenOrder | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+
+  // Reconcile OorLines with ERP data to ensure shipDate and riskLevel are available
+  useReconcileOpenOrders()
+
+  // Fetch OorLine data for shipDate and riskLevel (only open lines, no pagination limit needed for mapping)
+  const oorLinesQuery = useOorLines({ openOnly: true, pageSize: 200 }, true)
+  const oorLineMap = useMemo(() => {
+    const map = new Map<string, OorLineInfo>()
+    if (oorLinesQuery.data?.rows) {
+      for (const line of oorLinesQuery.data.rows) {
+        const poNum = line.customerPoNumber
+        if (poNum) {
+          // Use the first line's data for each PO (or aggregate if needed)
+          if (!map.has(poNum)) {
+            map.set(poNum, {
+              shipDate: line.shipDate,
+              riskLevel: line.riskLevel,
+              lastMeetingAt: line.latestActivity?.source === 'meeting' ? line.latestActivity.at : null,
+            })
+          } else {
+            // If multiple lines for same PO, take the worst risk level
+            const existing = map.get(poNum)!
+            const riskOrder = { critical: 2, at_risk: 1, on_track: 0 }
+            const existingRisk = riskOrder[existing.riskLevel as keyof typeof riskOrder] ?? 0
+            const lineRisk = riskOrder[line.riskLevel as keyof typeof riskOrder] ?? 0
+            if (lineRisk > existingRisk) {
+              map.set(poNum, {
+                shipDate: line.shipDate ?? existing.shipDate,
+                riskLevel: line.riskLevel,
+                lastMeetingAt: line.latestActivity?.source === 'meeting' ? line.latestActivity.at : existing.lastMeetingAt,
+              })
+            }
+          }
+        }
+      }
+    }
+    return map
+  }, [oorLinesQuery.data])
 
   const orders = useMemo(() => items.map(toOpenOrder), [items])
 
@@ -271,6 +317,7 @@ export function OpenOrdersView({ items, moduleId, onRefresh, onOpenTracking }: O
                           <th>Status</th>
                           <th>Urgency</th>
                           <th>Risk</th>
+                          <th>Est. Ship</th>
                           <th>Order Date</th>
                           <th>Delivery Due</th>
                           <th className="text-right">Lines</th>
@@ -285,6 +332,13 @@ export function OpenOrdersView({ items, moduleId, onRefresh, onOpenTracking }: O
                         {g.orders.map((o) => {
                           const color = statusColor(o.poStatus)
                           const isOpen = expanded[o.id]
+                          // Get OorLine data for this PO
+                          const oorInfo = oorLineMap.get(o.poNumber)
+                          const riskLevel = (oorInfo?.riskLevel ?? derivePORisk(o).level) as OorRiskLevel
+                          const touchBaseDue = oorInfo && isTouchBaseDue({
+                            riskLevel,
+                            lastMeetingAt: oorInfo.lastMeetingAt,
+                          })
                           return (
                             <Fragment key={o.id}>
                               <tr
@@ -322,19 +376,42 @@ export function OpenOrdersView({ items, moduleId, onRefresh, onOpenTracking }: O
                                 </td>
                                 <td>
                                   {(() => {
-                                    const risk = derivePORisk(o)
-                                    if (risk.level === 'on_track') return null
-                                    const meta = OOR_RISK_META[risk.level as OorRiskLevel]
+                                    if (riskLevel === 'on_track') {
+                                      return (
+                                        <span className="badge" style={{ background: 'var(--success)20', color: 'var(--success)' }}>
+                                          {SHIP_STATUS_LABEL[riskLevel]}
+                                        </span>
+                                      )
+                                    }
+                                    const meta = OOR_RISK_META[riskLevel]
+                                    const label = SHIP_STATUS_LABEL[riskLevel] ?? meta?.label ?? riskLevel
+                                    const fallbackRisk = derivePORisk(o)
                                     return (
-                                      <span
-                                        className="badge"
-                                        style={{ background: `var(--${meta.tone === 'danger' ? 'danger' : 'warning'})20`, color: `var(--${meta.tone === 'danger' ? 'danger' : 'warning'})` }}
-                                        title={risk.drivers.join(' • ')}
-                                      >
-                                        {meta.label}
+                                      <span className="inline-flex items-center gap-1">
+                                        <span
+                                          className="badge"
+                                          style={{ background: `var(--${meta?.tone === 'danger' ? 'danger' : 'warning'})20`, color: `var(--${meta?.tone === 'danger' ? 'danger' : 'warning'})` }}
+                                          title={fallbackRisk.drivers.join(' • ')}
+                                        >
+                                          {label}
+                                        </span>
+                                        {touchBaseDue && (
+                                          <span
+                                            className="badge text-[10px]"
+                                            style={{ background: 'var(--warning)20', color: 'var(--warning)' }}
+                                            title="Touch base due — log a meeting update"
+                                          >
+                                            Touch base due
+                                          </span>
+                                        )}
                                       </span>
                                     )
                                   })()}
+                                </td>
+                                <td className="text-[var(--text-secondary)] text-xs">
+                                  {oorInfo?.shipDate
+                                    ? new Date(oorInfo.shipDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+                                    : '—'}
                                 </td>
                                 <td className="text-[var(--text-secondary)] text-xs">{o.orderDate || '—'}</td>
                                 <td className="text-[var(--text-secondary)] text-xs">{o.deliveryDue || '—'}</td>

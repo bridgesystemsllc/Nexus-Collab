@@ -37,6 +37,8 @@ export interface DeriveInput {
   manualStatus: OorLineStatus | null
   nodes: DeriveNode[]
   requiredDeliveryDate: Date | null
+  /** Estimated ship date — past ship date with qty remaining → Critical */
+  shipDate?: Date | null
 }
 
 /** Days inside which a required date counts as at risk. */
@@ -116,6 +118,7 @@ export function deriveRiskLevel(input: DeriveInput, today: Date): OorRiskLevel {
     requiredDeliveryDate: input.requiredDeliveryDate,
     nodes: riskNodes,
     today,
+    shipDate: input.shipDate,
   })
 
   return toOorRiskLevel(result.level)
