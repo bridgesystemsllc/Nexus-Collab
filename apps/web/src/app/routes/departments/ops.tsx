@@ -51,6 +51,7 @@ import { brandLabel } from '@/components/ops/brandLabel'
 import { useAppStore } from '@/stores/appStore'
 import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
 import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
+import { Toast, type ToastData } from '@/components/shared/Toast'
 
 
 // ─── Types ─────────────────────────────────────────────────
@@ -1232,6 +1233,8 @@ export function OpsPage() {
   const [showRemovedBrandFrame, setShowRemovedBrandFrame] = useState(false)
   const openForm = useAppStore((s) => s.openForm)
   const setPage = useAppStore((s) => s.setPage)
+  // Toast for error messages (e.g. module not available on this department)
+  const [toast, setToast] = useState<ToastData | null>(null)
 
   // Handle legacy ?tab=sku and ?tab=brand URL params
   useEffect(() => {
@@ -1333,6 +1336,46 @@ export function OpsPage() {
     [moduleData.inventory]
   )
 
+  // Handle item selection from Overview Open Module Items cards
+  const OPS_TABS: readonly string[] = ['overview', 'tasks-followup', 'projects', 'inventory', 'production', 'part-numbers', 'components', 'bom', 'cm']
+  const handleSelectModuleItem = (args: { moduleKey: string; item: { id: string; [k: string]: unknown } }) => {
+    const { moduleKey, item } = args
+
+    // Validate tab is available on Operations
+    if (!OPS_TABS.includes(moduleKey)) {
+      setToast({ message: "This module isn't available on this department.", type: 'error' })
+      return
+    }
+
+    // Open the appropriate detail based on module type
+    switch (moduleKey) {
+      case 'inventory': {
+        // Find the item in either KarEve or Geodis inventory
+        const invItem = [...moduleData.inventory, ...moduleData.geodisInventory].find((i: any) => i.id === item.id)
+        if (invItem) setSelectedItem({ item: invItem, type: 'INVENTORY_HEALTH' })
+        break
+      }
+      case 'bom': {
+        const bomItem = moduleData.bom.find((b: any) => b.id === item.id)
+        if (bomItem) setSelectedItem({ item: bomItem, type: 'BILL_OF_MATERIALS' })
+        break
+      }
+      case 'components': {
+        const compItem = moduleData.components.find((c: any) => c.id === item.id)
+        if (compItem) setSelectedItem({ item: compItem, type: 'COMPONENTS' })
+        break
+      }
+      case 'production': {
+        // Production detail is handled internally by ProductionTab; just navigate
+        setActiveTab('production')
+        break
+      }
+      default:
+        // For other tabs, just navigate (no detail to open from Overview)
+        setActiveTab(moduleKey as OpsTab)
+    }
+  }
+
   const deptId = opsDept?.id ?? null
 
   // Detail dialog → Edit opens the matching full-page form
@@ -1414,7 +1457,14 @@ export function OpsPage() {
             <DepartmentOverviewTab
               departmentId={deptId}
               departmentName="Operations"
-              onNavigateToTab={(tab) => setActiveTab(tab as OpsTab)}
+              onNavigateToTab={(tab) => {
+                if (!OPS_TABS.includes(tab)) {
+                  setToast({ message: "This module isn't available on this department.", type: 'error' })
+                  return
+                }
+                setActiveTab(tab as OpsTab)
+              }}
+              onSelectModuleItem={handleSelectModuleItem}
             />
           ) : activeTab === 'tasks-followup' ? (
             <DepartmentTasksFollowUpTab
@@ -1452,6 +1502,9 @@ export function OpsPage() {
         onEdit={selectedItem ? editSelected : undefined}
         coworkItem={selectedCowork}
       />
+
+      {/* Toast for error messages */}
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
   )
 }

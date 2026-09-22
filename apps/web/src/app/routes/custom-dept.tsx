@@ -6,6 +6,7 @@ import { DepartmentProjectsTab } from '@/modules/projects/ProjectsModule'
 import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
 import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
 import { MarketingArtworkTab } from '@/components/marketing/artwork'
+import { Toast, type ToastData } from '@/components/shared/Toast'
 
 // ─── Generic department page ─────────────────────────────────
 // Every department that is not R&D, Operations or Finance lands here —
@@ -40,6 +41,8 @@ const MODULES_TAB: { key: Tab; label: string; icon: React.ElementType } = {
 export function CustomDeptPage() {
   const selectedDeptId = useAppStore((s) => s.selectedDeptId)
   const [tab, setTab] = useState<Tab>('overview')
+  // Toast for error messages (e.g. module not available on this department)
+  const [toast, setToast] = useState<ToastData | null>(null)
 
   const { data: departments, isLoading: deptsLoading } = useDepartments()
 
@@ -71,6 +74,23 @@ export function CustomDeptPage() {
     tabs.push(MODULES_TAB)
     return tabs
   }, [hasArtworkModule])
+
+  // Get all available tab keys for validation
+  const availableTabKeys = useMemo(() => TABS.map((t) => t.key), [TABS])
+
+  // Handle item selection from Overview Open Module Items cards
+  const handleSelectModuleItem = (args: { moduleKey: string; item: { id: string; [k: string]: unknown } }) => {
+    const { moduleKey } = args
+
+    // Validate tab is available on this custom department
+    if (!availableTabKeys.includes(moduleKey as Tab)) {
+      setToast({ message: "This module isn't available on this department.", type: 'error' })
+      return
+    }
+
+    // Custom departments don't have specialized detail views - just navigate to tab
+    setTab(moduleKey as Tab)
+  }
 
   if (deptsLoading) {
     return (
@@ -142,7 +162,14 @@ export function CustomDeptPage() {
           <DepartmentOverviewTab
             departmentId={department.id}
             departmentName={department.name}
-            onNavigateToTab={(t) => setTab(t as Tab)}
+            onNavigateToTab={(t) => {
+              if (!availableTabKeys.includes(t as Tab)) {
+                setToast({ message: "This module isn't available on this department.", type: 'error' })
+                return
+              }
+              setTab(t as Tab)
+            }}
+            onSelectModuleItem={handleSelectModuleItem}
           />
         ) : tab === 'tasks-followup' ? (
           <DepartmentTasksFollowUpTab
@@ -200,6 +227,9 @@ export function CustomDeptPage() {
           </p>
         </div>
       </div>
+
+      {/* Toast for error messages */}
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
   )
 }
