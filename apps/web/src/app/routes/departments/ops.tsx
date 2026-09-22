@@ -19,6 +19,7 @@ import {
   ListChecks,
   Mail,
   Package,
+  Palette,
   Pencil,
   Plus,
   RefreshCw,
@@ -51,16 +52,18 @@ import { brandLabel } from '@/components/ops/brandLabel'
 import { useAppStore } from '@/stores/appStore'
 import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
 import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
+import { DepartmentArtworkTab } from '@/components/departments/DepartmentArtworkTab'
 import { Toast, type ToastData } from '@/components/shared/Toast'
 
 
 // ─── Types ─────────────────────────────────────────────────
-type OpsTab = 'overview' | 'tasks-followup' | 'projects' | 'inventory' | 'production' | 'part-numbers' | 'components' | 'bom' | 'cm'
+type OpsTab = 'overview' | 'tasks-followup' | 'projects' | 'artwork' | 'inventory' | 'production' | 'part-numbers' | 'components' | 'bom' | 'cm'
 
 const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'overview', label: 'Overview', icon: LayoutDashboard },
   { key: 'tasks-followup', label: 'Tasks & Follow-up', icon: ListChecks },
   { key: 'projects', label: 'Projects', icon: FolderKanban },
+  { key: 'artwork', label: 'Artwork', icon: Palette },
   { key: 'inventory', label: 'Inventory Health', icon: Box },
   { key: 'production', label: 'Production Tracking', icon: Factory },
   { key: 'part-numbers', label: 'Part Numbers', icon: Hash },
@@ -1199,6 +1202,8 @@ const MODULE_TYPE_BY_TAB: Record<OpsTab, string> = {
   // Projects is not a DepartmentModule — it owns its own tables and fetches
   // its own data, so it has no module type to resolve.
   projects: '',
+  // Artwork is rendered from Marketing's canonical module, never Operations'.
+  artwork: '',
   inventory: 'INVENTORY_HEALTH',
   production: 'PRODUCTION_TRACKING',
   // Part numbers have their own Prisma model, not a DepartmentModule.
@@ -1337,7 +1342,7 @@ export function OpsPage() {
   )
 
   // Handle item selection from Overview Open Module Items cards
-  const OPS_TABS: readonly string[] = ['overview', 'tasks-followup', 'projects', 'inventory', 'production', 'part-numbers', 'components', 'bom', 'cm']
+  const OPS_TABS: readonly string[] = ['overview', 'tasks-followup', 'projects', 'artwork', 'inventory', 'production', 'part-numbers', 'components', 'bom', 'cm']
   const handleSelectModuleItem = (args: { moduleKey: string; item: { id: string; [k: string]: unknown } }) => {
     const { moduleKey, item } = args
 
@@ -1477,6 +1482,8 @@ export function OpsPage() {
               departmentName="Operations"
               departmentCode="OPERATIONS"
             />
+          ) : activeTab === 'artwork' ? (
+            <DepartmentArtworkTab />
           ) : isLoading ? (
             activeTab === 'inventory' ? <TableSkeleton /> : <CardsSkeleton />
           ) : activeTab === 'inventory' ? (
@@ -1490,7 +1497,7 @@ export function OpsPage() {
           ) : activeTab === 'bom' ? (
             <BOMTab items={moduleData.bom} moduleId={moduleIds.bom} departmentId={deptId} onRefresh={() => refetchDept()} components={moduleData.components} skuItems={moduleData.sku} />
           ) : (
-            <CMTab items={cmModule?.items || []} moduleId={cmModule?.id ?? null} departmentId={rdDept?.id ?? null} onRefresh={() => refetchRd()} productionItems={moduleData.production} isLoading={rdDetailLoading} isError={rdDetailError} onRetry={() => refetchRd()} />
+            <CMTab items={cmModule?.items || []} moduleId={cmModule?.id ?? null} departmentId={rdDept?.id ?? null} onRefresh={() => refetchRd()} openOrderItems={moduleData.openOrders} onRefreshOpenOrders={() => refetchDept()} isLoading={rdDetailLoading} isError={rdDetailError} onRetry={() => refetchRd()} />
           )}
         </div>
       </div>

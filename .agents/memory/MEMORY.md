@@ -14,3 +14,4 @@
 - [ERP sync fallback contract](erp-sync-fallback-contract.md) — ERP fetchers return synthetic ONLY when unconfigured; throw when configured; base needs /api/v1 + JSON guard; out-of-band sync must never reject.
 - [Shared package build drift](shared-package-build-drift.md) — web startup/build must compile @nexus/shared first or new exports can crash Vite while source typechecks.
 - [ERP lines in canonical OOR](erp-lines-canonical-oor.md) — ERP lines link into OorLine; ERP owns lifecycle fields, while manual status and collaboration survive refresh.
+- [Shared artwork](shared-artwork.md) — department tabs reuse Marketing artwork; legacy R&D records need an explicit migration, not automatic merging.

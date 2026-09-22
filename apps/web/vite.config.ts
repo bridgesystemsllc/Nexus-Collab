@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react()],
   base: '/',
   build: {
@@ -12,6 +12,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Follow shared source changes during development instead of stale dist exports.
+      ...(command === 'serve'
+        ? { '@nexus/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts') }
+        : {}),
     },
   },
   server: {
@@ -38,4 +42,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

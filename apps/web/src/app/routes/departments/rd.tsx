@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   Loader2,
   Package,
+  Palette,
   Plus,
   Repeat2,
   Rocket,
@@ -50,15 +51,17 @@ import { StatusBadge, ActionsMenu, DeleteConfirmDialog } from '@/components/shar
 import { CMTab } from '@/components/cm/CMTab'
 import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
 import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
+import { DepartmentArtworkTab } from '@/components/departments/DepartmentArtworkTab'
 import { Toast, type ToastData } from '@/components/shared/Toast'
 
 // ─── Types ─────────────────────────────────────────────────
-type RDTab = 'overview' | 'tasks-followup' | 'projects' | 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd'
+type RDTab = 'overview' | 'tasks-followup' | 'projects' | 'artwork' | 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd'
 
 const TABS: { key: RDTab; label: string; icon: React.ElementType }[] = [
   { key: 'overview', label: 'Overview', icon: LayoutDashboard },
   { key: 'tasks-followup', label: 'Tasks & Follow-up', icon: ClipboardList },
   { key: 'projects', label: 'Projects', icon: FolderKanban },
+  { key: 'artwork', label: 'Artwork', icon: Palette },
   { key: 'briefs', label: 'Active Briefs', icon: FileText },
   { key: 'cm', label: 'CM Productivity', icon: Users },
   { key: 'transfers', label: 'Tech Transfers', icon: Repeat2 },
@@ -1328,7 +1331,7 @@ export function RDPage() {
   }
 
   // Handle item selection from Overview Open Module Items cards
-  const RD_TABS: readonly string[] = ['overview', 'tasks-followup', 'projects', 'briefs', 'cm', 'transfers', 'formulations', 'npd']
+  const RD_TABS: readonly string[] = ['overview', 'tasks-followup', 'projects', 'artwork', 'briefs', 'cm', 'transfers', 'formulations', 'npd']
   const handleSelectModuleItem = (args: { moduleKey: string; item: { id: string; [k: string]: unknown } }) => {
     const { moduleKey, item } = args
 
@@ -1375,11 +1378,16 @@ export function RDPage() {
   }, [departments])
 
   const { data: deptDetail, isLoading: detailLoading, refetch: refetchDept } = useDepartment(rdDept?.id || '')
-  const { data: opsDetail } = useDepartment(opsDept?.id || '')
+  const {
+    data: opsDetail,
+    isLoading: opsLoading,
+    isError: opsError,
+    refetch: refetchOps,
+  } = useDepartment(opsDept?.id || '')
 
-  const productionItems = useMemo(() => {
+  const openOrderItems = useMemo(() => {
     const modules = (opsDetail?.modules as any[]) || []
-    return modules.find((m: any) => m.type === 'PRODUCTION_TRACKING')?.items || []
+    return modules.find((m: any) => m.type === 'OPEN_ORDERS')?.items || []
   }, [opsDetail])
 
   const skuItems = useMemo(() => {
@@ -1424,6 +1432,7 @@ export function RDPage() {
     'tasks-followup': [],
     // Projects fetches its own data rather than reading a department module.
     projects: [],
+    artwork: [],
     briefs: moduleData.briefs,
     cm: moduleData.cm,
     transfers: moduleData.transfers,
@@ -1497,12 +1506,14 @@ export function RDPage() {
               departmentName="R&D"
               departmentCode="R_AND_D"
             />
+          ) : activeTab === 'artwork' ? (
+            <DepartmentArtworkTab />
           ) : isLoading ? (
             activeTab === 'cm' ? <CardsSkeleton /> : <TableSkeleton />
           ) : activeTab === 'briefs' ? (
             <BriefsTab items={moduleData.briefs} moduleId={moduleData.briefsModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} transferItems={moduleData.transfers} formulationItems={moduleData.formulations} openBriefId={pendingBriefId} onOpenBriefHandled={() => setPendingBriefId(null)} onOpenCm={handleOpenCm} />
           ) : activeTab === 'cm' ? (
-            <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} productionItems={productionItems} openCmId={pendingCmId} onOpenCmHandled={() => setPendingCmId(null)} />
+            <CMTab items={moduleData.cm} moduleId={moduleData.cmModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} openOrderItems={openOrderItems} openOrdersLoading={opsLoading} openOrdersError={opsError} onRefreshOpenOrders={() => refetchOps()} openCmId={pendingCmId} onOpenCmHandled={() => setPendingCmId(null)} />
           ) : activeTab === 'transfers' ? (
             <TransfersTab items={moduleData.transfers} moduleId={moduleData.transfersModuleId} departmentId={rdDept?.id || null} briefs={moduleData.briefs} cmItems={moduleData.cm} onRefresh={() => refetchDept()} onSelect={(item) => setViewingTransfer(item)} />
           ) : activeTab === 'formulations' ? (

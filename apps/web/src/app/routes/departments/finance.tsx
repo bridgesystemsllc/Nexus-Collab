@@ -118,7 +118,12 @@ export function FinancePage() {
   // CM Productivity is owned by R&D — render the SAME module here so edits write
   // to one source of truth. Ops feeds optional briefs/production cross-links.
   const { data: rdDetail, refetch: refetchRd } = useDepartment(rdDept?.id || '')
-  const { data: opsDetail } = useDepartment(opsDept?.id || '')
+  const {
+    data: opsDetail,
+    isLoading: opsLoading,
+    isError: opsError,
+    refetch: refetchOps,
+  } = useDepartment(opsDept?.id || '')
 
   // FINANCE_COSTING module: the edit target for finance-owned cost rows.
   const financeModule = useMemo(() => {
@@ -133,9 +138,9 @@ export function FinancePage() {
     return { items: mod?.items || [], moduleId: mod?.id || null, briefs: modules.find((m: any) => m.type === 'BRIEFS')?.items || [] }
   }, [rdDetail])
 
-  const productionItems = useMemo(() => {
+  const openOrderItems = useMemo(() => {
     const modules = (opsDetail?.modules as any[]) || []
-    return modules.find((m: any) => m.type === 'PRODUCTION_TRACKING')?.items || []
+    return modules.find((m: any) => m.type === 'OPEN_ORDERS')?.items || []
   }, [opsDetail])
 
   // Handle item selection from Overview Open Module Items cards
@@ -240,7 +245,10 @@ export function FinancePage() {
               departmentId={rdDept?.id ?? null}
               onRefresh={() => refetchRd()}
               briefItems={cm.briefs}
-              productionItems={productionItems}
+              openOrderItems={openOrderItems}
+              openOrdersLoading={opsLoading}
+              openOrdersError={opsError}
+              onRefreshOpenOrders={() => refetchOps()}
             />
           )}
         </div>

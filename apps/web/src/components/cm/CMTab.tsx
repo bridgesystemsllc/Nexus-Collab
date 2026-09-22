@@ -80,12 +80,15 @@ function CardsSkeleton({ count = 4 }: { count?: number }) {
 }
 
 // ─── CM Productivity Tab (Expanded) ────────────────────────
-export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [], productionItems = [], openCmId, onOpenCmHandled, isLoading = false, isError = false, onRetry }: {
+export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [], openOrderItems = [], openOrdersLoading = false, openOrdersError = false, onRefreshOpenOrders, openCmId, onOpenCmHandled, isLoading = false, isError = false, onRetry }: {
   items: any[]; moduleId: string | null; departmentId: string | null; onRefresh: () => void
   /** Briefs used for cross-links inside the CM detail modal. Optional — callers without R&D briefs (e.g. Finance) can omit. */
   briefItems?: any[]
-  /** Production orders used to compute live on-time scores. Optional. */
-  productionItems?: any[]
+  /** Canonical Operations OPEN_ORDERS records shown in the CM detail panel. */
+  openOrderItems?: any[]
+  openOrdersLoading?: boolean
+  openOrdersError?: boolean
+  onRefreshOpenOrders?: () => void | Promise<unknown>
   /** When set, open this CM's profile (used for cross-tab navigation, e.g. from a brief's linked CM). */
   openCmId?: string | null
   /** Called once openCmId has been consumed so the parent can clear it. */
@@ -132,14 +135,11 @@ export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [
     }
   }
 
-  const cmList = useMemo(() =>
-    items.map((item: any) => {
-      const base = { id: item.id, moduleId: item.moduleId, ...item.data }
-      const computedOnTime = computeCMOnTime(base.name, productionItems)
-      return computedOnTime != null ? { ...base, onTime: computedOnTime } : base
-    })
+  const cmList = useMemo(
+    () => items
+      .map((item: any) => ({ id: item.id, moduleId: item.moduleId, ...item.data }))
       .sort((a: any, b: any) => productivityScore(b) - productivityScore(a)),
-    [items, productionItems]
+    [items],
   )
 
   // Cross-tab navigation: open a specific CM's profile when requested
@@ -418,7 +418,7 @@ export function CMTab({ items, moduleId, departmentId, onRefresh, briefItems = [
         </div>
       )}
 
-      <CMDetailModal open={!!viewingCM} cm={viewingCM} onClose={() => setViewingCM(null)} onEdit={() => { if (viewingCM) { const c = viewingCM; setViewingCM(null); openCMForm('edit', c) } }} onDelete={() => { if (viewingCM) setDeletingItem({ id: viewingCM.id, name: viewingCM.name }) }} onUpdate={handleCMUpdate} briefItems={briefItems} productionItems={productionItems} />
+      <CMDetailModal open={!!viewingCM} cm={viewingCM} onClose={() => setViewingCM(null)} onEdit={() => { if (viewingCM) { const c = viewingCM; setViewingCM(null); openCMForm('edit', c) } }} onDelete={() => { if (viewingCM) setDeletingItem({ id: viewingCM.id, name: viewingCM.name }) }} onUpdate={handleCMUpdate} briefItems={briefItems} openOrderItems={openOrderItems} openOrdersLoading={openOrdersLoading} openOrdersError={openOrdersError} onRefreshOpenOrders={onRefreshOpenOrders} />
       <DeleteConfirmDialog open={!!deletingItem} itemName={deletingItem?.name || ''} onConfirm={handleDelete} onCancel={() => setDeletingItem(null)} />
       <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
