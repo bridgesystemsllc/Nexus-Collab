@@ -24,6 +24,7 @@ import { CMTab } from '@/components/cm/CMTab'
 import { DepartmentProjectsTab } from '@/modules/projects/ProjectsModule'
 import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
 import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
+import { Toast, type ToastData } from '@/components/shared/Toast'
 
 type FinanceTab = 'overview' | 'tasks-followup' | 'projects' | 'costing' | 'analysis' | 'components' | 'moq' | 'cm'
 
@@ -94,6 +95,8 @@ function ExportMenu() {
 
 export function FinancePage() {
   const [activeTab, setActiveTab] = useState<FinanceTab>('overview')
+  // Toast for error messages (e.g. module not available on this department)
+  const [toast, setToast] = useState<ToastData | null>(null)
   const { data: departments } = useDepartments()
 
   const finDept = useMemo(() => {
@@ -139,6 +142,21 @@ export function FinancePage() {
     const modules = (opsDetail?.modules as any[]) || []
     return modules.find((m: any) => m.type === 'OPEN_ORDERS')?.items || []
   }, [opsDetail])
+
+  // Handle item selection from Overview Open Module Items cards
+  const FINANCE_TABS: readonly string[] = ['overview', 'tasks-followup', 'projects', 'costing', 'analysis', 'components', 'moq', 'cm']
+  const handleSelectModuleItem = (args: { moduleKey: string; item: { id: string; [k: string]: unknown } }) => {
+    const { moduleKey } = args
+
+    // Validate tab is available on Finance
+    if (!FINANCE_TABS.includes(moduleKey)) {
+      setToast({ message: "This module isn't available on this department.", type: 'error' })
+      return
+    }
+
+    // Finance doesn't have module item detail views like R&D/Ops - just navigate to tab
+    setActiveTab(moduleKey as FinanceTab)
+  }
 
   return (
     <div className="p-6 max-w-[1400px] mx-auto space-y-6">
@@ -188,7 +206,14 @@ export function FinancePage() {
             <DepartmentOverviewTab
               departmentId={finDept?.id ?? null}
               departmentName="Finance"
-              onNavigateToTab={(tab) => setActiveTab(tab as FinanceTab)}
+              onNavigateToTab={(tab) => {
+                if (!FINANCE_TABS.includes(tab)) {
+                  setToast({ message: "This module isn't available on this department.", type: 'error' })
+                  return
+                }
+                setActiveTab(tab as FinanceTab)
+              }}
+              onSelectModuleItem={handleSelectModuleItem}
             />
           ) : activeTab === 'tasks-followup' ? (
             <DepartmentTasksFollowUpTab
@@ -228,6 +253,9 @@ export function FinancePage() {
           )}
         </div>
       </div>
+
+      {/* Toast for error messages */}
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
   )
 }

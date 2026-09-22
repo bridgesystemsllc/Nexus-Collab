@@ -52,6 +52,7 @@ import { CMTab } from '@/components/cm/CMTab'
 import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
 import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
 import { DepartmentArtworkTab } from '@/components/departments/DepartmentArtworkTab'
+import { Toast, type ToastData } from '@/components/shared/Toast'
 
 // ─── Types ─────────────────────────────────────────────────
 type RDTab = 'overview' | 'tasks-followup' | 'projects' | 'artwork' | 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd'
@@ -763,6 +764,8 @@ function NPDTab({
   onOpenCm,
   onOpenBrief,
   onOpenFormulation,
+  openNpdId,
+  onOpenNpdHandled,
 }: {
   items: any[]
   moduleId: string | null
@@ -777,6 +780,10 @@ function NPDTab({
   onOpenBrief?: (briefId: string) => void
   /** Cross-tab navigation: opens a formulation in the Formulations tab. */
   onOpenFormulation?: (formulationId: string) => void
+  /** When set, open this NPD project's detail view (used for cross-tab navigation, e.g. from Overview). */
+  openNpdId?: string | null
+  /** Called once openNpdId has been consumed so the parent can clear it. */
+  onOpenNpdHandled?: () => void
 }) {
   const openForm = useAppStore((s) => s.openForm)
   const [viewingProject, setViewingProject] = useState<any>(null)
@@ -791,6 +798,16 @@ function NPDTab({
       ...item.data,
     }))
   }, [items])
+
+  // Cross-tab navigation: open a specific NPD project's detail when requested
+  // (e.g. clicking an NPD item from Overview). No-ops safely if the project
+  // no longer exists.
+  useEffect(() => {
+    if (!openNpdId) return
+    const target = projects.find((p: any) => p.id === openNpdId)
+    if (target) setViewingProject(target)
+    onOpenNpdHandled?.()
+  }, [openNpdId, projects, onOpenNpdHandled])
 
   const openNPDForm = () => {
     openForm({
@@ -1280,6 +1297,11 @@ export function RDPage() {
   // CM id queued for cross-tab navigation (e.g. clicking a brief's linked
   // CM). Consumed by CMTab once it opens the CM's profile.
   const [pendingCmId, setPendingCmId] = useState<string | null>(null)
+  // NPD project id queued for cross-tab navigation (e.g. clicking an NPD item
+  // from Overview). Consumed by NPDTab once it opens the project detail.
+  const [pendingNpdId, setPendingNpdId] = useState<string | null>(null)
+  // Toast for error messages (e.g. module not available on this department)
+  const [toast, setToast] = useState<ToastData | null>(null)
 
   const handleOpenBrief = (briefId: string) => {
     if (!briefId) return
@@ -1300,6 +1322,47 @@ export function RDPage() {
     if (!match) return
     setActiveTab('formulations')
     setViewingFormulation(match)
+  }
+
+  const handleOpenNpd = (npdId: string) => {
+    if (!npdId) return
+    setActiveTab('npd')
+    setPendingNpdId(npdId)
+  }
+
+  // Handle item selection from Overview Open Module Items cards
+  const RD_TABS: readonly string[] = ['overview', 'tasks-followup', 'projects', 'artwork', 'briefs', 'cm', 'transfers', 'formulations', 'npd']
+  const handleSelectModuleItem = (args: { moduleKey: string; item: { id: string; [k: string]: unknown } }) => {
+    const { moduleKey, item } = args
+
+    // Validate tab is available on R&D
+    if (!RD_TABS.includes(moduleKey)) {
+      setToast({ message: "This module isn't available on this department.", type: 'error' })
+      return
+    }
+
+    // Open the appropriate detail based on module type
+    switch (moduleKey) {
+      case 'briefs':
+        handleOpenBrief(item.id)
+        break
+      case 'transfers': {
+        const transfer = (moduleData.transfers || []).find((t: any) => t.id === item.id)
+        if (transfer) setViewingTransfer(transfer)
+        break
+      }
+      case 'formulations': {
+        const formulation = (moduleData.formulations || []).find((f: any) => f.id === item.id)
+        if (formulation) setViewingFormulation(formulation)
+        break
+      }
+      case 'npd':
+        handleOpenNpd(item.id)
+        break
+      default:
+        // For other tabs, just navigate (no detail to open)
+        setActiveTab(moduleKey as RDTab)
+    }
   }
 
   const { data: departments, isLoading: deptsLoading } = useDepartments()
@@ -1423,7 +1486,14 @@ export function RDPage() {
             <DepartmentOverviewTab
               departmentId={rdDept?.id ?? null}
               departmentName="R&D"
-              onNavigateToTab={(tab) => setActiveTab(tab as RDTab)}
+              onNavigateToTab={(tab) => {
+                if (!RD_TABS.includes(tab)) {
+                  setToast({ message: "This module isn't available on this department.", type: 'error' })
+                  return
+                }
+                setActiveTab(tab as RDTab)
+              }}
+              onSelectModuleItem={handleSelectModuleItem}
             />
           ) : activeTab === 'tasks-followup' ? (
             <DepartmentTasksFollowUpTab
@@ -1451,7 +1521,7 @@ export function RDPage() {
               <FormulationsTab items={tabContent.formulations} moduleId={moduleData.formulationsModuleId} departmentId={rdDept?.id || null} briefItems={moduleData.briefs.map((i: any) => ({ id: i.id, ...i.data }))} onRefresh={() => refetchDept()} onSelect={(item) => setViewingFormulation(item)} />
             </FormulationsGate>
           ) : (
-            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} skuItems={skuItems} onOpenCm={handleOpenCm} onOpenBrief={handleOpenBrief} onOpenFormulation={handleOpenFormulation} />
+            <NPDTab items={moduleData.npd} moduleId={moduleData.npdModuleId} departmentId={rdDept?.id || null} onRefresh={() => refetchDept()} briefItems={moduleData.briefs} formulationItems={moduleData.formulations} skuItems={skuItems} onOpenCm={handleOpenCm} onOpenBrief={handleOpenBrief} onOpenFormulation={handleOpenFormulation} openNpdId={pendingNpdId} onOpenNpdHandled={() => setPendingNpdId(null)} />
           )}
         </div>
       </div>
@@ -1521,6 +1591,9 @@ export function RDPage() {
           }
         }}
       />
+
+      {/* Toast for error messages */}
+      <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>
   )
 }

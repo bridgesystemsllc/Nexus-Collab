@@ -24,10 +24,16 @@ import { useDepartmentOverview, type LowStockSku, type AtRiskOpenOrder } from '@
 import { StatusBadge } from '@/components/shared/TablePrimitives'
 import { AddToCowork } from '@/components/shared/AddToCowork'
 
+interface ModuleItemClickArgs {
+  moduleKey: string
+  item: { id: string; title?: string; status?: string; [k: string]: unknown }
+}
+
 interface DepartmentOverviewTabProps {
   departmentId: string | null
   departmentName?: string
   onNavigateToTab?: (tab: string) => void
+  onSelectModuleItem?: (args: ModuleItemClickArgs) => void
 }
 
 function relativeTime(dateStr: string): string {
@@ -246,13 +252,40 @@ function ProjectRow({ project }: { project: any }) {
   )
 }
 
-function ModuleItemRow({ item, moduleKey }: { item: any; moduleKey: string }) {
+function ModuleItemRow({
+  item,
+  moduleKey,
+  onClick,
+}: {
+  item: any
+  moduleKey: string
+  onClick?: () => void
+}) {
   const data = item.data || {}
   const name = data.projectName || data.product || data.name || data.sku || 'Untitled'
   const status = data.briefStatus || data.status || item.status
 
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onClick?.()
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      e.stopPropagation()
+      onClick?.()
+    }
+  }
+
   return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors">
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick ? handleClick : undefined}
+      onKeyDown={onClick ? handleKeyDown : undefined}
+      className={`flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors ${onClick ? 'cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 focus:ring-offset-[var(--bg-surface)]' : ''}`}
+    >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-[14px] text-[var(--text-primary)] truncate">
@@ -264,15 +297,17 @@ function ModuleItemRow({ item, moduleKey }: { item: any; moduleKey: string }) {
           <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5">{data.brand}</p>
         )}
       </div>
-      <AddToCowork
-        item={{
-          name,
-          type: MODULE_LABELS[moduleKey] || 'Item',
-          id: item.id,
-          description: data.description || status || '',
-        }}
-        variant="icon"
-      />
+      <div onClick={(e) => e.stopPropagation()}>
+        <AddToCowork
+          item={{
+            name,
+            type: MODULE_LABELS[moduleKey] || 'Item',
+            id: item.id,
+            description: data.description || status || '',
+          }}
+          variant="icon"
+        />
+      </div>
     </div>
   )
 }
@@ -281,6 +316,7 @@ export function DepartmentOverviewTab({
   departmentId,
   departmentName,
   onNavigateToTab,
+  onSelectModuleItem,
 }: DepartmentOverviewTabProps) {
   const { data, isLoading, isError } = useDepartmentOverview(departmentId || '')
 
@@ -551,27 +587,62 @@ export function DepartmentOverviewTab({
             Open Module Items
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {moduleStats.map(({ key, label, icon: Icon, count, items }) => (
-              <div key={key} className="data-cell space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Icon size={16} className="text-[var(--accent)]" />
-                    <span className="text-sm font-medium text-[var(--text-primary)]">{label}</span>
+            {moduleStats.map(({ key, label, icon: Icon, count, items }) => {
+              const handleCardClick = () => onNavigateToTab?.(key)
+              const handleCardKeyDown = (e: React.KeyboardEvent) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onNavigateToTab?.(key)
+                }
+              }
+
+              return (
+                <div
+                  key={key}
+                  role={onNavigateToTab ? 'button' : undefined}
+                  tabIndex={onNavigateToTab ? 0 : undefined}
+                  onClick={onNavigateToTab ? handleCardClick : undefined}
+                  onKeyDown={onNavigateToTab ? handleCardKeyDown : undefined}
+                  className={`data-cell space-y-3 ${onNavigateToTab ? 'cursor-pointer hover:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 focus:ring-offset-[var(--bg-surface)]' : ''} transition-colors`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Icon size={16} className="text-[var(--accent)]" />
+                      <span className="text-sm font-medium text-[var(--text-primary)]">{label}</span>
+                    </div>
+                    <span className="text-xs text-[var(--text-tertiary)] tabular-nums">{count}</span>
                   </div>
-                  <span className="text-xs text-[var(--text-tertiary)] tabular-nums">{count}</span>
+                  <div className="space-y-2">
+                    {items.map((item: any) => {
+                      const itemData = item.data || {}
+                      const itemName = itemData.projectName || itemData.product || itemData.name || itemData.sku || 'Untitled'
+                      const itemStatus = itemData.briefStatus || itemData.status || item.status
+                      return (
+                        <ModuleItemRow
+                          key={item.id}
+                          item={item}
+                          moduleKey={key}
+                          onClick={
+                            onSelectModuleItem
+                              ? () =>
+                                  onSelectModuleItem({
+                                    moduleKey: key,
+                                    item: { id: item.id, title: itemName, status: itemStatus, ...itemData },
+                                  })
+                              : undefined
+                          }
+                        />
+                      )
+                    })}
+                  </div>
+                  {count > 3 && (
+                    <p className="text-xs text-[var(--text-tertiary)] text-center">
+                      +{count - 3} more
+                    </p>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  {items.map((item: any) => (
-                    <ModuleItemRow key={item.id} item={item} moduleKey={key} />
-                  ))}
-                </div>
-                {count > 3 && (
-                  <p className="text-xs text-[var(--text-tertiary)] text-center">
-                    +{count - 3} more
-                  </p>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
