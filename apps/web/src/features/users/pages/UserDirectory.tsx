@@ -290,7 +290,7 @@ function UserTable({ users, onOpen }: { users: DirectoryUser[]; onOpen: (id: str
             <tr
               key={u.id}
               onClick={() => onOpen(u.id)}
-              onKeyDown={(e) => { if (e.key === 'Enter') onOpen(u.id) }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); onOpen(u.id) } }}
               tabIndex={0}
               role="button"
               aria-label={`Open ${u.name}`}

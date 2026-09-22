@@ -591,7 +591,7 @@ function TasksTab({
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Task title..."
                 className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)]"
-                onKeyDown={(e) => { if (e.key === 'Enter') handleAddTask() }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); handleAddTask() } }}
               />
             </div>
             <div className="grid grid-cols-3 gap-3">

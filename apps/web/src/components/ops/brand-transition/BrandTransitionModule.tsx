@@ -812,7 +812,7 @@ function NotesDrawer({
           placeholder="Add a note..."
           value={noteText}
           onChange={e => setNoteText(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) handleSubmit() }}
+          onKeyDown={e => { if (e.key === 'Enter' && e.metaKey && !e.nativeEvent.isComposing) { e.preventDefault(); handleSubmit() } }}
         />
         <button
           className="w-full px-4 py-2.5 rounded-lg text-[13px] font-medium text-white transition-all disabled:opacity-50"
