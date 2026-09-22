@@ -1,0 +1,41 @@
+{
+  "root": true,
+  "extends": [
+    "eslint:recommended"
+  ],
+  "plugins": ["react"],
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "node": true
+  },
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  },
+  "rules": {
+    "react/button-has-type": "error"
+  },
+  "overrides": [
+    {
+      "files": ["*.ts", "*.tsx"],
+      "parser": "@typescript-eslint/parser",
+      "extends": [
+        "eslint:recommended",
+        "plugin:@typescript-eslint/recommended"
+      ],
+      "plugins": ["@typescript-eslint", "react"],
+      "rules": {
+        "react/button-has-type": "error"
+      }
+    }
+  ]
+}
