@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Boxes, CheckCircle2, ClipboardList, FolderKanban, LayoutDashboard, Loader2, Palette } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
+import { useUrlTab } from '@/hooks/useUrlTab'
 import { useDepartments, useDepartment } from '@/hooks/useData'
 import { DepartmentProjectsTab } from '@/modules/projects/ProjectsModule'
 import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
@@ -19,6 +20,7 @@ import { Toast, type ToastData } from '@/components/shared/Toast'
 // the requirement: the module reaches every department, now and future.
 
 type Tab = 'overview' | 'tasks-followup' | 'projects' | 'artwork' | 'modules'
+const DEPT_TABS: readonly Tab[] = ['overview', 'tasks-followup', 'projects', 'artwork', 'modules']
 
 const BASE_TABS: { key: Tab; label: string; icon: React.ElementType }[] = [
   { key: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -40,7 +42,8 @@ const MODULES_TAB: { key: Tab; label: string; icon: React.ElementType } = {
 
 export function CustomDeptPage() {
   const selectedDeptId = useAppStore((s) => s.selectedDeptId)
-  const [tab, setTab] = useState<Tab>('overview')
+  // Active tab lives in the store/URL (?tab=) so a hard refresh reopens it
+  const [tab, setTab] = useUrlTab<Tab>(DEPT_TABS, 'overview')
   // Toast for error messages (e.g. module not available on this department)
   const [toast, setToast] = useState<ToastData | null>(null)
 

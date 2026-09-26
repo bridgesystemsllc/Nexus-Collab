@@ -1,3 +1,5 @@
+import { currentReturnTo, loginUrl } from '@/lib/reauth'
+
 const ERROR_MESSAGES: Record<string, string> = {
   not_configured: 'Microsoft sign-in is not configured yet. Please contact your administrator.',
   no_workspace: 'No NEXUS workspace is set up for your account yet.',
@@ -14,12 +16,16 @@ export function LandingPage() {
     ? ERROR_MESSAGES[errorReason] || 'Microsoft sign-in failed. Please try again.'
     : null
 
+  // Where to land after signing in: a returnTo carried by a login error
+  // redirect, else this page itself. The API validates it (safeReturnTo).
+  const returnTo = params.get('returnTo') ?? currentReturnTo()
+
   const signIn = () => {
     // Microsoft's login page refuses to render inside an iframe
     // (X-Frame-Options: DENY), and the Replit preview is an iframe. When framed,
     // break out into a top-level browser tab so the OAuth flow can complete;
     // otherwise navigate in place for the cleanest experience.
-    const url = '/api/login'
+    const url = loginUrl(returnTo)
     const isFramed = window.self !== window.top
     if (isFramed) {
       window.open(url, '_blank', 'noopener')
@@ -111,7 +117,7 @@ export function LandingPage() {
 
           {import.meta.env.DEV && (
             <button
-              onClick={() => { window.location.href = '/api/dev-login' }}
+              onClick={() => { window.location.href = '/api/dev-login?returnTo=' + encodeURIComponent(returnTo) }}
               className="mt-4 w-full text-[12px] underline transition-opacity hover:opacity-80"
               style={{ color: 'var(--text-tertiary)' }}
             >

@@ -146,7 +146,7 @@ function ErpSettingsSection({
       <div className="flex items-center justify-between">
         <h3 className="text-[14px] font-semibold text-[var(--text-primary)]">ERP Configuration</h3>
         {!editing && (
-          <button onClick={() => setEditing(true)} className="text-[12px] text-[var(--accent)] font-medium hover:underline">
+          <button type="button" onClick={() => setEditing(true)} className="text-[12px] text-[var(--accent)] font-medium hover:underline">
             Edit Credentials
           </button>
         )}
@@ -180,13 +180,14 @@ function ErpSettingsSection({
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={handleSave}
               disabled={saving || !apiUrl.trim()}
               className="btn-primary text-[13px] px-4 py-2 disabled:opacity-40"
             >
               {saving ? 'Saving...' : 'Save Credentials'}
             </button>
-            <button onClick={() => { setEditing(false); setApiUrl(integration.config?.apiUrl || ''); setApiKey('') }} className="btn-ghost text-[13px] px-3 py-2">
+            <button type="button" onClick={() => { setEditing(false); setApiUrl(integration.config?.apiUrl || ''); setApiKey('') }} className="btn-ghost text-[13px] px-3 py-2">
               Cancel
             </button>
           </div>
@@ -999,7 +1000,7 @@ function IntegrationEditModal({
             className="w-full px-3 py-2.5 rounded-[10px] text-[14px] outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] focus:border-[var(--accent)] transition-colors"
           />
         </div>
-        <button className="btn-primary w-full text-[14px]">Save Changes</button>
+        <button type="button" className="btn-primary w-full text-[14px]">Save Changes</button>
       </div>
     </Dialog>
   )
@@ -1036,6 +1037,7 @@ function ZapierWebhookModal({
             className="flex-1 px-3 py-2.5 rounded-[10px] text-[13px] font-mono outline-none bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)]"
           />
           <button
+            type="button"
             onClick={handleCopy}
             className="btn-ghost flex items-center gap-1.5 text-[13px] px-3 py-2.5 whitespace-nowrap"
           >
@@ -1043,7 +1045,7 @@ function ZapierWebhookModal({
             {copied ? 'Copied!' : 'Copy'}
           </button>
         </div>
-        <button onClick={onClose} className="btn-primary w-full text-[14px]">Done</button>
+        <button type="button" onClick={onClose} className="btn-primary w-full text-[14px]">Done</button>
       </div>
     </Dialog>
   )
@@ -1135,6 +1137,7 @@ function ErpConfigModal({
           </p>
         )}
         <button
+          type="button"
           onClick={handleSubmit}
           disabled={loading || !apiUrl || !apiKey}
           className="btn-primary w-full text-[14px] disabled:opacity-50"
@@ -1523,13 +1526,14 @@ function AddConnectorModal({
 
           <div className="flex gap-3 pt-2">
             <button
+              type="button"
               onClick={handleCreate}
               disabled={createConnector.isPending || !name.trim()}
               className="btn-primary flex-1 text-[14px] disabled:opacity-50"
             >
               {createConnector.isPending ? 'Creating...' : 'Create Connector'}
             </button>
-            <button onClick={onClose} className="btn-ghost text-[14px]">
+            <button type="button" onClick={onClose} className="btn-ghost text-[14px]">
               Cancel
             </button>
           </div>
@@ -1934,6 +1938,7 @@ function AutomationModal({
 
         <div className="flex gap-3 pt-2">
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={createAutomation.isPending || updateAutomation.isPending || !name.trim()}
             className="btn-primary flex-1 text-[14px] disabled:opacity-50"
@@ -1942,7 +1947,7 @@ function AutomationModal({
               ? 'Saving...' 
               : isEdit ? 'Save Changes' : 'Create Automation'}
           </button>
-          <button onClick={onClose} className="btn-ghost text-[14px]">
+          <button type="button" onClick={onClose} className="btn-ghost text-[14px]">
             Cancel
           </button>
         </div>

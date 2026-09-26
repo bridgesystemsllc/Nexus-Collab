@@ -1,4 +1,22 @@
 import axios from 'axios'
+import {
+  captureDraftForReauth,
+  currentReturnTo,
+  loginUrl,
+  setStoreAccessors,
+} from './reauth'
+import { useAppStore } from '@/stores/appStore'
+import { useUserStore } from '@/stores/userStore'
+
+// Initialize store accessors for the reauth module
+// This avoids circular imports by setting up the accessors after module load
+// Only run in browser environment (not in test-only imports)
+if (typeof window !== 'undefined' && setStoreAccessors) {
+  setStoreAccessors(
+    () => useAppStore.getState().activeForm,
+    () => useUserStore.getState().currentUser?.id ?? null
+  )
+}
 
 /**
  * Extract a human-readable error message from an Axios error or unknown value.
@@ -41,7 +59,10 @@ export const api = axios.create({
   withCredentials: true,
 })
 
-// When the session is missing/expired, send the user to the Replit login flow.
+// Single-flight flag to prevent multiple simultaneous redirects on concurrent 401s
+let redirecting = false
+
+// When the session is missing/expired, capture the draft and redirect to login.
 // The /auth/me probe is exempt so AuthGate can render the landing page instead
 // of triggering an immediate redirect on first load.
 api.interceptors.response.use(
@@ -50,7 +71,11 @@ api.interceptors.response.use(
     const status = error?.response?.status
     const url: string = error?.config?.url || ''
     if (status === 401 && !url.includes('/auth/me')) {
-      window.location.href = '/api/login'
+      if (!redirecting) {
+        redirecting = true
+        captureDraftForReauth()
+        window.location.assign(loginUrl(currentReturnTo()))
+      }
     }
     return Promise.reject(error)
   },

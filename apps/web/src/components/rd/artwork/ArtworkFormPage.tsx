@@ -18,6 +18,7 @@ import {
   EMPTY_ARTWORK_FORM,
   type ArtworkFormData,
 } from './artworkData'
+import { useFormDraft } from '@/hooks/useFormDraft'
 
 interface ArtworkFormContext {
   /** Module id required to create / edit an artwork project item. */
@@ -48,6 +49,8 @@ export function ArtworkFormPage({ form: activeForm }: { form: ActiveForm }) {
     ...(JSON.parse(JSON.stringify(EMPTY_ARTWORK_FORM)) as ArtworkFormData),
     ...(ctx.initialData || {}),
   })
+  // Persist unsaved values so a 401 mid-save can restore them after sign-in.
+  useFormDraft(activeForm, form, setForm)
   const [submitting, setSubmitting] = useState(false)
   const [saveError, setSaveError] = useState('')
 

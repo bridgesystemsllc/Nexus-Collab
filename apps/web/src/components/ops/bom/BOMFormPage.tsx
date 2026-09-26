@@ -12,6 +12,7 @@ import { ComponentPicker, type ComponentPickerValue } from './ComponentPicker'
 import { SKUPicker, type SKUPickerValue } from './SKUPicker'
 import { BOMPreview, BOMPrintStyles } from './BOMPreview'
 import { exportBomsXlsx } from './bomExcel'
+import { useFormDraft } from '@/hooks/useFormDraft'
 
 interface BOMFormContext {
   moduleId?: string | null
@@ -75,6 +76,8 @@ export function BOMFormPage({ form: activeForm }: { form: ActiveForm }) {
     }
     return emptyBom()
   })
+  // Persist unsaved values so a 401 mid-save can restore them after sign-in.
+  useFormDraft(activeForm, form, setForm)
 
   const [components, setComponents] = useState<any[]>(ctx.components ?? [])
   const [submitting, setSubmitting] = useState(false)

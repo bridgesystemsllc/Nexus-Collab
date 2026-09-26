@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent } from 'react'
+import { onEnter } from '@/lib/keys'
 import { CollabProjectsTab } from '@/modules/projects/components/CollabProjectsTab'
 import {
   ArrowLeft,
@@ -30,8 +31,10 @@ import { useCoworkSpace, useMembers, useCreateCoworkTask, usePostActivity, useUp
 import { OneDrivePicker } from '@/components/shared/OneDrivePicker'
 import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/appStore'
+import { useUrlTab } from '@/hooks/useUrlTab'
 
 type Tab = 'activity' | 'projects' | 'tasks' | 'files' | 'emails'
+const COWORK_TABS: readonly Tab[] = ['activity', 'projects', 'tasks', 'files', 'emails']
 
 const PRIORITY_COLORS: Record<string, string> = {
   CRITICAL: '#EB5757',
@@ -100,7 +103,8 @@ export function CoworkDetailPage() {
   const selectedCoworkId = useAppStore((s) => s.selectedCoworkId)
   const setSelectedCowork = useAppStore((s) => s.setSelectedCowork)
   const { data: space, isLoading, refetch } = useCoworkSpace(selectedCoworkId ?? '')
-  const [activeTab, setActiveTab] = useState<Tab>('activity')
+  // Active tab lives in the store/URL (?tab=) so a hard refresh reopens it
+  const [activeTab, setActiveTab] = useUrlTab<Tab>(COWORK_TABS, 'activity')
   const [showManageMembers, setShowManageMembers] = useState(false)
 
   if (isLoading) {
@@ -591,7 +595,7 @@ function TasksTab({
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Task title..."
                 className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)]"
-                onKeyDown={(e) => { if (e.key === 'Enter') handleAddTask() }}
+                onKeyDown={onEnter(handleAddTask)}
               />
             </div>
             <div className="grid grid-cols-3 gap-3">

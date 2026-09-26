@@ -16,6 +16,7 @@ import {
   type NPDFormData,
   type IdOption,
 } from './NewNPDProjectModal'
+import { useFormDraft } from '@/hooks/useFormDraft'
 
 interface NPDFormContext {
   /** Module id required to create a new NPD project item. */
@@ -49,6 +50,8 @@ export function NPDFormPage({ form: activeForm }: { form: ActiveForm }) {
 
   const [step, setStep] = useState(0)
   const [form, setForm] = useState<NPDFormData>({ ...EMPTY_NPD_FORM, ...(ctx.initialData || {}) })
+  // Persist unsaved values so a 401 mid-save can restore them after sign-in.
+  useFormDraft(activeForm, form, setForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [saveError, setSaveError] = useState('')

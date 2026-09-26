@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { onEnter } from '@/lib/keys'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   X, Send, Factory, Package, Calendar, MessageSquarePlus,
@@ -297,7 +298,7 @@ export function ProductionOrderDrawer({ open, item, moduleId, departmentId, onCl
               {tasks.length > 0 && <span className="text-[var(--text-tertiary)]">({tasks.filter((t) => t.done).length}/{tasks.length})</span>}
             </p>
             <div className="flex gap-2 mb-2">
-              <input className={fieldClass} placeholder="Add a task…" value={newTask} onChange={(e) => setNewTask(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addTask() }} />
+              <input className={fieldClass} placeholder="Add a task…" value={newTask} onChange={(e) => setNewTask(e.target.value)} onKeyDown={onEnter(addTask)} />
               <button onClick={addTask} disabled={!newTask.trim() || saving} className="btn-ghost px-2.5 rounded-lg disabled:opacity-40"><Plus size={15} /></button>
             </div>
             {tasks.length === 0 ? (

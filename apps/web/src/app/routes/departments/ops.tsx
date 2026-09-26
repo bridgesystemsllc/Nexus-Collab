@@ -50,6 +50,7 @@ import { BOMTab } from '@/components/ops/BOMTab'
 import { PoTrackingOverlay, type PoTrackingScope } from '@/components/ops/poTracking/PoTrackingTab'
 import { brandLabel } from '@/components/ops/brandLabel'
 import { useAppStore } from '@/stores/appStore'
+import { useUrlTab, useUrlSub } from '@/hooks/useUrlTab'
 import { DepartmentOverviewTab } from '@/components/departments/DepartmentOverviewTab'
 import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentTasksFollowUpTab'
 import { DepartmentArtworkTab } from '@/components/departments/DepartmentArtworkTab'
@@ -71,6 +72,8 @@ const TABS: { key: OpsTab; label: string; icon: React.ElementType }[] = [
   { key: 'bom', label: 'Bill of Materials', icon: ClipboardList },
   { key: 'cm', label: 'CM Productivity', icon: Users },
 ]
+const OPS_TAB_KEYS = TABS.map((t) => t.key)
+const PRODUCTION_SEGMENTS = ['table', 'board', 'openOrders'] as const
 
 interface TabProps {
   items: any[]
@@ -677,8 +680,11 @@ function ProductionTab({
   openOrderModuleId: string | null
   onRefresh: () => void
 }) {
-  const [view, setView] = useState<ViewMode>('table')
-  const [mode, setMode] = useState<'production' | 'openOrders'>('production')
+  // Table / Board / Open Orders segment lives in the URL (?sub=) so a hard
+  // refresh reopens the same sub-view.
+  const [seg, setSeg] = useUrlSub(PRODUCTION_SEGMENTS, 'table')
+  const mode: 'production' | 'openOrders' = seg === 'openOrders' ? 'openOrders' : 'production'
+  const view: ViewMode = seg === 'board' ? 'list' : 'table'
   const [mfrFilter, setMfrFilter] = useState('All')
   const [search, setSearch] = useState('')
   const [detail, setDetail] = useState<OpenOrder | null>(null)
@@ -758,19 +764,12 @@ function ProductionTab({
     }
   }
 
-  const seg = mode === 'openOrders' ? 'openOrders' : view === 'table' ? 'table' : 'board'
   const SEGMENTS = [
     { key: 'table', label: 'Table', icon: Table2 },
     { key: 'board', label: 'Board', icon: LayoutGrid },
     { key: 'openOrders', label: 'Open Orders', icon: ShoppingCart },
   ] as const
-  const selectSeg = (key: 'table' | 'board' | 'openOrders') => {
-    if (key === 'openOrders') setMode('openOrders')
-    else {
-      setMode('production')
-      setView(key === 'table' ? 'table' : 'list')
-    }
-  }
+  const selectSeg = (key: 'table' | 'board' | 'openOrders') => setSeg(key)
 
   return (
     <div className="space-y-5">
@@ -1232,12 +1231,14 @@ const COWORK_TYPE_BY_MODULE: Record<string, string> = {
 }
 
 export function OpsPage() {
-  const [activeTab, setActiveTab] = useState<OpsTab>('overview')
+  // Active tab lives in the store/URL (?tab=) so a hard refresh reopens it
+  const [activeTab, setActiveTab] = useUrlTab<OpsTab>(OPS_TAB_KEYS, 'overview')
   const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
   const [showRemovedFrame, setShowRemovedFrame] = useState(false)
   const [showRemovedBrandFrame, setShowRemovedBrandFrame] = useState(false)
   const openForm = useAppStore((s) => s.openForm)
   const setPage = useAppStore((s) => s.setPage)
+
   // Toast for error messages (e.g. module not available on this department)
   const [toast, setToast] = useState<ToastData | null>(null)
 

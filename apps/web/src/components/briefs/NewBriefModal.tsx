@@ -492,7 +492,7 @@ export function Step2({ form, setForm, errors }: StepProps) {
               <div className="flex items-center gap-2">
                 <ContactModeToggle mode={mode} onChange={(m) => setMode(i, m)} />
                 {form.projectContacts.length > 1 && (
-                  <button onClick={() => removeContact(i)} className="p-1 text-[var(--text-tertiary)] hover:text-[var(--danger)]">
+                  <button type="button" onClick={() => removeContact(i)} className="p-1 text-[var(--text-tertiary)] hover:text-[var(--danger)]">
                     <Trash2 size={14} />
                   </button>
                 )}
@@ -551,7 +551,7 @@ export function Step2({ form, setForm, errors }: StepProps) {
         )
       })}
       {form.projectContacts.length < 10 && (
-        <button onClick={addContact} className="flex items-center gap-1.5 text-[13px] text-[var(--accent)] font-medium hover:underline">
+        <button type="button" onClick={addContact} className="flex items-center gap-1.5 text-[13px] text-[var(--accent)] font-medium hover:underline">
           <Plus size={14} /> Add Contact
         </button>
       )}
@@ -774,7 +774,7 @@ export function Step5({ form, setForm }: StepProps) {
             {form.benchmarkImageUrl ? (
               <div className="flex items-center gap-2">
                 <span className="text-[13px] text-[var(--text-primary)]">Image uploaded</span>
-                <button onClick={() => setForm({ ...form, benchmarkImageUrl: '' })} className="text-[12px] text-[var(--danger)] hover:underline">
+                <button type="button" onClick={() => setForm({ ...form, benchmarkImageUrl: '' })} className="text-[12px] text-[var(--danger)] hover:underline">
                   Remove
                 </button>
               </div>
@@ -884,13 +884,13 @@ export function Step6({ form, setForm, oneDriveConnected }: StepProps & { oneDri
                 </FormField>
               </div>
               {form.teamMembers.length > 1 && (
-                <button onClick={() => removeMember(i)} className="p-2 mb-0.5 text-[var(--text-tertiary)] hover:text-[var(--danger)]">
+                <button type="button" onClick={() => removeMember(i)} className="p-2 mb-0.5 text-[var(--text-tertiary)] hover:text-[var(--danger)]">
                   <Trash2 size={14} />
                 </button>
               )}
             </div>
           ))}
-          <button onClick={addMember} className="flex items-center gap-1.5 text-[13px] text-[var(--accent)] font-medium hover:underline">
+          <button type="button" onClick={addMember} className="flex items-center gap-1.5 text-[13px] text-[var(--accent)] font-medium hover:underline">
             <Plus size={14} /> Add Team Member
           </button>
         </div>
@@ -910,7 +910,7 @@ export function Step6({ form, setForm, oneDriveConnected }: StepProps & { oneDri
                 {doc.source === 'onedrive' && (
                   <span className="text-[11px] text-[var(--success)] font-medium">Saved to OneDrive</span>
                 )}
-                <button onClick={() => removeDoc(i)} className="p-1 text-[var(--text-tertiary)] hover:text-[var(--danger)]">
+                <button type="button" onClick={() => removeDoc(i)} className="p-1 text-[var(--text-tertiary)] hover:text-[var(--danger)]">
                   <X size={14} />
                 </button>
               </div>
@@ -1023,7 +1023,7 @@ export function NewBriefModal({ open, onClose, onSubmit, initialData, isSubmitti
               Step {step + 1} of {STEPS.length} — {STEPS[step]}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors">
+          <button type="button" onClick={onClose} className="p-2 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -1055,6 +1055,7 @@ export function NewBriefModal({ open, onClose, onSubmit, initialData, isSubmitti
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-[var(--border-subtle)]">
           <button
+            type="button"
             onClick={goBack}
             disabled={step === 0}
             className={`flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[14px] font-medium transition-all ${
@@ -1068,6 +1069,7 @@ export function NewBriefModal({ open, onClose, onSubmit, initialData, isSubmitti
 
           <div className="flex items-center gap-3">
             <button
+              type="button"
               onClick={handleSaveDraft}
               disabled={isSubmitting}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-[14px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border border-[var(--border-default)] transition-all"
@@ -1077,6 +1079,7 @@ export function NewBriefModal({ open, onClose, onSubmit, initialData, isSubmitti
 
             {isLastStep ? (
               <button
+                type="button"
                 onClick={handleSubmit}
                 disabled={isSubmitting}
                 className="flex items-center gap-1.5 btn-primary px-5 py-2.5 rounded-lg text-[14px]"
@@ -1084,7 +1087,7 @@ export function NewBriefModal({ open, onClose, onSubmit, initialData, isSubmitti
                 {isSubmitting ? 'Submitting...' : 'Submit Brief'}
               </button>
             ) : (
-              <button onClick={goNext} className="flex items-center gap-1.5 btn-primary px-5 py-2.5 rounded-lg text-[14px]">
+              <button type="button" onClick={goNext} className="flex items-center gap-1.5 btn-primary px-5 py-2.5 rounded-lg text-[14px]">
                 Next <ChevronRight size={16} />
               </button>
             )}
