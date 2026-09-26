@@ -64,6 +64,7 @@ export function Dialog({ open, onClose, title, subtitle, children, wide }: Dialo
               )}
             </div>
             <button
+              type="button"
               onClick={onClose}
               className="p-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-colors flex-shrink-0"
             >

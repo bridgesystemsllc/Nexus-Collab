@@ -527,7 +527,7 @@ function TaskRow({
                 type="text"
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handlePostNote()}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); handlePostNote() } }}
                 placeholder="Add a note..."
                 className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg-input)] border border-[var(--border-default)] text-[13px] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent"
               />
