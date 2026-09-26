@@ -40,6 +40,8 @@ export interface NavState {
   deptId: string | null
   projectId: string | null
   tab: string | null
+  /** Sub-view inside the current tab (e.g. Ops › Production › Open Orders). */
+  sub?: string | null
 }
 
 function isPage(value: string): value is Page {
@@ -52,7 +54,8 @@ function isPage(value: string): value is Page {
  * - `view` must be a valid Page, otherwise defaults to 'dashboard'
  * - If `view=cowork-detail` but no `cowork` param, falls back to 'cowork'
  * - If `view=custom-dept` but no `dept` param, falls back to 'dashboard'
- * - `tab` is only kept when `view=ops`
+ * - `tab` is kept for any page (page-scoped: setPage clears it on page change)
+ * - `sub` is only kept when a `tab` is present
  */
 export function parseNavUrl(search: string): NavState {
   const params = new URLSearchParams(search)
@@ -61,6 +64,7 @@ export function parseNavUrl(search: string): NavState {
   const dept = params.get('dept')
   const project = params.get('project')
   const tab = params.get('tab')
+  const sub = params.get('sub')
 
   // Validate page
   let page: Page = 'dashboard'
@@ -81,18 +85,18 @@ export function parseNavUrl(search: string): NavState {
     coworkId: cowork,
     deptId: dept,
     projectId: project,
-    // Tab is only meaningful for ops
-    tab: page === 'ops' ? tab : null,
+    tab,
+    sub: tab ? sub : null,
   }
 }
 
 // Navigation params we manage
-const NAV_PARAMS = ['view', 'cowork', 'dept', 'project', 'tab']
+const NAV_PARAMS = ['view', 'cowork', 'dept', 'project', 'tab', 'sub']
 
 /**
  * Build a search string from NavState, preserving unknown params.
  *
- * - Sets or removes only `view/cowork/dept/project/tab`
+ * - Sets or removes only `view/cowork/dept/project/tab/sub`
  * - Every other param (People filters, `ms`, `reason`) is kept in original order
  * - Null values delete the param
  */
@@ -125,6 +129,9 @@ export function navSearch(state: NavState, currentSearch: string): string {
   }
   if (state.tab) {
     result.set('tab', state.tab)
+    if (state.sub) {
+      result.set('sub', state.sub)
+    }
   }
 
   // Append foreign params in original order

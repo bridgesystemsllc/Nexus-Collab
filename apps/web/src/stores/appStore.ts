@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { parseNavUrl, writeNavUrl, type Page } from '@/lib/navUrl'
+import { clearFormDraft } from '@/lib/formDraftKey'
 
 // Re-export Page type for convenience
 export type { Page }
@@ -27,6 +28,7 @@ export interface ActiveForm {
 interface AppState {
   currentPage: Page
   currentTab: string | null
+  currentSub: string | null
   aiPanelOpen: boolean
   sidebarCollapsed: boolean
   selectedCoworkId: string | null
@@ -38,6 +40,7 @@ interface AppState {
 
   setPage: (page: Page) => void
   setTab: (tab: string | null) => void
+  setSub: (sub: string | null) => void
   toggleAIPanel: () => void
   toggleSidebar: () => void
   setSelectedCowork: (id: string | null) => void
@@ -56,6 +59,7 @@ function getInitialNavState() {
     return {
       currentPage: 'dashboard' as Page,
       currentTab: null,
+      currentSub: null,
       selectedCoworkId: null,
       selectedDeptId: null,
       selectedProjectId: null,
@@ -65,6 +69,7 @@ function getInitialNavState() {
   return {
     currentPage: nav.page,
     currentTab: nav.tab,
+    currentSub: nav.sub ?? null,
     selectedCoworkId: nav.coworkId,
     selectedDeptId: nav.deptId,
     selectedProjectId: nav.projectId,
@@ -73,9 +78,22 @@ function getInitialNavState() {
 
 const initialState = getInitialNavState()
 
+// Mirror the navigation slice of the store into the URL (replaceState only).
+function syncUrl(state: AppState) {
+  writeNavUrl({
+    page: state.currentPage,
+    coworkId: state.selectedCoworkId,
+    deptId: state.selectedDeptId,
+    projectId: state.selectedProjectId,
+    tab: state.currentTab,
+    sub: state.currentSub,
+  })
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   currentPage: initialState.currentPage,
   currentTab: initialState.currentTab,
+  currentSub: initialState.currentSub,
   aiPanelOpen: false,
   sidebarCollapsed: false,
   selectedCoworkId: initialState.selectedCoworkId,
@@ -89,91 +107,54 @@ export const useAppStore = create<AppState>((set, get) => ({
   // last opened, with no obvious way to tell why.
   setPage: (page) => {
     const state = get()
-    // Clear tab when changing to a different page
-    const newTab = page === state.currentPage ? state.currentTab : null
-    // Clear projectId when navigating to projects (existing behavior)
-    const newProjectId = page === 'projects' ? null : state.selectedProjectId
-
-    set({ currentPage: page, currentTab: newTab, selectedProjectId: newProjectId })
-
-    writeNavUrl({
-      page,
-      coworkId: state.selectedCoworkId,
-      deptId: state.selectedDeptId,
-      projectId: newProjectId,
-      tab: newTab,
+    // Tabs are page-scoped: keep them only when staying on the same page
+    const samePage = page === state.currentPage
+    set({
+      currentPage: page,
+      currentTab: samePage ? state.currentTab : null,
+      currentSub: samePage ? state.currentSub : null,
+      // Clear projectId when navigating to projects (existing behavior)
+      selectedProjectId: page === 'projects' ? null : state.selectedProjectId,
     })
+    syncUrl(get())
   },
 
+  // Changing tab resets any sub-view that belonged to the previous tab.
   setTab: (tab) => {
-    const state = get()
-    set({ currentTab: tab })
+    set((s) => ({ currentTab: tab, currentSub: tab === s.currentTab ? s.currentSub : null }))
+    syncUrl(get())
+  },
 
-    writeNavUrl({
-      page: state.currentPage,
-      coworkId: state.selectedCoworkId,
-      deptId: state.selectedDeptId,
-      projectId: state.selectedProjectId,
-      tab,
-    })
+  setSub: (sub) => {
+    set({ currentSub: sub })
+    syncUrl(get())
   },
 
   toggleAIPanel: () => set((s) => ({ aiPanelOpen: !s.aiPanelOpen })),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
   setSelectedCowork: (id) => {
-    const page = id ? 'cowork-detail' : 'cowork'
-    const state = get()
-    set({ selectedCoworkId: id, currentPage: page })
-
-    writeNavUrl({
-      page,
-      coworkId: id,
-      deptId: state.selectedDeptId,
-      projectId: state.selectedProjectId,
-      tab: null,
-    })
+    set({ selectedCoworkId: id, currentPage: id ? 'cowork-detail' : 'cowork', currentTab: null, currentSub: null })
+    syncUrl(get())
   },
 
   setSelectedDept: (id) => {
-    const state = get()
-    set({ selectedDeptId: id, currentPage: 'custom-dept' })
-
-    writeNavUrl({
-      page: 'custom-dept',
-      coworkId: state.selectedCoworkId,
-      deptId: id,
-      projectId: state.selectedProjectId,
-      tab: null,
-    })
+    set({ selectedDeptId: id, currentPage: 'custom-dept', currentTab: null, currentSub: null })
+    syncUrl(get())
   },
 
   setSelectedProject: (id) => {
-    const state = get()
     set({ selectedProjectId: id })
-
-    writeNavUrl({
-      page: state.currentPage,
-      coworkId: state.selectedCoworkId,
-      deptId: state.selectedDeptId,
-      projectId: id,
-      tab: state.currentTab,
-    })
+    syncUrl(get())
   },
 
   openForm: (form) => set((s) => ({ activeForm: { ...form, returnPage: s.currentPage } })),
 
   closeForm: () => {
     const state = get()
-    const returnPage = state.activeForm?.returnPage ?? state.currentPage
-    set({ activeForm: null, currentPage: returnPage })
-
-    writeNavUrl({
-      page: returnPage,
-      coworkId: state.selectedCoworkId,
-      deptId: state.selectedDeptId,
-      projectId: state.selectedProjectId,
-      tab: state.currentTab,
-    })
+    // Closing (saved or backed out) discards the form's unsaved draft.
+    if (state.activeForm) clearFormDraft(state.activeForm)
+    set({ activeForm: null, currentPage: state.activeForm?.returnPage ?? state.currentPage })
+    syncUrl(get())
   },
 }))

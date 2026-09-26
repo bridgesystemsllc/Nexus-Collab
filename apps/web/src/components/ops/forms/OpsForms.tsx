@@ -4,6 +4,7 @@ import { Save, Loader2, Box, Factory, Repeat2 } from 'lucide-react'
 import { FullPageForm } from '@/components/shared/FullPageForm'
 import { useAppStore, type ActiveForm } from '@/stores/appStore'
 import { api, getApiErrorMessage } from '@/lib/api'
+import { useFormDraft } from '@/hooks/useFormDraft'
 
 // ─── Shared context shape ───────────────────────────────────
 interface OpsFormContext {
@@ -151,6 +152,8 @@ export function InventoryFormPage({ form: activeForm }: { form: ActiveForm }) {
     coverageMonths: init.coverageMonths ?? 0,
     status: init.status ?? 'healthy',
   })
+  // Persist unsaved values so a 401 mid-save can restore them after sign-in.
+  useFormDraft(activeForm, d, setD)
   const set = (k: string, v: any) => setD((p) => ({ ...p, [k]: v }))
 
   return (
@@ -205,6 +208,8 @@ export function ProductionFormPage({ form: activeForm }: { form: ActiveForm }) {
     cmNotes: init.cmNotes ?? '',
     coworkPending: init.coworkPending ?? false,
   })
+  // Persist unsaved values so a 401 mid-save can restore them after sign-in.
+  useFormDraft(activeForm, d, setD)
   const set = (k: string, v: any) => setD((p) => ({ ...p, [k]: v }))
 
   return (
@@ -278,6 +283,8 @@ export function BrandTransitionFormPage({ form: activeForm }: { form: ActiveForm
     progress: init.progress ?? 0,
     blocker: init.blocker ?? '',
   })
+  // Persist unsaved values so a 401 mid-save can restore them after sign-in.
+  useFormDraft(activeForm, d, setD)
   const set = (k: string, v: any) => setD((p) => ({ ...p, [k]: v }))
 
   return (

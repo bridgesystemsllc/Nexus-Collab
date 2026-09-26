@@ -181,15 +181,17 @@ export async function setupAuth(app: Express) {
   app.use(getSession())
 
   app.get('/api/login', (req: Request, res: Response) => {
+    // Validate the returnTo path for the post-login redirect
+    const returnTo = safeReturnTo(req.query.returnTo)
     if (!isMicrosoftConfigured()) {
-      return res.redirect('/?ms=error&reason=not_configured')
+      // Carry returnTo through so the landing page's sign-in can still use it
+      const carry = returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : ''
+      return res.redirect(`/?ms=error&reason=not_configured${carry}`)
     }
     if (!req.session) {
       return res.status(500).json({ error: 'Session unavailable' })
     }
     const nonce = createStateNonce()
-    // Validate and store the returnTo path for post-login redirect
-    const returnTo = safeReturnTo(req.query.returnTo)
     // Mark this as a primary-login flow (vs. the per-user "connect" flow).
     ;(req.session as any).msOAuth = { nonce, flow: 'login', returnTo, createdAt: Date.now() }
     req.session.save((err) => {
@@ -222,6 +224,7 @@ export async function setupAuth(app: Express) {
     process.env.NODE_ENV !== 'production' && !process.env.REPLIT_DEPLOYMENT
   if (devLoginAllowed) {
     app.get('/api/dev-login', async (req: Request, res: Response) => {
+      const returnTo = safeReturnTo(req.query.returnTo) ?? '/'
       try {
         // Prefer signing in as a privileged member so the preview can exercise
         // admin features (e.g. ERP data-routing); fall back to the first member.
@@ -235,7 +238,7 @@ export async function setupAuth(app: Express) {
           req.session.save((err) => {
             if (err) return res.redirect('/?ms=error&reason=session_persist_failed')
             stampLastLogin(member.id)
-            res.redirect('/')
+            res.redirect(returnTo)
           })
         })
       } catch (err) {

@@ -128,6 +128,62 @@ describe('appStore navigation', () => {
     expect(window.history.replaceState).toHaveBeenCalled()
   })
 
+  it('boots with a cowork-detail tab and an ops sub-view from URL', async () => {
+    setUrl('?view=ops&tab=production&sub=openOrders')
+    await loadStore()
+    expect(useAppStore.getState().currentTab).toBe('production')
+    expect(useAppStore.getState().currentSub).toBe('openOrders')
+  })
+
+  it('setTab to a different tab clears sub; setSub writes the URL', async () => {
+    setUrl('?view=ops&tab=production')
+    await loadStore()
+
+    act(() => {
+      useAppStore.getState().setSub('openOrders')
+    })
+    expect(useAppStore.getState().currentSub).toBe('openOrders')
+    expect(window.history.replaceState).toHaveBeenLastCalledWith(null, '', '/?view=ops&tab=production&sub=openOrders')
+
+    act(() => {
+      useAppStore.getState().setTab('bom')
+    })
+    expect(useAppStore.getState().currentSub).toBeNull()
+  })
+
+  it('selecting a cowork space or department resets the tab', async () => {
+    setUrl('?view=ops&tab=production')
+    await loadStore()
+
+    act(() => {
+      useAppStore.getState().setSelectedCowork('c1')
+    })
+    expect(useAppStore.getState().currentTab).toBeNull()
+
+    act(() => {
+      useAppStore.getState().setTab('tasks')
+      useAppStore.getState().setSelectedDept('d1')
+    })
+    expect(useAppStore.getState().currentPage).toBe('custom-dept')
+    expect(useAppStore.getState().currentTab).toBeNull()
+  })
+
+  it('closeForm clears the form draft', async () => {
+    setUrl('?view=rd')
+    await loadStore()
+    const key = 'nexus.formDraft.v1:cm:create:new'
+    sessionStorage.setItem(key, JSON.stringify({ name: 'x' }))
+
+    act(() => {
+      useAppStore.getState().openForm({ formType: 'cm', mode: 'create' })
+    })
+    act(() => {
+      useAppStore.getState().closeForm()
+    })
+
+    expect(sessionStorage.getItem(key)).toBeNull()
+  })
+
   it('closeForm restores returnPage', async () => {
     setUrl('?view=rd')
     await loadStore()

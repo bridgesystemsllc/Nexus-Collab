@@ -9,6 +9,7 @@ describe('parseNavUrl', () => {
       deptId: null,
       projectId: null,
       tab: null,
+      sub: null,
     })
   })
 
@@ -46,10 +47,15 @@ describe('parseNavUrl', () => {
     expect(result.deptId).toBe('d1')
   })
 
-  it('parses tab only for ops view', () => {
+  it('parses tab for any view', () => {
     expect(parseNavUrl('?view=ops&tab=production').tab).toBe('production')
-    expect(parseNavUrl('?view=tasks&tab=production').tab).toBeNull()
-    expect(parseNavUrl('?view=rd&tab=something').tab).toBeNull()
+    expect(parseNavUrl('?view=cowork-detail&cowork=c1&tab=tasks').tab).toBe('tasks')
+    expect(parseNavUrl('?view=custom-dept&dept=d1&tab=tasks-followup').tab).toBe('tasks-followup')
+  })
+
+  it('parses sub only when a tab is present', () => {
+    expect(parseNavUrl('?view=ops&tab=production&sub=openOrders').sub).toBe('openOrders')
+    expect(parseNavUrl('?view=ops&sub=openOrders').sub).toBeNull()
   })
 
   it('parses project id', () => {
@@ -123,7 +129,8 @@ describe('navSearch', () => {
       coworkId: 'c1',
       deptId: null,
       projectId: null,
-      tab: null,
+      tab: 'tasks',
+      sub: null,
     }
     const search = navSearch(state, '?q=abc&ms=connected')
     const parsed = parseNavUrl(search)
@@ -141,6 +148,14 @@ describe('navSearch', () => {
     const result = navSearch(state, '?view=cowork-detail&cowork=c1')
     expect(result).toBe('?view=cowork')
     expect(result).not.toContain('cowork=')
+  })
+})
+
+describe('navSearch sub', () => {
+  it('writes sub after tab and drops it without a tab', () => {
+    const base: NavState = { page: 'ops', coworkId: null, deptId: null, projectId: null, tab: 'production', sub: 'openOrders' }
+    expect(navSearch(base, '')).toBe('?view=ops&tab=production&sub=openOrders')
+    expect(navSearch({ ...base, tab: null }, '?sub=openOrders')).toBe('?view=ops')
   })
 })
 

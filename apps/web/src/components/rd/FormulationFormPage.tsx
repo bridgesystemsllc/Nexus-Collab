@@ -15,6 +15,7 @@ import {
   EMPTY_FORM,
   type FormulationFormData,
 } from './NewFormulationModal'
+import { useFormDraft } from '@/hooks/useFormDraft'
 
 interface FormulationFormContext {
   /** Module id required to create a new formulation item. */
@@ -43,6 +44,8 @@ export function FormulationFormPage({ form: activeForm }: { form: ActiveForm }) 
 
   const [step, setStep] = useState(0)
   const [form, setForm] = useState<FormulationFormData>({ ...EMPTY_FORM, ...(ctx.initialData || {}) })
+  // Persist unsaved values so a 401 mid-save can restore them after sign-in.
+  useFormDraft(activeForm, form, setForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [saveError, setSaveError] = useState('')

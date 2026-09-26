@@ -39,6 +39,7 @@ export function useFormDraft<T>(
       const saved = sessionStorage.getItem(key)
       if (saved) {
         const parsed = JSON.parse(saved) as T
+        if (parsed == null) return
         didRestore.current = true
         setRestored(true)
         onRestore(parsed)

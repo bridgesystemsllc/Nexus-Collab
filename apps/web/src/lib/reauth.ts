@@ -188,9 +188,4 @@ export function takePendingDraft(memberId: string, now?: number): PendingDraft |
   return draft
 }
 
-/**
- * Get the draft key for a specific form instance.
- */
-export function getDraftKey(formType: string, mode: string, recordId: string | null): string {
-  return `nexus.formDraft.v1:${formType}:${mode}:${recordId ?? 'new'}`
-}
+export { getDraftKey } from './formDraftKey'

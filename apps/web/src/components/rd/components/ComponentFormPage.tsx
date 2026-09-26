@@ -16,6 +16,7 @@ import {
   EMPTY_FORM,
   type ComponentFormData,
 } from './NewComponentModal'
+import { useFormDraft } from '@/hooks/useFormDraft'
 
 interface ComponentFormContext {
   /** Module id required to create / edit a component item. */
@@ -45,6 +46,8 @@ export function ComponentFormPage({ form: activeForm }: { form: ActiveForm }) {
       ? { ...EMPTY_FORM, ...(ctx.initialData || {}) }
       : { ...EMPTY_FORM, ...(ctx.initialData || {}), partNumber: generatePartNumber() },
   )
+  // Persist unsaved values so a 401 mid-save can restore them after sign-in.
+  useFormDraft(activeForm, form, setForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [saveError, setSaveError] = useState('')

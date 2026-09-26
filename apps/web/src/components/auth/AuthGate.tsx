@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import { useUserStore } from '@/stores/userStore'
 import { useAppStore } from '@/stores/appStore'
 import { takePendingDraft, getDraftKey } from '@/lib/reauth'
+import { purgeFormDrafts } from '@/lib/formDraftKey'
 import { LandingPage } from './LandingPage'
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard'
 import { Toast, type ToastData } from '@/components/shared/Toast'
@@ -78,18 +79,24 @@ export function AuthGate({ children }: Props) {
     // Check if there was a pending draft key before attempting to take it
     const hadPendingKey = !!sessionStorage.getItem('nexus.pendingDraft.v1')
 
+    // No form survives a page load, so any per-form draft still in storage is
+    // orphaned. Drop them before (possibly) placing the re-auth draft.
+    purgeFormDrafts()
+
     const draft = takePendingDraft(currentUser.id)
     if (draft) {
       // Write the draft values to the form-specific draft key so useFormDraft can hydrate
-      const formDraftKey = getDraftKey(
-        draft.activeForm.formType,
-        draft.activeForm.mode,
-        draft.activeForm.recordId ?? null
-      )
-      try {
-        sessionStorage.setItem(formDraftKey, JSON.stringify(draft.values))
-      } catch {
-        // Ignore storage errors
+      if (draft.values != null) {
+        const formDraftKey = getDraftKey(
+          draft.activeForm.formType,
+          draft.activeForm.mode,
+          draft.activeForm.recordId ?? null
+        )
+        try {
+          sessionStorage.setItem(formDraftKey, JSON.stringify(draft.values))
+        } catch {
+          // Ignore storage errors
+        }
       }
 
       // Reconstruct the activeForm object for openForm

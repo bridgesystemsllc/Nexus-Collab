@@ -14,6 +14,7 @@ import {
   EMPTY_FORM,
   type CMFormData,
 } from './NewCMModal'
+import { useFormDraft } from '@/hooks/useFormDraft'
 
 interface CMFormContext {
   /** Module id required to create a new CM item. */
@@ -40,6 +41,8 @@ export function CMFormPage({ form: activeForm }: { form: ActiveForm }) {
 
   const [step, setStep] = useState(0)
   const [form, setForm] = useState<CMFormData>({ ...EMPTY_FORM, ...(ctx.initialData || {}) })
+  // Persist unsaved values so a 401 mid-save can restore them after sign-in.
+  useFormDraft(activeForm, form, setForm)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [saveError, setSaveError] = useState('')
