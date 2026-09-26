@@ -282,16 +282,21 @@ export async function reconcileStoredOpenOrders(
   return total
 }
 
+/** Return type for updateModuleItemForOrg */
+export type ModuleItemWithModule = Awaited<ReturnType<typeof updateModuleItemForOrg>>
+
 /**
  * Updates one module item only when its full department/module/item chain
  * belongs to the acting organization. OPEN_ORDERS updates and OOR projection
  * are committed atomically.
+ *
+ * @param input.departmentId - null = do not constrain by department (org still enforced)
  */
 export async function updateModuleItemForOrg(
   prisma: PrismaClient,
   input: {
     orgId: string
-    departmentId: string
+    departmentId: string | null
     moduleId: string
     itemId: string
     canEditOpenOrders: boolean
@@ -304,7 +309,7 @@ export async function updateModuleItemForOrg(
         id: input.itemId,
         moduleId: input.moduleId,
         module: {
-          departmentId: input.departmentId,
+          ...(input.departmentId ? { departmentId: input.departmentId } : {}),
           department: { orgId: input.orgId },
         },
       },

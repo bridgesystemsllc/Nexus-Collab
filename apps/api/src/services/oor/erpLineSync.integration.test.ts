@@ -355,6 +355,119 @@ describe('ERP open-order line reconciliation', () => {
     expect(await prisma.oorLine.count({ where: { orgId: OTHER_ORG_ID } })).toBe(0)
   })
 
+  describe('updateModuleItemForOrg department scope (T-A2/T-A3)', () => {
+    it('T-A2a: departmentId null updates an item in the same org', async () => {
+      await resetItems()
+      const item = await prisma.moduleItem.create({
+        data: {
+          moduleId: MODULE_ID,
+          status: 'In Production',
+          data: orderData([{ lineNo: 1, sku: 'SCOPE-TEST', qtyOrdered: 5, qtyReceived: 0 }]),
+        },
+      })
+
+      const result = await updateModuleItemForOrg(prisma, {
+        orgId: ORG_ID,
+        departmentId: null, // org-wide scope
+        moduleId: MODULE_ID,
+        itemId: item.id,
+        canEditOpenOrders: true,
+        patch: { status: 'Updated' },
+      })
+
+      expect(result.status).toBe('Updated')
+    })
+
+    it('T-A2b: real matching departmentId updates the item', async () => {
+      await resetItems()
+      const item = await prisma.moduleItem.create({
+        data: {
+          moduleId: MODULE_ID,
+          status: 'In Production',
+          data: orderData([{ lineNo: 1, sku: 'SCOPE-TEST', qtyOrdered: 5, qtyReceived: 0 }]),
+        },
+      })
+
+      const result = await updateModuleItemForOrg(prisma, {
+        orgId: ORG_ID,
+        departmentId: DEPT_ID, // real department id
+        moduleId: MODULE_ID,
+        itemId: item.id,
+        canEditOpenOrders: true,
+        patch: { status: 'Updated via real dept' },
+      })
+
+      expect(result.status).toBe('Updated via real dept')
+    })
+
+    it('T-A2c: mismatched departmentId throws ScopedModuleItemNotFoundError', async () => {
+      await resetItems()
+      const item = await prisma.moduleItem.create({
+        data: {
+          moduleId: MODULE_ID,
+          status: 'In Production',
+          data: orderData([{ lineNo: 1, sku: 'SCOPE-TEST', qtyOrdered: 5, qtyReceived: 0 }]),
+        },
+      })
+
+      await expect(
+        updateModuleItemForOrg(prisma, {
+          orgId: ORG_ID,
+          departmentId: 'wrong-dept-id', // mismatched
+          moduleId: MODULE_ID,
+          itemId: item.id,
+          canEditOpenOrders: true,
+          patch: { status: 'Should not update' },
+        })
+      ).rejects.toBeInstanceOf(ScopedModuleItemNotFoundError)
+
+      const unchanged = await prisma.moduleItem.findUniqueOrThrow({ where: { id: item.id } })
+      expect(unchanged.status).toBe('In Production')
+    })
+
+    it('T-A3a: item in another org throws with departmentId null', async () => {
+      const otherItem = await prisma.moduleItem.create({
+        data: {
+          moduleId: OTHER_MODULE_ID,
+          status: 'In Production',
+          data: orderData([{ lineNo: 1, sku: 'OTHER-ORG', qtyOrdered: 3, qtyReceived: 0 }]),
+        },
+      })
+
+      await expect(
+        updateModuleItemForOrg(prisma, {
+          orgId: ORG_ID, // wrong org
+          departmentId: null, // org-wide scope
+          moduleId: OTHER_MODULE_ID,
+          itemId: otherItem.id,
+          canEditOpenOrders: true,
+          patch: { status: 'Should not update' },
+        })
+      ).rejects.toBeInstanceOf(ScopedModuleItemNotFoundError)
+    })
+
+    it('T-A3b: item in another org throws with real departmentId', async () => {
+      const otherItem = await prisma.moduleItem.create({
+        data: {
+          moduleId: OTHER_MODULE_ID,
+          status: 'In Production',
+          data: orderData([{ lineNo: 1, sku: 'OTHER-ORG', qtyOrdered: 3, qtyReceived: 0 }]),
+        },
+      })
+
+      await expect(
+        updateModuleItemForOrg(prisma, {
+          orgId: ORG_ID, // wrong org
+          departmentId: OTHER_DEPT_ID, // even with "correct" department
+          moduleId: OTHER_MODULE_ID,
+          itemId: otherItem.id,
+          canEditOpenOrders: true,
+          patch: { status: 'Should not update' },
+        })
+      ).rejects.toBeInstanceOf(ScopedModuleItemNotFoundError)
+    })
+  })
+
   it('fails the HTTP refresh closed when routing names another organization’s module', async () => {
     await prisma.integration.create({
       data: {

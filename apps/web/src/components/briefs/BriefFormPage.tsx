@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Save, Loader2 } from 'lucide-react'
 import { FullPageForm } from '@/components/shared/FullPageForm'
 import { useAppStore, type ActiveForm } from '@/stores/appStore'
 import { api, getApiErrorMessage } from '@/lib/api'
+import { moduleItemPath, MissingModuleItemIdError } from '@/lib/moduleItemPath'
 import {
   Step1,
   Step2,
@@ -16,7 +17,7 @@ import {
   EMPTY_FORM,
   type BriefFormData,
 } from './NewBriefModal'
-import { DEFAULT_BRIEF_STATUS } from '@/lib/briefStatus'
+import { briefDataForSave } from './briefPayload'
 
 interface BriefFormContext {
   /** Module id required to create a new brief item. */
@@ -72,30 +73,41 @@ export function BriefFormPage({ form: activeForm }: { form: ActiveForm }) {
     setSubmitting(true)
     setSaveError('')
     try {
-      const briefData = {
-        ...form,
-        briefStatus: isDraft ? 'Draft' : form.briefStatus || DEFAULT_BRIEF_STATUS,
-        phase: form.phase || 1,
-      }
-      if (isEdit && activeForm.recordId && ctx.moduleId) {
-        await api.patch(`/departments/_/modules/${ctx.moduleId}/items/${activeForm.recordId}`, {
-          data: briefData,
-          status: briefData.briefStatus,
+      const briefData = briefDataForSave(form, isDraft)
+
+      if (isEdit) {
+        // Edit mode: PATCH existing item. Never fall through to POST.
+        const url = moduleItemPath({
+          departmentId: ctx.departmentId,
+          moduleId: ctx.moduleId,
+          itemId: activeForm.recordId,
         })
-      } else if (ctx.moduleId) {
-        await api.post(`/departments/_/modules/${ctx.moduleId}/items`, {
+        await api.patch(url, {
           data: briefData,
           status: briefData.briefStatus,
         })
       } else {
-        throw new Error('Missing module — cannot save brief')
+        // Create mode: POST new item
+        const url = moduleItemPath({
+          departmentId: ctx.departmentId,
+          moduleId: ctx.moduleId,
+        }) + '/items'
+        await api.post(url, {
+          data: briefData,
+          status: briefData.briefStatus,
+        })
       }
+
       if (ctx.departmentId) {
         await qc.invalidateQueries({ queryKey: ['department', ctx.departmentId] })
       }
       closeForm()
     } catch (err: unknown) {
-      setSaveError(getApiErrorMessage(err, 'Failed to save brief'))
+      if (err instanceof MissingModuleItemIdError) {
+        setSaveError("Can't save: this brief is missing its id. Close and reopen it from Active Briefs.")
+      } else {
+        setSaveError(getApiErrorMessage(err, 'Failed to save brief'))
+      }
     } finally {
       setSubmitting(false)
     }
