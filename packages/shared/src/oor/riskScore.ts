@@ -50,6 +50,10 @@ export interface RiskScoreResult {
 }
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+// Minimum scores for the categorical rules (see computeRiskScore).
+const HIGH_FLOOR = 60
+const MED_FLOOR = 30
 const RESOLVED_NODE_STATUSES = new Set(['RESOLVED', 'CLOSED', 'RECEIVED'])
 
 const isResolved = (n: RiskNodeInput) =>
@@ -109,6 +113,11 @@ export function toOorRiskLevel(level: RiskScoreLevel): OorRiskLevel {
  * - Customer-provided blocker: +10
  *
  * Thresholds: 0–29 = Low, 30–59 = Med, 60+ = High
+ *
+ * Categorical floors (the original OOR rules) always hold:
+ * - High: blocker with no ETA, blocker ETA past the required date, or the
+ *   required date has passed
+ * - Med: required date within 14 days, or blockers with no required date
  */
 export function computeRiskScore(input: RiskScoreInput): RiskScoreResult {
   const today = input.today ?? new Date()
@@ -143,6 +152,10 @@ export function computeRiskScore(input: RiskScoreInput): RiskScoreResult {
 
   const blockers = input.nodes.filter(isShort)
 
+  // Categorical floors: the pre-score OOR rules. Points add explanation and
+  // ordering on top, but never rank a line below what these rules demand.
+  let floor = 0
+
   // Material shortages
   const hasRawMaterialShortage = blockers.some(
     (n) => n.materialClass === 'RAW_MATERIAL' || n.materialClass === 'BULK',
@@ -168,6 +181,9 @@ export function computeRiskScore(input: RiskScoreInput): RiskScoreResult {
   if (missingEta) {
     score += 25
     drivers.push('Missing ETA on blocked material')
+    // An unknown ETA is worse than a late one: a late date can be planned
+    // around, an absent one cannot.
+    floor = HIGH_FLOOR
   }
 
   // ETA past required date
@@ -179,20 +195,24 @@ export function computeRiskScore(input: RiskScoreInput): RiskScoreResult {
     if (lateMaterial) {
       score += 25
       drivers.push('Material ETA past required date')
+      floor = HIGH_FLOOR
     }
 
     const daysRemaining = Math.floor((required.getTime() - today.getTime()) / MS_PER_DAY)
     if (daysRemaining < 0) {
       score += 30
       drivers.push('Required date has passed')
+      floor = HIGH_FLOOR
     } else if (daysRemaining <= 14) {
       score += 15
       drivers.push('Required date within 14 days')
+      floor = Math.max(floor, MED_FLOOR)
     }
   } else if (blockers.length > 0) {
     // No required date but has blockers — moderate risk
     score += 10
     drivers.push('No required date set')
+    floor = Math.max(floor, MED_FLOOR)
   }
 
   // Delay keywords in notes
@@ -201,8 +221,8 @@ export function computeRiskScore(input: RiskScoreInput): RiskScoreResult {
     drivers.push('Delay mentioned in notes')
   }
 
-  // Clamp score to 0–100
-  score = Math.min(100, Math.max(0, score))
+  // Clamp score to 0–100, never below the categorical floor
+  score = Math.min(100, Math.max(floor, score))
 
   // Determine level
   let level: RiskScoreLevel
