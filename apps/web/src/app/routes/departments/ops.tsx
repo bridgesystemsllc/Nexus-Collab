@@ -1388,7 +1388,9 @@ export function OpsPage() {
     if (!selectedItem) return
     const moduleType = selectedItem.type
     const formType = FORM_TYPE_BY_MODULE[moduleType]
-    const mod = moduleByType(moduleType)
+    const mod = modules.find((m: any) => m.id === selectedItem.item.moduleId)
+      || modules.find((m: any) => m.type === moduleType && m.items?.some((item: any) => item.id === selectedItem.item.id))
+      || moduleByType(moduleType)
     if (!formType || !mod) return
     setSelectedItem(null)
     openForm({ formType, mode: 'edit', recordId: selectedItem.item.id, context: { moduleId: mod.id, departmentId: deptId, initialData: selectedItem.item.data } })
@@ -1462,6 +1464,7 @@ export function OpsPage() {
             <DepartmentOverviewTab
               departmentId={deptId}
               departmentName="Operations"
+              onSelectInventoryItem={(item) => setSelectedItem({ item, type: 'INVENTORY_HEALTH' })}
               onNavigateToTab={(tab) => {
                 if (!OPS_TABS.includes(tab)) {
                   setToast({ message: "This module isn't available on this department.", type: 'error' })

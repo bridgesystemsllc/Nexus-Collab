@@ -33,6 +33,7 @@ interface DepartmentOverviewTabProps {
   departmentId: string | null
   departmentName?: string
   onNavigateToTab?: (tab: string) => void
+  onSelectInventoryItem?: (item: any) => void
   onSelectModuleItem?: (args: ModuleItemClickArgs) => void
 }
 
@@ -252,41 +253,26 @@ function ProjectRow({ project }: { project: any }) {
   )
 }
 
-function ModuleItemRow({
-  item,
-  moduleKey,
-  onClick,
-}: {
-  item: any
-  moduleKey: string
-  onClick?: () => void
-}) {
+function ModuleItemRow({ item, moduleKey, onSelect }: { item: any; moduleKey: string; onSelect?: () => void }) {
   const data = item.data || {}
   const name = data.projectName || data.product || data.name || data.sku || 'Untitled'
   const status = data.briefStatus || data.status || item.status
+  const Content = onSelect ? 'button' : 'div'
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    onClick?.()
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      e.stopPropagation()
-      onClick?.()
-    }
+    onSelect?.()
   }
 
   return (
-    <div
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onClick={onClick ? handleClick : undefined}
-      onKeyDown={onClick ? handleKeyDown : undefined}
-      className={`flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors ${onClick ? 'cursor-pointer focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-2 focus:ring-offset-[var(--bg-surface)]' : ''}`}
-    >
-      <div className="flex-1 min-w-0">
+    <div className="flex items-center gap-3 px-4 py-3 rounded-xl border border-[var(--border-subtle)] hover:border-[var(--accent)] transition-colors">
+      <Content
+        className="flex-1 min-w-0 text-left rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+        onClick={onSelect ? handleClick : undefined}
+        onKeyDown={(e) => e.stopPropagation()}
+        type={onSelect ? 'button' : undefined}
+        aria-label={onSelect ? `View ${moduleKey === 'inventory' ? 'inventory ' : ''}details for ${name}` : undefined}
+      >
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-[14px] text-[var(--text-primary)] truncate">
             {name}
@@ -296,8 +282,8 @@ function ModuleItemRow({
         {data.brand && (
           <p className="text-[12px] text-[var(--text-tertiary)] mt-0.5">{data.brand}</p>
         )}
-      </div>
-      <div onClick={(e) => e.stopPropagation()}>
+      </Content>
+      <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
         <AddToCowork
           item={{
             name,
@@ -316,6 +302,7 @@ export function DepartmentOverviewTab({
   departmentId,
   departmentName,
   onNavigateToTab,
+  onSelectInventoryItem,
   onSelectModuleItem,
 }: DepartmentOverviewTabProps) {
   const { data, isLoading, isError } = useDepartmentOverview(departmentId || '')
@@ -622,8 +609,10 @@ export function DepartmentOverviewTab({
                           key={item.id}
                           item={item}
                           moduleKey={key}
-                          onClick={
-                            onSelectModuleItem
+                          onSelect={
+                            key === 'inventory' && onSelectInventoryItem
+                              ? () => onSelectInventoryItem(item)
+                              : onSelectModuleItem
                               ? () =>
                                   onSelectModuleItem({
                                     moduleKey: key,
@@ -635,12 +624,23 @@ export function DepartmentOverviewTab({
                       )
                     })}
                   </div>
-                  {count > 3 && (
+                {count > 3 && (
+                  key === 'inventory' && onNavigateToTab ? (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onNavigateToTab('inventory') }}
+                      onKeyDown={(e) => e.stopPropagation()}
+                      className="w-full text-xs text-[var(--accent)] text-center hover:underline"
+                    >
+                      +{count - 3} more
+                    </button>
+                  ) : (
                     <p className="text-xs text-[var(--text-tertiary)] text-center">
                       +{count - 3} more
                     </p>
-                  )}
-                </div>
+                  )
+                )}
+              </div>
               )
             })}
           </div>
