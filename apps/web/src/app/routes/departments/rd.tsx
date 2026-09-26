@@ -54,6 +54,19 @@ import { DepartmentTasksFollowUpTab } from '@/components/departments/DepartmentT
 import { DepartmentArtworkTab } from '@/components/departments/DepartmentArtworkTab'
 import { Toast, type ToastData } from '@/components/shared/Toast'
 
+// ─── Brief Row Mapper ──────────────────────────────────────
+// Exported for testing. Ensures real row identity (id, moduleId) wins
+// over any stale keys that may exist in data from legacy saves.
+export function toBriefRows(
+  items: Array<{ id: string; moduleId: string; data?: Record<string, unknown> }>
+): Array<BriefFormData & { id: string; moduleId: string }> {
+  return items.map((item) => ({
+    ...(item.data ?? {}),
+    id: item.id,
+    moduleId: item.moduleId,
+  } as BriefFormData & { id: string; moduleId: string }))
+}
+
 // ─── Types ─────────────────────────────────────────────────
 type RDTab = 'overview' | 'tasks-followup' | 'projects' | 'artwork' | 'briefs' | 'cm' | 'transfers' | 'formulations' | 'npd'
 
@@ -339,7 +352,7 @@ function BriefsTab({ items, moduleId, departmentId, onRefresh, transferItems, fo
   const [showImportModal, setShowImportModal] = useState(false)
   const [view, setView] = useState<ViewMode>('table')
 
-  const briefs = useMemo(() => items.map((item: any) => ({ id: item.id, moduleId: item.moduleId, ...item.data })), [items])
+  const briefs = useMemo(() => toBriefRows(items), [items])
 
   // Cross-tab navigation: open a specific brief's detail when requested
   // (e.g. clicking a tech transfer's linked brief). No-ops safely if the

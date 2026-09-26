@@ -7,6 +7,7 @@ import {
   ScopedModuleItemNotFoundError,
   updateModuleItemForOrg,
 } from '../services/oor/erpLineSync'
+import { departmentScopeFromParam } from '../lib/moduleItemScope'
 import { requirePermission, sendError, type RbacRequest } from '../middleware/requirePermission'
 import { can } from '../services/rbac/resolve'
 import { getActingOrgId } from '../middleware/billingContext'
@@ -516,7 +517,7 @@ departmentRoutes.patch(
     }
     const item = await updateModuleItemForOrg(prisma, {
       orgId,
-      departmentId: req.params.id as string,
+      departmentId: departmentScopeFromParam(req.params.id),
       moduleId: req.params.mid as string,
       itemId: req.params.iid as string,
       canEditOpenOrders: can(req.subject!, 'oor:edit_status'),
