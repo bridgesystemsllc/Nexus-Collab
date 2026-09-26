@@ -11,6 +11,7 @@ import {
   tenantIdFromIdToken,
   type MsProfile,
 } from '../lib/microsoftGraph'
+import { safeReturnTo } from './returnTo'
 
 // True for both the Replit dev preview and a real deployment — in both the
 // public edge is HTTPS and the app is embedded as a cross-site iframe.
@@ -187,8 +188,10 @@ export async function setupAuth(app: Express) {
       return res.status(500).json({ error: 'Session unavailable' })
     }
     const nonce = createStateNonce()
+    // Validate and store the returnTo path for post-login redirect
+    const returnTo = safeReturnTo(req.query.returnTo)
     // Mark this as a primary-login flow (vs. the per-user "connect" flow).
-    ;(req.session as any).msOAuth = { nonce, flow: 'login', createdAt: Date.now() }
+    ;(req.session as any).msOAuth = { nonce, flow: 'login', returnTo, createdAt: Date.now() }
     req.session.save((err) => {
       if (err) {
         console.error('[auth] failed to persist login state:', err)

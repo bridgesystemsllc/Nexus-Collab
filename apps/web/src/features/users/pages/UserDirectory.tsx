@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { onEnter } from '@/lib/keys'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, RotateCcw, Search, UserPlus, Users } from 'lucide-react'
@@ -290,7 +291,7 @@ function UserTable({ users, onOpen }: { users: DirectoryUser[]; onOpen: (id: str
             <tr
               key={u.id}
               onClick={() => onOpen(u.id)}
-              onKeyDown={(e) => { if (e.key === 'Enter') onOpen(u.id) }}
+              onKeyDown={onEnter(() => onOpen(u.id))}
               tabIndex={0}
               role="button"
               aria-label={`Open ${u.name}`}

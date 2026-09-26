@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
+import { onEnter } from '@/lib/keys'
 import {
   X, Beaker, FileText, DollarSign, ClipboardList, History, Layers,
   ChevronDown, ChevronRight, Plus, Trash2, Edit3, CheckCircle2, AlertTriangle,
@@ -444,9 +445,7 @@ export function FormulationDetailDrawer({
                       setSpDraft(e.target.value)
                       if (spError) setSpError('')
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') saveSharepointUrl()
-                    }}
+                    onKeyDown={onEnter(saveSharepointUrl)}
                     placeholder="https://yourtenant.sharepoint.com/sites/\u2026/folder"
                     className="flex-1 min-w-0 px-2.5 py-1 rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)] transition-colors"
                   />

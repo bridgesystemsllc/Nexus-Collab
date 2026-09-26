@@ -1,4 +1,5 @@
 import { useRef, useState, type ChangeEvent } from 'react'
+import { onEnter } from '@/lib/keys'
 import { CollabProjectsTab } from '@/modules/projects/components/CollabProjectsTab'
 import {
   ArrowLeft,
@@ -591,7 +592,7 @@ function TasksTab({
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Task title..."
                 className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)]"
-                onKeyDown={(e) => { if (e.key === 'Enter') handleAddTask() }}
+                onKeyDown={onEnter(handleAddTask)}
               />
             </div>
             <div className="grid grid-cols-3 gap-3">

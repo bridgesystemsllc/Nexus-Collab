@@ -1,30 +1,8 @@
 import { create } from 'zustand'
+import { parseNavUrl, writeNavUrl, type Page } from '@/lib/navUrl'
 
-type Page =
-  | 'onboarding'
-  | 'dashboard'
-  | 'everything'
-  | 'rd'
-  | 'ops'
-  | 'finance'
-  | 'cowork'
-  | 'cowork-detail'
-  | 'docs'
-  | 'product-catalog'
-  | 'integrations'
-  | 'email-agent'
-  | 'dept-manager'
-  | 'pulse'
-  | 'people'
-  | 'billing'
-  | 'settings'
-  | 'organization'
-  | 'custom-dept'
-  | 'projects'
-  | 'tasks'
-  | 'follow-ups'
-  | 'agent-settings'
-  | 'product-catalog'
+// Re-export Page type for convenience
+export type { Page }
 
 type Theme = 'light'
 
@@ -48,6 +26,7 @@ export interface ActiveForm {
 
 interface AppState {
   currentPage: Page
+  currentTab: string | null
   aiPanelOpen: boolean
   sidebarCollapsed: boolean
   selectedCoworkId: string | null
@@ -58,6 +37,7 @@ interface AppState {
   activeForm: ActiveForm | null
 
   setPage: (page: Page) => void
+  setTab: (tab: string | null) => void
   toggleAIPanel: () => void
   toggleSidebar: () => void
   setSelectedCowork: (id: string | null) => void
@@ -67,42 +47,133 @@ interface AppState {
   closeForm: () => void
 }
 
-// ─── Pages restored from the URL ───────────────────────────
-// The app navigates through this store rather than routes, so a refresh
-// normally lands back on the dashboard. Pages that keep their state in the
-// query string (People puts its filters there) must also be able to bring the
-// user back to themselves, or "survives a refresh" is only half true.
-//
-// Only pages that actually write `?view=` belong here; the rest behave as
-// before, with no param and no restore.
-const RESTORABLE: Page[] = ['people', 'settings']
-
-function pageFromUrl(): Page {
-  if (typeof window === 'undefined') return 'dashboard'
-  const view = new URLSearchParams(window.location.search).get('view')
-  return RESTORABLE.find((p) => p === view) ?? 'dashboard'
+// ─── URL-based navigation state ─────────────────────────────
+// The URL is the source of truth for navigation state. On boot, we parse
+// the URL to restore the page, entity ids, and tab. Every navigation setter
+// updates the URL via replaceState (no history entries).
+function getInitialNavState() {
+  if (typeof window === 'undefined') {
+    return {
+      currentPage: 'dashboard' as Page,
+      currentTab: null,
+      selectedCoworkId: null,
+      selectedDeptId: null,
+      selectedProjectId: null,
+    }
+  }
+  const nav = parseNavUrl(window.location.search)
+  return {
+    currentPage: nav.page,
+    currentTab: nav.tab,
+    selectedCoworkId: nav.coworkId,
+    selectedDeptId: nav.deptId,
+    selectedProjectId: nav.projectId,
+  }
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  currentPage: pageFromUrl(),
+const initialState = getInitialNavState()
+
+export const useAppStore = create<AppState>((set, get) => ({
+  currentPage: initialState.currentPage,
+  currentTab: initialState.currentTab,
   aiPanelOpen: false,
   sidebarCollapsed: false,
-  selectedCoworkId: null,
-  selectedDeptId: null,
-  selectedProjectId: null,
+  selectedCoworkId: initialState.selectedCoworkId,
+  selectedDeptId: initialState.selectedDeptId,
+  selectedProjectId: initialState.selectedProjectId,
   theme: 'light',
   activeForm: null,
 
   // Navigating to Projects from the sidebar means "go to the list". Without
   // clearing the selection the user lands back inside whichever project they
   // last opened, with no obvious way to tell why.
-  setPage: (page) =>
-    set(page === 'projects' ? { currentPage: page, selectedProjectId: null } : { currentPage: page }),
+  setPage: (page) => {
+    const state = get()
+    // Clear tab when changing to a different page
+    const newTab = page === state.currentPage ? state.currentTab : null
+    // Clear projectId when navigating to projects (existing behavior)
+    const newProjectId = page === 'projects' ? null : state.selectedProjectId
+
+    set({ currentPage: page, currentTab: newTab, selectedProjectId: newProjectId })
+
+    writeNavUrl({
+      page,
+      coworkId: state.selectedCoworkId,
+      deptId: state.selectedDeptId,
+      projectId: newProjectId,
+      tab: newTab,
+    })
+  },
+
+  setTab: (tab) => {
+    const state = get()
+    set({ currentTab: tab })
+
+    writeNavUrl({
+      page: state.currentPage,
+      coworkId: state.selectedCoworkId,
+      deptId: state.selectedDeptId,
+      projectId: state.selectedProjectId,
+      tab,
+    })
+  },
+
   toggleAIPanel: () => set((s) => ({ aiPanelOpen: !s.aiPanelOpen })),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-  setSelectedCowork: (id) => set({ selectedCoworkId: id, currentPage: id ? 'cowork-detail' : 'cowork' }),
-  setSelectedDept: (id) => set({ selectedDeptId: id, currentPage: 'custom-dept' }),
-  setSelectedProject: (id) => set({ selectedProjectId: id }),
+
+  setSelectedCowork: (id) => {
+    const page = id ? 'cowork-detail' : 'cowork'
+    const state = get()
+    set({ selectedCoworkId: id, currentPage: page })
+
+    writeNavUrl({
+      page,
+      coworkId: id,
+      deptId: state.selectedDeptId,
+      projectId: state.selectedProjectId,
+      tab: null,
+    })
+  },
+
+  setSelectedDept: (id) => {
+    const state = get()
+    set({ selectedDeptId: id, currentPage: 'custom-dept' })
+
+    writeNavUrl({
+      page: 'custom-dept',
+      coworkId: state.selectedCoworkId,
+      deptId: id,
+      projectId: state.selectedProjectId,
+      tab: null,
+    })
+  },
+
+  setSelectedProject: (id) => {
+    const state = get()
+    set({ selectedProjectId: id })
+
+    writeNavUrl({
+      page: state.currentPage,
+      coworkId: state.selectedCoworkId,
+      deptId: state.selectedDeptId,
+      projectId: id,
+      tab: state.currentTab,
+    })
+  },
+
   openForm: (form) => set((s) => ({ activeForm: { ...form, returnPage: s.currentPage } })),
-  closeForm: () => set((s) => ({ activeForm: null, currentPage: s.activeForm?.returnPage ?? s.currentPage })),
+
+  closeForm: () => {
+    const state = get()
+    const returnPage = state.activeForm?.returnPage ?? state.currentPage
+    set({ activeForm: null, currentPage: returnPage })
+
+    writeNavUrl({
+      page: returnPage,
+      coworkId: state.selectedCoworkId,
+      deptId: state.selectedDeptId,
+      projectId: state.selectedProjectId,
+      tab: state.currentTab,
+    })
+  },
 }))

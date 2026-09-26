@@ -276,6 +276,7 @@ export function ProductFormModal({ open, onClose, product }: Props) {
             </h2>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-2 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
           >
@@ -411,12 +412,14 @@ export function ProductFormModal({ open, onClose, product }: Props) {
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[var(--border-subtle)]">
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2.5 rounded-lg text-[14px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] border border-[var(--border-default)] transition-all"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={isPending}
             className="px-5 py-2.5 rounded-lg text-[14px] font-semibold bg-[var(--accent)] text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"

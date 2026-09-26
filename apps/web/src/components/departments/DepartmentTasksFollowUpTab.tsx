@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { onEnter } from '@/lib/keys'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -706,7 +707,7 @@ function TaskFormModal({
             <input
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
+              onKeyDown={onEnter(handleAddTag)}
               placeholder="Add custom tag..."
               className="flex-1 bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)]"
             />

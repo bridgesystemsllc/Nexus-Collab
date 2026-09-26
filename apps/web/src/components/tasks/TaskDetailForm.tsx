@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { onEnter } from '@/lib/keys'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Bell,
@@ -536,7 +537,7 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
                 type="text"
                 value={subtaskText}
                 onChange={(e) => setSubtaskText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubtask() }}
+                onKeyDown={onEnter(handleAddSubtask)}
                 placeholder="Add a subtask…"
                 className="flex-1 px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)] transition-colors"
               />
@@ -610,7 +611,7 @@ export function TaskDetailForm({ form: activeForm }: { form: ActiveForm }) {
                 type="text"
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleAddNote() }}
+                onKeyDown={onEnter(handleAddNote)}
                 placeholder="Add a note…"
                 className="flex-1 px-3 py-2 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-xl text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)] transition-colors"
               />

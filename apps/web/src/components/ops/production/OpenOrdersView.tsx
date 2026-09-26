@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, Fragment } from 'react'
+import { onEnter } from '@/lib/keys'
 import {
   Search,
   ChevronRight,
@@ -858,7 +859,7 @@ export function OpenOrderDrawer({
                   <input
                     value={newTask}
                     onChange={(e) => setNewTask(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && addTask()}
+                    onKeyDown={onEnter(addTask)}
                     className="flex-1 px-3 py-1.5 bg-[var(--bg-input,var(--bg-elevated))] border border-[var(--border-default)] rounded-lg text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--accent)]"
                     placeholder="Add a task…"
                   />

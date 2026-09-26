@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useUserStore } from '@/stores/userStore'
+import { useAppStore } from '@/stores/appStore'
+import { takePendingDraft, getDraftKey } from '@/lib/reauth'
 import { LandingPage } from './LandingPage'
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard'
+import { Toast, type ToastData } from '@/components/shared/Toast'
 
 interface Props {
   children: React.ReactNode
@@ -40,7 +43,10 @@ function Spinner() {
 export function AuthGate({ children }: Props) {
   const currentUser = useUserStore((s) => s.currentUser)
   const setCurrentUser = useUserStore((s) => s.setCurrentUser)
+  const openForm = useAppStore((s) => s.openForm)
   const [onboardingComplete, setOnboardingComplete] = useState(false)
+  const [toast, setToast] = useState<ToastData | null>(null)
+  const draftChecked = useRef(false)
 
   const { data, isLoading, isError, refetch } = useQuery<AuthMeResponse>({
     queryKey: ['auth-me'],
@@ -64,6 +70,44 @@ export function AuthGate({ children }: Props) {
     }
   }, [data, currentUser, setCurrentUser])
 
+  // Restore pending draft after successful authentication
+  useEffect(() => {
+    if (!currentUser || draftChecked.current) return
+    draftChecked.current = true
+
+    // Check if there was a pending draft key before attempting to take it
+    const hadPendingKey = !!sessionStorage.getItem('nexus.pendingDraft.v1')
+
+    const draft = takePendingDraft(currentUser.id)
+    if (draft) {
+      // Write the draft values to the form-specific draft key so useFormDraft can hydrate
+      const formDraftKey = getDraftKey(
+        draft.activeForm.formType,
+        draft.activeForm.mode,
+        draft.activeForm.recordId ?? null
+      )
+      try {
+        sessionStorage.setItem(formDraftKey, JSON.stringify(draft.values))
+      } catch {
+        // Ignore storage errors
+      }
+
+      // Reconstruct the activeForm object for openForm
+      openForm({
+        formType: draft.activeForm.formType,
+        mode: draft.activeForm.mode,
+        recordId: draft.activeForm.recordId,
+        context: draft.activeForm.context ?? undefined,
+      })
+    } else if (hadPendingKey) {
+      // There was a key but it failed validation (expired, wrong member, etc.)
+      setToast({
+        type: 'error',
+        message: "We couldn't restore your unsaved changes (they expired or belong to another account).",
+      })
+    }
+  }, [currentUser, openForm])
+
   // Handle onboarding completion — refetch auth state
   const handleOnboardingSuccess = () => {
     setOnboardingComplete(true)
@@ -86,5 +130,10 @@ export function AuthGate({ children }: Props) {
   // Member exists — wait for store to be populated
   if (!currentUser && data.id) return <Spinner />
 
-  return <>{children}</>
+  return (
+    <>
+      {children}
+      <Toast toast={toast} onDismiss={() => setToast(null)} duration={5000} />
+    </>
+  )
 }

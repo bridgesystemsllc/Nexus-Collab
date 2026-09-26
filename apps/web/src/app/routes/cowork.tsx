@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { onEnter } from '@/lib/keys'
 import {
   Users,
   MessageSquare,
@@ -714,7 +715,7 @@ function QuickAddTask({ spaceId, onClose }: { spaceId: string; onClose: () => vo
         onChange={(e) => setTitle(e.target.value)}
         autoFocus
         className="w-full bg-[var(--bg-input)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--accent)]"
-        onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); if (e.key === 'Escape') onClose() }}
+        onKeyDown={(e) => { onEnter(handleSubmit)(e); if (e.key === 'Escape') onClose() }}
       />
       <div className="flex items-center gap-2">
         <select

@@ -29,6 +29,7 @@ interface MsOAuthState {
   nonce: string
   flow: 'login' | 'connect'
   memberId?: string
+  returnTo?: string | null
   createdAt: number
 }
 const STATE_TTL_MS = 10 * 60 * 1000
@@ -194,6 +195,8 @@ microsoftGraphRoutes.get('/callback', async (req: Request, res: Response) => {
       await saveTokensForMember(loggedInMember.id, tokens, profile)
       // Defeat session fixation: issue a brand-new session id before storing
       // the authenticated identity.
+      // Capture returnTo before regeneration since stored is read earlier
+      const loginReturnTo = stored!.returnTo
       return req.session.regenerate((regenErr) => {
         if (regenErr) {
           console.error('[microsoft] failed to regenerate session:', regenErr)
@@ -206,7 +209,7 @@ microsoftGraphRoutes.get('/callback', async (req: Request, res: Response) => {
             return res.redirect(APP_REDIRECT('error', 'session_persist_failed'))
           }
           stampLastLogin(loggedInMember.id)
-          res.redirect('/')
+          res.redirect(loginReturnTo ?? '/')
         })
       })
     }

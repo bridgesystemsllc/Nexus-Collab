@@ -1232,12 +1232,33 @@ const COWORK_TYPE_BY_MODULE: Record<string, string> = {
 }
 
 export function OpsPage() {
-  const [activeTab, setActiveTab] = useState<OpsTab>('overview')
+  const currentTab = useAppStore((s) => s.currentTab)
+  const setTab = useAppStore((s) => s.setTab)
+  // Initialize from store's currentTab if it's a valid OpsTab, otherwise default to 'overview'
+  const [activeTab, setActiveTabLocal] = useState<OpsTab>(() => {
+    if (currentTab && TABS.some((t) => t.key === currentTab)) {
+      return currentTab as OpsTab
+    }
+    return 'overview'
+  })
   const [selectedItem, setSelectedItem] = useState<{ item: any; type: string } | null>(null)
   const [showRemovedFrame, setShowRemovedFrame] = useState(false)
   const [showRemovedBrandFrame, setShowRemovedBrandFrame] = useState(false)
   const openForm = useAppStore((s) => s.openForm)
   const setPage = useAppStore((s) => s.setPage)
+
+  // Wrap setActiveTab to sync with store
+  const setActiveTab = (tab: OpsTab) => {
+    setActiveTabLocal(tab)
+    setTab(tab)
+  }
+
+  // Sync activeTab when store's currentTab changes (e.g., from URL on refresh)
+  useEffect(() => {
+    if (currentTab && TABS.some((t) => t.key === currentTab) && currentTab !== activeTab) {
+      setActiveTabLocal(currentTab as OpsTab)
+    }
+  }, [currentTab])
   // Toast for error messages (e.g. module not available on this department)
   const [toast, setToast] = useState<ToastData | null>(null)
 

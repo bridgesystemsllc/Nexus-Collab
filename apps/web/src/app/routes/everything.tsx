@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { onEnter } from '@/lib/keys'
 import {
   Database,
   FileText,
@@ -146,12 +147,8 @@ export function EverythingPage() {
   const records: any[] = data?.records || []
   const kpis = data?.kpis || { total: 0, byType: {}, emergency: 0 }
 
-  // Debounced search on Enter
-  function handleSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') {
-      setSearch(searchInput)
-    }
-  }
+  // Search on Enter
+  const handleSearchKeyDown = onEnter(() => setSearch(searchInput))
 
   // Count for active filter
   const activeFilterCount =
